@@ -73,6 +73,13 @@ func _run() -> void:
 		simulation.advance(1.0 / 60.0)
 	var capsule_point := Geometry3D.get_closest_point_to_segment(simulation.tip(0), collider.global_position, collider.global_position + shape.tail)
 	check(simulation.tip(0).distance_to(capsule_point) >= 0.059, "capsule excludes the tip")
+	model.scale = Vector3.ONE * 2.0
+	simulation.chains[0].joints[0].radius = 0.02
+	simulation.reset()
+	for i in 120:
+		simulation.advance(1.0 / 60.0)
+	var nearest := Geometry3D.get_closest_point_to_segment(second.global_position, collider.global_position, collider.global_transform * shape.tail)
+	check(second.global_position.distance_to(nearest) >= 0.159, "joint hit radius follows avatar scale")
 	var state := simulation.state()
 	check(simulation.apply_state(state), "snapshot round trip")
 	check(not simulation.apply_state(PackedVector3Array([Vector3(NAN, 0, 0)])), "bad snapshot refused")

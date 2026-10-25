@@ -76,6 +76,7 @@ func _step() -> void:
 		var previous: PackedVector3Array = chain.previous
 		var points := PackedVector3Array()
 		var lengths := PackedFloat32Array()
+		var radii := PackedFloat32Array()
 		var rests: Array[Transform3D] = []
 		for i in chain.joints.size():
 			var joint: Dictionary = chain.joints[i]
@@ -87,6 +88,8 @@ func _step() -> void:
 				points.append(rest.origin)
 			var along: Vector3 = rest.basis * joint.tail
 			lengths.append(along.length())
+			var scale := rest.basis.get_scale().abs()
+			radii.append(joint.radius * maxf(scale.x, maxf(scale.y, scale.z)))
 			var now := center * current[i]
 			var before := center * previous[i]
 			points.append(now + (now - before) * (1.0 - joint.drag) + along.normalized() * joint.stiffness * STEP + joint.gravity * STEP)
@@ -109,7 +112,7 @@ func _step() -> void:
 					var collider: Dictionary = colliders[index]
 					if not collider.is_empty():
 						var before := points[i + 1]
-						points[i + 1] = _collide(before, points[i], lengths[i], chain.joints[i].radius, collider)
+						points[i + 1] = _collide(before, points[i], lengths[i], radii[i], collider)
 						if before.distance_squared_to(points[i + 1]) > 1e-12:
 							contacts += 1
 		chain.previous = current.duplicate()
