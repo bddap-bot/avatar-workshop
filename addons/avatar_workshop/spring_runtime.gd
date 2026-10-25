@@ -25,20 +25,24 @@ func _init(definition: Dictionary, nodes: Dictionary) -> void:
 			continue
 		if not range(joints.size() - 1).all(func(i: int) -> bool: return (nodes[joints[i].node] as Node3D).is_ancestor_of(nodes[joints[i + 1].node])):
 			continue
+		var end_length: float = source.get("end_length", 0.0)
+		var count := joints.size() if end_length > 0.0 else joints.size() - 1
+		if count == 0:
+			continue
 		var chain := {"joints": [], "colliders": source.colliders, "center": nodes.get(source.center), "current": PackedVector3Array(), "previous": PackedVector3Array()}
-		for i in joints.size():
+		for i in count:
 			var joint: Dictionary = joints[i].duplicate()
 			var node: Node3D = nodes[joint.node]
 			driven[joint.node] = true
 			point_count += 1
 			joint.node = node
 			joint.rest = node.transform
-			var tail := Vector3(0, -0.07, 0)
+			var tail := Vector3(0, -end_length, 0)
 			if i + 1 < joints.size():
 				tail = node.global_transform.affine_inverse() * (nodes[joints[i + 1].node] as Node3D).global_position
 			elif i > 0:
 				var direction := node.global_position - (nodes[joints[i - 1].node] as Node3D).global_position
-				tail = node.global_basis.inverse() * direction.normalized() * 0.07
+				tail = node.global_basis.inverse() * direction.normalized() * end_length
 			joint.tail = tail
 			chain.joints.append(joint)
 		chains.append(chain)

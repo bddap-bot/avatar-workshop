@@ -42,7 +42,9 @@ func _run() -> void:
 	var second := Node3D.new()
 	first.add_child(second)
 	second.position = Vector3(0, -0.2, 0)
-	var definition := {"springs": [{"joints": [Definition.joint_data(1, {"stiffness": 1.0}, false), Definition.joint_data(2, {"stiffness": 1.0}, false)], "center": -1, "colliders": []}], "colliders": []}
+	var endpoint := Springs.new(parsed, {0: model, 1: first, 2: second})
+	check(endpoint.point_count == 1, "VRM 1 last joint is an endpoint, not an extra segment")
+	var definition := {"springs": [{"joints": [Definition.joint_data(1, {"stiffness": 1.0}, false), Definition.joint_data(2, {"stiffness": 1.0}, false)], "center": -1, "end_length": 0.07, "colliders": []}], "colliders": []}
 	var simulation := Springs.new(definition, {1: first, 2: second})
 	var start := simulation.tip(0)
 	model.position.x = 0.1

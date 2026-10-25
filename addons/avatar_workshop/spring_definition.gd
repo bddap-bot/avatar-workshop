@@ -55,7 +55,7 @@ static func read(document: Dictionary) -> Dictionary:
 					joints.append(joint_data(node, group, true))
 					var children := array(object(nodes[node]).get("children")).filter(func(child: Variant) -> bool: return index(child, nodes.size()) >= 0)
 					if children.is_empty():
-						result.springs.append({"joints": joints, "center": index(group.get("center"), nodes.size()), "colliders": collider_indices(group.get("colliderGroups"), groups, result.colliders.size())})
+						result.springs.append({"joints": joints, "end_length": 0.07, "center": index(group.get("center"), nodes.size()), "colliders": collider_indices(group.get("colliderGroups"), groups, result.colliders.size())})
 					else:
 						for i in range(children.size() - 1, -1, -1):
 							pending.append([int(children[i]), joints if i == 0 else []])
