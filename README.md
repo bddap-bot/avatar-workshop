@@ -26,8 +26,10 @@ Legacy offsets and gravity are converted from Unity coordinates. Branches
 retain every joint, with each joint driven once.
 
 `spring_runtime.gd.new(definition, nodes)` binds those indices to caller-owned
-`Node3D` objects already in a scene tree. Each node's local transform is its
-rest pose. Call `advance(delta)` after posing the body. The solver uses a
+`Node3D` objects already in a scene tree, or to bones of a skinned
+`Skeleton3D` through `skeleton_bone.gd.new(skeleton, bone_index)`, which reads
+and writes the bone's pose as a node's transform. Each node's or bone's local
+transform is its rest pose. Call `advance(delta)` after posing the body. The solver uses a
 60 Hz fixed step; pauses longer than 250 ms reset momentum. Sphere and capsule
 colliders follow their bound nodes. `targets[chain_index] = world_position`
 holds a chain tip within its reach; erase the entry to release it.
@@ -43,8 +45,8 @@ and deciding a rendering budget are also caller responsibilities.
 
 The solver adapts the Verlet update and length/collision projection approach
 from [godot-vrm](https://github.com/V-Sekai/godot-vrm), under the retained
-[MIT notice](addons/avatar_workshop/LICENSE-godot-vrm). It binds ordinary nodes
-and supports tip constraints without an editor plugin or native extension.
+[MIT notice](addons/avatar_workshop/LICENSE-godot-vrm). It binds ordinary nodes or skeleton
+bones and supports tip constraints without an editor plugin or native extension.
 
 ## Tests
 

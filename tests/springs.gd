@@ -2,6 +2,7 @@ extends SceneTree
 
 const Definition = preload("res://addons/avatar_workshop/spring_definition.gd")
 const Springs = preload("res://addons/avatar_workshop/spring_runtime.gd")
+const SkeletonBone = preload("res://addons/avatar_workshop/skeleton_bone.gd")
 var failures := 0
 
 
@@ -86,5 +87,39 @@ func _run() -> void:
 	check(simulation.apply_state(state), "snapshot round trip")
 	check(not simulation.apply_state(PackedVector3Array([Vector3(NAN, 0, 0)])), "bad snapshot refused")
 	model.free()
+	_bones_swing_as_nodes_do(definition)
 	print("springs: ", "ok" if failures == 0 else str(failures) + " failures")
 	quit(0 if failures == 0 else 1)
+
+
+func _bones_swing_as_nodes_do(definition: Dictionary) -> void:
+	var model := Node3D.new()
+	root.add_child(model)
+	var first := Node3D.new()
+	model.add_child(first)
+	first.position = Vector3(0.1, 0.3, 0)
+	var second := Node3D.new()
+	first.add_child(second)
+	second.position = Vector3(0, -0.2, 0)
+	var skeleton := Skeleton3D.new()
+	model.add_child(skeleton)
+	skeleton.add_bone("first")
+	skeleton.add_bone("second")
+	skeleton.set_bone_parent(1, 0)
+	skeleton.set_bone_rest(0, first.transform)
+	skeleton.set_bone_rest(1, second.transform)
+	skeleton.reset_bone_poses()
+	var nodes := Springs.new(definition, {1: first, 2: second})
+	var handles := {1: SkeletonBone.new(skeleton, 0), 2: SkeletonBone.new(skeleton, 1)}
+	check(handles[1].is_ancestor_of(handles[2]) and not handles[2].is_ancestor_of(handles[1]), "a bone is an ancestor of its descendants only")
+	var bones := Springs.new(definition, handles)
+	check(bones.chains.size() == 1, "skeleton bones form a chain")
+	var apart := 0.0
+	for i in 120:
+		model.position = Vector3(0.15 * sin(i * 0.2), 0, 0.1 * cos(i * 0.3))
+		nodes.advance(1.0 / 60.0)
+		bones.advance(1.0 / 60.0)
+		apart = maxf(apart, nodes.tip(0).distance_to(bones.tip(0)))
+	check(apart < 1e-4, "skeleton bones swing as nodes do (%f apart)" % apart)
+	check(skeleton.get_bone_global_pose(1).origin.distance_to(second.transform.origin + first.transform.origin) > 0.0 and handles[2].global_position.distance_to(second.global_position) < 1e-4, "the skeleton holds the swung pose")
+	model.free()

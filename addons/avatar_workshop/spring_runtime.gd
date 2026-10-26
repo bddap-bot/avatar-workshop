@@ -23,7 +23,7 @@ func _init(definition: Dictionary, nodes: Dictionary) -> void:
 		var joints: Array = source.joints
 		if joints.is_empty() or not joints.all(func(j: Dictionary) -> bool: return nodes.has(j.node) and not driven.has(j.node)):
 			continue
-		if not range(joints.size() - 1).all(func(i: int) -> bool: return (nodes[joints[i].node] as Node3D).is_ancestor_of(nodes[joints[i + 1].node])):
+		if not range(joints.size() - 1).all(func(i: int) -> bool: return nodes[joints[i].node].is_ancestor_of(nodes[joints[i + 1].node])):
 			continue
 		var end_length: float = source.get("end_length", 0.0)
 		var count := joints.size() if end_length > 0.0 else joints.size() - 1
@@ -32,16 +32,16 @@ func _init(definition: Dictionary, nodes: Dictionary) -> void:
 		var chain := {"joints": [], "colliders": source.colliders, "center": nodes.get(source.center), "current": PackedVector3Array(), "previous": PackedVector3Array()}
 		for i in count:
 			var joint: Dictionary = joints[i].duplicate()
-			var node: Node3D = nodes[joint.node]
+			var node = nodes[joint.node]
 			driven[joint.node] = true
 			point_count += 1
 			joint.node = node
 			joint.rest = node.transform
 			var tail := Vector3(0, -end_length, 0)
 			if i + 1 < joints.size():
-				tail = node.global_transform.affine_inverse() * (nodes[joints[i + 1].node] as Node3D).global_position
+				tail = node.global_transform.affine_inverse() * nodes[joints[i + 1].node].global_position
 			elif i > 0:
-				var direction := node.global_position - (nodes[joints[i - 1].node] as Node3D).global_position
+				var direction: Vector3 = node.global_position - nodes[joints[i - 1].node].global_position
 				tail = node.global_basis.inverse() * direction.normalized() * end_length
 			joint.tail = tail
 			chain.joints.append(joint)
@@ -54,7 +54,7 @@ func reset() -> void:
 		var center := _center(chain)
 		chain.current = PackedVector3Array()
 		for joint: Dictionary in chain.joints:
-			var node: Node3D = joint.node
+			var node = joint.node
 			node.transform = joint.rest
 			chain.current.append(center.affine_inverse() * (node.global_transform * joint.tail))
 		chain.previous = chain.current.duplicate()
@@ -84,15 +84,15 @@ func _step() -> void:
 		var rests: Array[Transform3D] = []
 		for i in chain.joints.size():
 			var joint: Dictionary = chain.joints[i]
-			var node: Node3D = joint.node
+			var node = joint.node
 			node.transform = joint.rest
-			var rest := node.global_transform
+			var rest: Transform3D = node.global_transform
 			rests.append(rest)
 			if i == 0:
 				points.append(rest.origin)
 			var along: Vector3 = rest.basis * joint.tail
 			lengths.append(along.length())
-			var scale := rest.basis.get_scale().abs()
+			var scale: Vector3 = rest.basis.get_scale().abs()
 			radii.append(joint.radius * maxf(scale.x, maxf(scale.y, scale.z)))
 			var now := center * current[i]
 			var before := center * previous[i]
@@ -151,9 +151,9 @@ static func _center(chain: Dictionary) -> Transform3D:
 static func _apply(chain: Dictionary, points: PackedVector3Array) -> void:
 	for i in chain.joints.size():
 		var joint: Dictionary = chain.joints[i]
-		var node: Node3D = joint.node
+		var node = joint.node
 		node.transform = joint.rest
-		var frame := node.global_transform
+		var frame: Transform3D = node.global_transform
 		var from: Vector3 = frame.basis * joint.tail
 		var to := points[i + 1] - points[i]
 		if from.length_squared() > 1e-12 and to.length_squared() > 1e-12:
