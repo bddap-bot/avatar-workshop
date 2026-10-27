@@ -1,18 +1,20 @@
 extends RefCounted
 
-const Definition = preload("res://addons/avatar_workshop/spring_definition.gd")
-const STEP := 1.0 / 60.0
+const Definition = preload("spring_definition.gd")
 const EVERYONE := Definition.WEARER | Definition.OTHERS
+const SkeletonBone = preload("skeleton_bone.gd")
+
+const STEP := 1.0 / 60.0
 
 var chains: Array = []
 var colliders: Array = []
 var targets := {}
-## Spheres that push every chain whose "collide" bits share theirs: [world centre, radius, WEARER or OTHERS] each,
-## set before advance. A held chain follows its holder instead.
+## World-space spheres [centre, radius, WEARER or OTHERS], set before advance.
 var hands: Array = []
 var contacts := 0
 var point_count := 0
 var _time := 0.0
+var _native: Array[SpringBoneSimulator3D] = []
 
 
 func _init(definition: Dictionary, nodes: Dictionary) -> void:
@@ -34,7 +36,7 @@ func _init(definition: Dictionary, nodes: Dictionary) -> void:
 		var count := joints.size() if end_length > 0.0 else joints.size() - 1
 		if count == 0:
 			continue
-		var chain := {"joints": [], "colliders": source.colliders, "collide": source.get("collide", EVERYONE), "grab": source.get("grab", EVERYONE), "center": nodes.get(source.center), "current": PackedVector3Array(), "previous": PackedVector3Array()}
+		var chain := {"index": chains.size(), "native": null, "endpoint": nodes[joints[-1].node] if count < joints.size() else null, "joints": [], "colliders": source.colliders, "collide": source.get("collide", EVERYONE), "grab": source.get("grab", EVERYONE), "center": nodes.get(source.center), "current": PackedVector3Array(), "previous": PackedVector3Array()}
 		for i in count:
 			var joint: Dictionary = joints[i].duplicate()
 			var node = nodes[joint.node]
@@ -52,6 +54,7 @@ func _init(definition: Dictionary, nodes: Dictionary) -> void:
 			chain.joints.append(joint)
 		chains.append(chain)
 	reset()
+	_bind_native()
 
 
 func reset() -> void:
@@ -64,9 +67,21 @@ func reset() -> void:
 			chain.current.append(center.affine_inverse() * (node.global_transform * joint.tail))
 		chain.previous = chain.current.duplicate()
 	_time = 0.0
+	for simulator in _native:
+		simulator.reset()
 
 
 func advance(delta: float) -> void:
+	for simulator in _native:
+		simulator.update_hands(hands)
+		var run: bool = simulator.chains.all(func(chain: Dictionary) -> bool: return not targets.has(chain.index) and _unit_scale(chain))
+		if run and not simulator.active:
+			run = simulator.chains.all(_rested)
+			if run:
+				for chain: Dictionary in simulator.chains:
+					for joint: Dictionary in chain.joints:
+						joint.node.transform = joint.rest
+		simulator.active = run
 	if delta > 0.25:
 		reset()
 		return
@@ -78,6 +93,8 @@ func advance(delta: float) -> void:
 
 func _step() -> void:
 	for c in chains.size():
+		if chains[c].native != null and chains[c].native.active:
+			continue
 		var chain: Dictionary = chains[c]
 		var center := _center(chain)
 		var inverse := center.affine_inverse()
@@ -102,24 +119,44 @@ func _step() -> void:
 			var now := center * current[i]
 			var before := center * previous[i]
 			points.append(now + (now - before) * (1.0 - joint.drag) + along.normalized() * joint.stiffness * STEP + joint.gravity * STEP)
+		# Poses stay fixed until _apply; prepare collision geometry once per chain.
+		var starts := PackedVector3Array()
+		var segments := PackedVector3Array()
+		var squared := PackedFloat32Array()
+		var extents := PackedFloat32Array()
+		var centers := PackedVector3Array()
+		var bounds := PackedFloat32Array()
+		for index: int in chain.colliders:
+			var collider: Dictionary = colliders[index]
+			if collider.is_empty():
+				continue
+			var placed: Transform3D = collider.node.global_transform
+			var start: Vector3 = placed * collider.offset
+			var segment: Vector3 = placed * collider.tail - start
+			var scale: Vector3 = placed.basis.get_scale().abs()
+			var extent: float = collider.radius * maxf(scale.x, maxf(scale.y, scale.z))
+			starts.append(start)
+			segments.append(segment)
+			squared.append(maxf(segment.length_squared(), 1e-12))
+			extents.append(extent)
+			centers.append(start + segment * 0.5)
+			bounds.append(segment.length() * 0.5 + extent)
+		if not targets.get(c) is Vector3:
+			for hand: Array in hands:
+				if chain.collide & hand[2]:
+					starts.append(hand[0])
+					segments.append(Vector3.ZERO)
+					squared.append(1e-12)
+					extents.append(hand[1])
+					centers.append(hand[0])
+					bounds.append(hand[1])
 		var anchor := points[0]
-		var reach := 0.0
-		var thickest := 0.0
-		for i in lengths.size():
-			reach += lengths[i]
-			thickest = maxf(thickest, radii[i])
 		var held: Variant = targets.get(c)
 		if held is Vector3:
+			var reach := 0.0
+			for length in lengths:
+				reach += length
 			held = anchor + (held - anchor).limit_length(reach)
-		var touching := []
-		for index: int in chain.colliders:
-			var shape := _shape(colliders[index])
-			if not shape.is_empty():
-				touching.append(shape)
-		if not held is Vector3:
-			for hand: Array in hands:
-				if chain.collide & hand[2] and anchor.distance_to(hand[0]) < reach + thickest + hand[1]:
-					touching.append([hand[0], hand[0], hand[1]])
 		for iteration in 12 if held is Vector3 else 3:
 			if held is Vector3:
 				points[-1] = held
@@ -128,11 +165,22 @@ func _step() -> void:
 			points[0] = anchor
 			for i in lengths.size():
 				points[i + 1] = points[i] + _direction(points[i + 1] - points[i], rests[i].basis * chain.joints[i].tail) * lengths[i]
-				for shape: Array in touching:
-					var before := points[i + 1]
-					points[i + 1] = _collide(before, points[i], lengths[i], radii[i], shape)
-					if before.distance_squared_to(points[i + 1]) > 1e-12:
-						contacts += 1
+				var point := points[i + 1]
+				for j in starts.size():
+					# A capsule fits inside this sphere: rejection preserves exact contacts.
+					var bound := radii[i] + bounds[j]
+					if point.distance_squared_to(centers[j]) >= bound * bound:
+						continue
+					var closest := starts[j] + segments[j] * clampf((point - starts[j]).dot(segments[j]) / squared[j], 0.0, 1.0)
+					var away := point - closest
+					var extent := radii[i] + extents[j]
+					if away.length_squared() < extent * extent:
+						var before := point
+						point = closest + _direction(away, points[i] - closest) * extent
+						point = points[i] + _direction(point - points[i], Vector3.DOWN) * lengths[i]
+						if before.distance_squared_to(point) > 1e-12:
+							contacts += 1
+				points[i + 1] = point
 		chain.previous = current.duplicate()
 		for i in lengths.size():
 			chain.current[i] = inverse * points[i + 1]
@@ -141,27 +189,6 @@ func _step() -> void:
 
 static func _direction(value: Vector3, fallback: Vector3) -> Vector3:
 	return value.normalized() if value.length_squared() > 1e-12 else fallback.normalized()
-
-
-## A collider as a world-space capsule: [start, end, radius], or empty for one whose node is missing.
-static func _shape(collider: Dictionary) -> Array:
-	if collider.is_empty():
-		return []
-	var transform: Transform3D = collider.node.global_transform
-	var scale: Vector3 = transform.basis.get_scale().abs()
-	return [transform * collider.offset, transform * collider.tail, collider.radius * maxf(scale.x, maxf(scale.y, scale.z))]
-
-
-static func _collide(point: Vector3, origin: Vector3, length: float, radius: float, shape: Array) -> Vector3:
-	var start: Vector3 = shape[0]
-	var extent: float = radius + shape[2]
-	var segment: Vector3 = shape[1] - start
-	var closest := start + segment * clampf((point - start).dot(segment) / maxf(segment.length_squared(), 1e-12), 0.0, 1.0)
-	var away := point - closest
-	if away.length_squared() < extent * extent:
-		point = closest + _direction(away, origin - closest) * extent
-		point = origin + _direction(point - origin, Vector3.DOWN) * length
-	return point
 
 
 static func _center(chain: Dictionary) -> Transform3D:
@@ -181,12 +208,13 @@ static func _apply(chain: Dictionary, points: PackedVector3Array) -> void:
 			node.global_transform = frame
 
 
-## Whether a hand of `who` (WEARER or OTHERS) may hold chain `chain`.
 func grabs(chain: int, who: int) -> bool:
 	return chains[chain].grab & who != 0
 
 
 func tip(chain: int) -> Vector3:
+	if chains[chain].native != null and chains[chain].native.active:
+		return _center(chains[chain]) * chains[chain].current[-1]
 	var joint: Dictionary = chains[chain].joints[-1]
 	return joint.node.global_transform * joint.tail
 
@@ -206,6 +234,8 @@ func apply_state(points: PackedVector3Array) -> bool:
 	for point in points:
 		if not point.is_finite():
 			return false
+	for simulator in _native:
+		simulator.active = false
 	var at := 0
 	for chain: Dictionary in chains:
 		var placed := PackedVector3Array([chain.joints[0].node.global_position])
@@ -215,4 +245,96 @@ func apply_state(points: PackedVector3Array) -> bool:
 			chain.current[i] = inverse * points[at]
 			at += 1
 		_apply(chain, placed)
+	return true
+
+
+func _bind_native() -> void:
+	var groups := {}
+	for chain: Dictionary in chains:
+		if not chain.joints[0].node is SkeletonBone:
+			continue
+		var skeleton: Skeleton3D = chain.joints[0].node.skeleton
+		if not groups.has(skeleton):
+			groups[skeleton] = []
+		groups[skeleton].append(chain)
+	for skeleton: Skeleton3D in groups:
+		if not _native_supported(groups[skeleton], skeleton):
+			continue
+		var simulator := preload("spring_native.gd").new()
+		simulator.active = false
+		skeleton.add_child(simulator)
+		simulator.configure(groups[skeleton], colliders)
+		simulator.modification_processed.connect(_capture.bind(simulator))
+		_native.append(simulator)
+		for chain: Dictionary in groups[skeleton]:
+			chain.native = simulator
+
+
+func _native_supported(bound: Array, skeleton: Skeleton3D) -> bool:
+	var driven := {}
+	for chain: Dictionary in bound:
+		for joint: Dictionary in chain.joints:
+			driven[joint.node.bone] = chain.index
+	for chain: Dictionary in bound:
+		if not chain.joints.all(func(j: Dictionary) -> bool: return _unit_basis(j.rest.basis)):
+			return false
+		for i in range(1, chain.joints.size()):
+			if skeleton.get_bone_parent(chain.joints[i].node.bone) != chain.joints[i - 1].node.bone:
+				return false
+		if chain.endpoint != null and skeleton.get_bone_parent(chain.endpoint.bone) != chain.joints[-1].node.bone:
+			return false
+		var inputs: Array = []
+		if chain.center != null:
+			inputs.append(chain.center)
+		for index: int in chain.colliders:
+			if not colliders[index].is_empty():
+				inputs.append(colliders[index].node)
+		if not inputs.all(func(n) -> bool: return n is SkeletonBone and n.skeleton == skeleton):
+			return false
+		# Native colliders are synchronized before the group, not between its chains.
+		for node in inputs:
+			var b: int = node.bone
+			while b >= 0:
+				if driven.has(b) and driven[b] != chain.index:
+					return false
+				b = skeleton.get_bone_parent(b)
+	return true
+
+
+static func _unit_basis(basis: Basis) -> bool:
+	if basis.determinant() <= 0.0:
+		return false
+	# Imported bind transforms carry roundoff at a few parts in 100,000.
+	var unit := basis.orthonormalized()
+	return basis.x.distance_squared_to(unit.x) < 1e-8 and basis.y.distance_squared_to(unit.y) < 1e-8 and basis.z.distance_squared_to(unit.z) < 1e-8
+
+
+static func _unit_scale(chain: Dictionary) -> bool:
+	return _unit_basis(chain.joints[0].node.global_basis)
+
+
+func _capture(simulator: SpringBoneSimulator3D) -> void:
+	for chain: Dictionary in simulator.chains:
+		var inverse := _center(chain).affine_inverse()
+		chain.previous = chain.current.duplicate()
+		for i in chain.joints.size():
+			var joint: Dictionary = chain.joints[i]
+			chain.current[i] = inverse * (joint.node.global_transform * joint.tail)
+
+
+static func _rested(chain: Dictionary) -> bool:
+	# Native simulation cannot import velocity: hand it a settled chain, never a released grip.
+	var first = chain.joints[0].node
+	var skeleton: Skeleton3D = first.skeleton
+	var parent: int = skeleton.get_bone_parent(first.bone)
+	var frame := skeleton.global_transform
+	if parent >= 0:
+		frame *= skeleton.get_bone_global_pose(parent)
+	var center := _center(chain)
+	for i in chain.joints.size():
+		var joint: Dictionary = chain.joints[i]
+		frame *= joint.rest
+		var now: Vector3 = center * chain.current[i]
+		if now.distance_squared_to(frame * joint.tail) > 1e-6 or now.distance_squared_to(center * chain.previous[i]) > 1e-6:
+			return false
 	return true
