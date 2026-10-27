@@ -36,6 +36,11 @@ func _run() -> void:
 			driven.append(joint.node)
 	check(driven.size() == 3, "legacy branches retain every joint")
 	check(Definition.read({"nodes": null, "extensions": [0]}).springs.is_empty(), "malformed fields")
+	check(parsed.springs[0].collide == Definition.WEARER | Definition.OTHERS and parsed.springs[0].grab == Definition.WEARER | Definition.OTHERS, "a spring without extras is everyone's to touch")
+	var guarded := modern.duplicate(true)
+	guarded.extensions.VRMC_springBone.springs[0]["extras"] = {"collide": ["others"], "grab": []}
+	var kept: Dictionary = Definition.read(guarded).springs[0]
+	check(kept.collide == Definition.OTHERS and kept.grab == 0, "extras limit whose hands push and hold a spring")
 	var model := Node3D.new()
 	root.add_child(model)
 	var first := Node3D.new()
@@ -88,6 +93,7 @@ func _run() -> void:
 	check(not simulation.apply_state(PackedVector3Array([Vector3(NAN, 0, 0)])), "bad snapshot refused")
 	model.free()
 	_bones_swing_as_nodes_do(definition)
+	_hands_push(definition)
 	print("springs: ", "ok" if failures == 0 else str(failures) + " failures")
 	quit(0 if failures == 0 else 1)
 
@@ -122,4 +128,29 @@ func _bones_swing_as_nodes_do(definition: Dictionary) -> void:
 		apart = maxf(apart, nodes.tip(0).distance_to(bones.tip(0)))
 	check(apart < 1e-4, "skeleton bones swing as nodes do (%f apart)" % apart)
 	check(skeleton.get_bone_global_pose(1).origin.distance_to(second.transform.origin + first.transform.origin) > 0.0 and handles[2].global_position.distance_to(second.global_position) < 1e-4, "the skeleton holds the swung pose")
+	model.free()
+
+
+func _hands_push(definition: Dictionary) -> void:
+	var model := Node3D.new()
+	root.add_child(model)
+	var first := Node3D.new()
+	model.add_child(first)
+	var second := Node3D.new()
+	first.add_child(second)
+	second.position = Vector3(0, -0.2, 0)
+	var simulation := Springs.new(definition, {1: first, 2: second})
+	var rest := second.global_position
+	simulation.hands = [[rest + Vector3(0.02, 0, 0), 0.05, Definition.OTHERS]]
+	for i in 30:
+		simulation.advance(1.0 / 60.0)
+	check(second.global_position.distance_to(simulation.hands[0][0]) >= 0.049, "a hand pushes the joint it pokes")
+	check(simulation.contacts > 0, "a poke counts as a contact")
+	simulation.chains[0].collide = Definition.WEARER
+	simulation.reset()
+	for i in 30:
+		simulation.advance(1.0 / 60.0)
+	check(second.global_position.distance_to(rest) < 0.001, "a hand the chain does not collide with passes through")
+	simulation.chains[0].grab = Definition.WEARER
+	check(simulation.grabs(0, Definition.WEARER) and not simulation.grabs(0, Definition.OTHERS), "grab bits say whose hand may hold a chain")
 	model.free()

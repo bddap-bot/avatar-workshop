@@ -1,10 +1,15 @@
 extends RefCounted
 
+const Definition = preload("res://addons/avatar_workshop/spring_definition.gd")
 const STEP := 1.0 / 60.0
+const EVERYONE := Definition.WEARER | Definition.OTHERS
 
 var chains: Array = []
 var colliders: Array = []
 var targets := {}
+## Spheres that push every chain whose "collide" bits share theirs: [world centre, radius, WEARER or OTHERS] each,
+## set before advance. A held chain follows its holder instead.
+var hands: Array = []
 var contacts := 0
 var point_count := 0
 var _time := 0.0
@@ -29,7 +34,7 @@ func _init(definition: Dictionary, nodes: Dictionary) -> void:
 		var count := joints.size() if end_length > 0.0 else joints.size() - 1
 		if count == 0:
 			continue
-		var chain := {"joints": [], "colliders": source.colliders, "center": nodes.get(source.center), "current": PackedVector3Array(), "previous": PackedVector3Array()}
+		var chain := {"joints": [], "colliders": source.colliders, "collide": source.get("collide", EVERYONE), "grab": source.get("grab", EVERYONE), "center": nodes.get(source.center), "current": PackedVector3Array(), "previous": PackedVector3Array()}
 		for i in count:
 			var joint: Dictionary = joints[i].duplicate()
 			var node = nodes[joint.node]
@@ -98,12 +103,23 @@ func _step() -> void:
 			var before := center * previous[i]
 			points.append(now + (now - before) * (1.0 - joint.drag) + along.normalized() * joint.stiffness * STEP + joint.gravity * STEP)
 		var anchor := points[0]
+		var reach := 0.0
+		var thickest := 0.0
+		for i in lengths.size():
+			reach += lengths[i]
+			thickest = maxf(thickest, radii[i])
 		var held: Variant = targets.get(c)
 		if held is Vector3:
-			var reach := 0.0
-			for length in lengths:
-				reach += length
 			held = anchor + (held - anchor).limit_length(reach)
+		var touching := []
+		for index: int in chain.colliders:
+			var shape := _shape(colliders[index])
+			if not shape.is_empty():
+				touching.append(shape)
+		if not held is Vector3:
+			for hand: Array in hands:
+				if chain.collide & hand[2] and anchor.distance_to(hand[0]) < reach + thickest + hand[1]:
+					touching.append([hand[0], hand[0], hand[1]])
 		for iteration in 12 if held is Vector3 else 3:
 			if held is Vector3:
 				points[-1] = held
@@ -112,13 +128,11 @@ func _step() -> void:
 			points[0] = anchor
 			for i in lengths.size():
 				points[i + 1] = points[i] + _direction(points[i + 1] - points[i], rests[i].basis * chain.joints[i].tail) * lengths[i]
-				for index: int in chain.colliders:
-					var collider: Dictionary = colliders[index]
-					if not collider.is_empty():
-						var before := points[i + 1]
-						points[i + 1] = _collide(before, points[i], lengths[i], radii[i], collider)
-						if before.distance_squared_to(points[i + 1]) > 1e-12:
-							contacts += 1
+				for shape: Array in touching:
+					var before := points[i + 1]
+					points[i + 1] = _collide(before, points[i], lengths[i], radii[i], shape)
+					if before.distance_squared_to(points[i + 1]) > 1e-12:
+						contacts += 1
 		chain.previous = current.duplicate()
 		for i in lengths.size():
 			chain.current[i] = inverse * points[i + 1]
@@ -129,13 +143,19 @@ static func _direction(value: Vector3, fallback: Vector3) -> Vector3:
 	return value.normalized() if value.length_squared() > 1e-12 else fallback.normalized()
 
 
-static func _collide(point: Vector3, origin: Vector3, length: float, radius: float, collider: Dictionary) -> Vector3:
+## A collider as a world-space capsule: [start, end, radius], or empty for one whose node is missing.
+static func _shape(collider: Dictionary) -> Array:
+	if collider.is_empty():
+		return []
 	var transform: Transform3D = collider.node.global_transform
-	var start: Vector3 = transform * collider.offset
-	var end: Vector3 = transform * collider.tail
 	var scale: Vector3 = transform.basis.get_scale().abs()
-	var extent: float = radius + collider.radius * maxf(scale.x, maxf(scale.y, scale.z))
-	var segment := end - start
+	return [transform * collider.offset, transform * collider.tail, collider.radius * maxf(scale.x, maxf(scale.y, scale.z))]
+
+
+static func _collide(point: Vector3, origin: Vector3, length: float, radius: float, shape: Array) -> Vector3:
+	var start: Vector3 = shape[0]
+	var extent: float = radius + shape[2]
+	var segment: Vector3 = shape[1] - start
 	var closest := start + segment * clampf((point - start).dot(segment) / maxf(segment.length_squared(), 1e-12), 0.0, 1.0)
 	var away := point - closest
 	if away.length_squared() < extent * extent:
@@ -159,6 +179,11 @@ static func _apply(chain: Dictionary, points: PackedVector3Array) -> void:
 		if from.length_squared() > 1e-12 and to.length_squared() > 1e-12:
 			frame.basis = Basis(Quaternion(from.normalized(), to.normalized())) * frame.basis
 			node.global_transform = frame
+
+
+## Whether a hand of `who` (WEARER or OTHERS) may hold chain `chain`.
+func grabs(chain: int, who: int) -> bool:
+	return chains[chain].grab & who != 0
 
 
 func tip(chain: int) -> Vector3:

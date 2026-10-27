@@ -36,6 +36,16 @@ holds a chain tip within its reach; erase the entry to release it.
 `tip(chain_index)` returns the visible endpoint. Held tips yield to collision
 and length constraints when the requested position is obstructed or unreachable.
 
+Each spring also says whose hands touch it, as `collide` and `grab` bits of
+`WEARER` and `OTHERS`, read from the spring's (or VRM 0.x bone group's) glTF
+`extras`: `"collide"` and `"grab"` each list `"wearer"` and `"others"`, as a
+VRChat PhysBone's allowCollision and allowGrabbing filters do; a spring without
+them is everyone's to touch. Set `hands` before `advance` to spheres
+`[world_center, radius, WEARER or OTHERS]`: each pushes the chains whose
+`collide` bits share its own, so a poke moves hair, ears or a tail, and a held
+chain follows its holder instead. `grabs(chain_index, who)` says whether a hand
+of `who` may hold that chain; the caller checks it before setting a target.
+
 The caller owns input arbitration and networking. `state()` returns world-space
 tail positions; `apply_state(points)` poses a replica without running another
 simulation. It rejects wrong counts and nonfinite positions. Validate network

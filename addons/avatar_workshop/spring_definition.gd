@@ -1,5 +1,8 @@
 extends RefCounted
 
+const WEARER := 1
+const OTHERS := 2
+
 
 static func read(document: Dictionary) -> Dictionary:
 	var nodes := array(document.get("nodes"))
@@ -25,7 +28,7 @@ static func read(document: Dictionary) -> Dictionary:
 					break
 				joints.append(joint_data(node, joint, false))
 			if not joints.is_empty():
-				result.springs.append({"joints": joints, "center": index(spring.get("center"), nodes.size()), "colliders": collider_indices(spring.get("colliderGroups"), groups, result.colliders.size())})
+				result.springs.append(hands(spring, {"joints": joints, "center": index(spring.get("center"), nodes.size()), "colliders": collider_indices(spring.get("colliderGroups"), groups, result.colliders.size())}))
 	else:
 		var source := object(object(extensions.get("VRM")).get("secondaryAnimation"))
 		var groups := []
@@ -55,11 +58,22 @@ static func read(document: Dictionary) -> Dictionary:
 					joints.append(joint_data(node, group, true))
 					var children := array(object(nodes[node]).get("children")).filter(func(child: Variant) -> bool: return index(child, nodes.size()) >= 0)
 					if children.is_empty():
-						result.springs.append({"joints": joints, "end_length": 0.07, "center": index(group.get("center"), nodes.size()), "colliders": collider_indices(group.get("colliderGroups"), groups, result.colliders.size())})
+						result.springs.append(hands(group, {"joints": joints, "end_length": 0.07, "center": index(group.get("center"), nodes.size()), "colliders": collider_indices(group.get("colliderGroups"), groups, result.colliders.size())}))
 					else:
 						for i in range(children.size() - 1, -1, -1):
 							pending.append([int(children[i]), joints if i == 0 else []])
 	return result
+
+
+## `spring` with whose hands push it ("collide") and may hold it ("grab"), as WEARER and OTHERS bits, from `source`'s
+## glTF extras: "collide" and "grab" each list "wearer" and "others", as a VRChat PhysBone's allowCollision and
+## allowGrabbing filters do. A spring without them is everyone's to touch.
+static func hands(source: Dictionary, spring: Dictionary) -> Dictionary:
+	var extras := object(source.get("extras"))
+	for key in ["collide", "grab"]:
+		var who: Variant = extras.get(key)
+		spring[key] = (WEARER if "wearer" in array(who) else 0) | (OTHERS if "others" in array(who) else 0) if who is Array else WEARER | OTHERS
+	return spring
 
 
 static func joint_data(node: int, source: Dictionary, legacy: bool) -> Dictionary:
