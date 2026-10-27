@@ -64,6 +64,25 @@ from [godot-vrm](https://github.com/V-Sekai/godot-vrm), under the retained
 native extension. Collider geometry is prepared once per chain and conservative
 bounds reject impossible contacts before exact constraint projection.
 
+## MToon
+
+`mtoon.gd` turns a VRM material into Godot's: `material(gltf_material,
+texture)` takes a glTF material dictionary carrying VRM 1.0
+`VRMC_materials_mtoon` and a callable answering a glTF texture index with its
+`Texture2D`, and returns a `ShaderMaterial` whose next pass is its outline.
+`from_vrm0(entry, gltf_material, render_queues(entries))` converts a VRM 0.x
+`materialProperties` entry (MToon or VRM's unlit shaders) to that form, as
+three-vrm's v0 compatibility plugin does. `mtoon.gdshaderinc` lights it with the
+scene's own lights: lit and shade colours and textures, shading shift and
+toony ramp, shading-shift texture, tangent-space normal maps, emission (with
+`KHR_materials_emissive_strength` or the VRM emissive multiplier), parametric
+rim, matcap and rim texture, UV animation, opaque, cut-out and blended alpha
+with transparent depth writes and render queue offsets, one- or two-sided
+culling, and world- or screen-width outlines with their width texture, colour
+and lighting mix. Materials with the same features share one shader. Global
+illumination equalization is not applied, as three-vrm does not; scene ambient
+light reaches the lit colour. Malformed values fall back to MToon's defaults.
+
 ## Tests
 
 Run `godot4 --headless --path . --script tests/expressions.gd` and
@@ -72,6 +91,8 @@ Run `godot4 --headless --path . --script tests/expressions.gd` and
 trace with moving and scaled skeletons, colliding dependent chains, held tips
 and a pause reset. `godot4 --headless --path . --script tests/native_springs.gd`
 checks native motion, grip/release handoff and replicated poses.
+`godot4 --headless --path . --script tests/mtoon.gd` checks the 0.x conversion,
+render modes, optional features, linear colours and malformed input.
 The seven checks cover shared targets, separate meshes, neutral reset, empty
 input, clamping and reusable binding data. No asset downloads are needed.
 
@@ -80,7 +101,8 @@ input, clamping and reusable binding data. No asset downloads are needed.
 Original code is available under either [MIT](LICENSE-MIT) or
 [Apache-2.0](LICENSE-APACHE), at your option. Third-party code, if added later,
 retains its original license notices. The spring solver includes the godot-vrm
-MIT notice linked above.
+MIT notice linked above. The MToon shader follows three-vrm's MToon 1.0 shader and
+its v0 conversion, under the retained [MIT notice](addons/avatar_workshop/LICENSE-three-vrm).
 
 ## Skin bindings
 
