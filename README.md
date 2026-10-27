@@ -61,3 +61,15 @@ Original code is available under either [MIT](LICENSE-MIT) or
 [Apache-2.0](LICENSE-APACHE), at your option. Third-party code, if added later,
 retains its original license notices. The spring solver includes the godot-vrm
 MIT notice linked above.
+
+## Skin bindings
+
+`skin_bindings.gd.compact(mesh, skin)` returns an `ArrayMesh` and `Skin` with
+unreferenced bindings removed and identical bindings shared. It runs at import,
+before instances use the resources. Vertex weights and geometry, morphs, LODs,
+materials, shadow geometry and bone bounds remain intact. The original resources
+are unchanged; already compact resources are returned directly. This reduces the
+transforms the renderer uploads without reducing mesh or skeleton detail.
+
+Run `godot4 --headless --path . --script tests/skin_bindings.gd` for binding,
+geometry, bounds and saved-resource checks with four and eight bone influences.
