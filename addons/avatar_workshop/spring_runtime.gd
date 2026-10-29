@@ -361,7 +361,11 @@ static func _unit_basis(basis: Basis) -> bool:
 
 
 static func _unit_scale(chain: Dictionary) -> bool:
-	return _unit_basis(chain.joints[0].node.global_basis)
+	var basis: Basis = chain.joints[0].node.global_basis
+	if chain.get("native_basis") != basis:
+		chain.native_basis = basis
+		chain.native_unit = _unit_basis(basis)
+	return chain.native_unit
 
 
 func _capture(simulator: SpringBoneSimulator3D) -> void:
