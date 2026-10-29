@@ -25,10 +25,9 @@ func _init(definition: Dictionary, nodes: Dictionary) -> void:
 			colliders.append(collider)
 		else:
 			colliders.append({})
-	var driven := {}
 	for source: Dictionary in definition.springs:
 		var joints: Array = source.joints
-		if joints.is_empty() or not joints.all(func(j: Dictionary) -> bool: return nodes.has(j.node) and not driven.has(j.node)):
+		if joints.is_empty() or not joints.all(func(j: Dictionary) -> bool: return nodes.has(j.node)):
 			continue
 		if not range(joints.size() - 1).all(func(i: int) -> bool: return nodes[joints[i].node].is_ancestor_of(nodes[joints[i + 1].node])):
 			continue
@@ -40,7 +39,6 @@ func _init(definition: Dictionary, nodes: Dictionary) -> void:
 		for i in count:
 			var joint: Dictionary = joints[i].duplicate()
 			var node = nodes[joint.node]
-			driven[joint.node] = true
 			point_count += 1
 			joint.node = node
 			joint.rest = node.transform

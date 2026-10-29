@@ -74,6 +74,7 @@ func _run() -> void:
 	await _branches()
 	await _collisions()
 	await _hand_collisions()
+	await _overlapping_chains()
 	print("native springs: ", "ok" if failures == 0 else str(failures) + " failures")
 	quit(0 if failures == 0 else 1)
 
@@ -183,4 +184,25 @@ func _hand_collisions() -> void:
 	for i in 300:
 		tick(skeleton, simulation)
 	check(simulation.tip(0).distance_to(Vector3(0, -0.2, 0)) < 0.015, "a departing hand removes its native collider")
+	skeleton.free()
+
+
+func _overlapping_chains() -> void:
+	var skeleton := Skeleton3D.new()
+	skeleton.modifier_callback_mode_process = Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL
+	root.add_child(skeleton)
+	for b in 3:
+		skeleton.add_bone(str(b))
+		skeleton.set_bone_parent(b, b - 1)
+		skeleton.set_bone_rest(b, Transform3D(Basis.IDENTITY, Vector3(0, -0.2, 0)))
+	skeleton.reset_bone_poses()
+	var chain := {"joints": [Definition.joint_data(1, {}, false), Definition.joint_data(2, {}, false)], "center": -1, "end_length": 0.0, "colliders": []}
+	var simulation := Springs.new({"springs": [chain, chain.duplicate(true)], "colliders": []}, {1: Bone.new(skeleton, 1), 2: Bone.new(skeleton, 2)})
+	await process_frame
+	await process_frame
+	check(simulation.point_count == 2 and simulation._native[0].setting_count == 2, "overlapping components each get a native setting")
+	skeleton.position.x = 0.1
+	tick(skeleton, simulation)
+	check(simulation.chains.all(func(c): return c.current.size() == 1 and c.current[0].is_finite()), "overlapping native chains capture finite independent state")
+	check(simulation.apply_state(simulation.state()), "overlapping native chains replicate every endpoint")
 	skeleton.free()

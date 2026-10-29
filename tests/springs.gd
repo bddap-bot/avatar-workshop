@@ -51,6 +51,11 @@ func _run() -> void:
 	var endpoint := Springs.new(parsed, {0: model, 1: first, 2: second})
 	check(endpoint.point_count == 1, "VRM 1 last joint is an endpoint, not an extra segment")
 	var definition := {"springs": [{"joints": [Definition.joint_data(1, {"stiffness": 1.0}, false), Definition.joint_data(2, {"stiffness": 1.0}, false)], "center": -1, "end_length": 0.07, "colliders": []}], "colliders": []}
+	var overlapping := definition.duplicate(true)
+	overlapping.springs.append(definition.springs[0].duplicate(true))
+	var both := Springs.new(overlapping, {1: first, 2: second})
+	check(both.chains.size() == 2 and both.point_count == 4, "overlapping authored chains keep separate simulation state")
+	check(both.apply_state(both.state()), "overlapping chains replicate every endpoint")
 	var simulation := Springs.new(definition, {1: first, 2: second})
 	var start := simulation.tip(0)
 	model.position.x = 0.1
