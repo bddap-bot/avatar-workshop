@@ -256,16 +256,57 @@ func _bind_native() -> void:
 			groups[skeleton] = []
 		groups[skeleton].append(chain)
 	for skeleton: Skeleton3D in groups:
-		if not _native_supported(groups[skeleton], skeleton):
+		var supported := {}
+		for component: Array in _components(groups[skeleton], skeleton):
+			if _native_supported(component, skeleton):
+				for chain: Dictionary in component:
+					supported[chain.index] = true
+		var bound: Array = groups[skeleton].filter(func(c: Dictionary) -> bool: return supported.has(c.index))
+		if bound.is_empty():
 			continue
 		var simulator := preload("spring_native.gd").new()
 		simulator.active = false
 		skeleton.add_child(simulator)
-		simulator.configure(groups[skeleton], colliders)
+		simulator.configure(bound, colliders)
 		simulator.modification_processed.connect(_capture.bind(simulator))
 		_native.append(simulator)
-		for chain: Dictionary in groups[skeleton]:
+		for chain: Dictionary in bound:
 			chain.native = simulator
+
+
+## A fallback chain and everything whose poses or colliders it drives must run together.
+func _components(bound: Array, skeleton: Skeleton3D) -> Array:
+	var owners := {}
+	var parents := PackedInt32Array(range(bound.size()))
+	for c in bound.size():
+		for joint: Dictionary in bound[c].joints:
+			owners.get_or_add(joint.node.bone, []).append(c)
+	for c in bound.size():
+		var chain: Dictionary = bound[c]
+		var inputs: Array = chain.joints.map(func(j: Dictionary): return j.node)
+		if chain.center != null:
+			inputs.append(chain.center)
+		for index: int in chain.colliders:
+			if not colliders[index].is_empty():
+				inputs.append(colliders[index].node)
+		for node in inputs:
+			if not node is SkeletonBone or node.skeleton != skeleton:
+				continue
+			var bone: int = node.bone
+			while bone >= 0:
+				for other: int in owners.get(bone, []):
+					parents[_component(parents, c)] = _component(parents, other)
+				bone = skeleton.get_bone_parent(bone)
+	var result := {}
+	for c in bound.size():
+		result.get_or_add(_component(parents, c), []).append(bound[c])
+	return result.values()
+
+
+static func _component(parents: PackedInt32Array, index: int) -> int:
+	while parents[index] != index:
+		index = parents[index]
+	return index
 
 
 func _native_supported(bound: Array, skeleton: Skeleton3D) -> bool:
@@ -274,6 +315,8 @@ func _native_supported(bound: Array, skeleton: Skeleton3D) -> bool:
 		for joint: Dictionary in chain.joints:
 			driven[joint.node.bone] = chain.index
 	for chain: Dictionary in bound:
+		if not _unit_basis(skeleton.get_bone_global_rest(chain.joints[0].node.bone).basis):
+			return false
 		if not chain.joints.all(func(j: Dictionary) -> bool: return _unit_basis(j.rest.basis)):
 			return false
 		for i in range(1, chain.joints.size()):

@@ -75,6 +75,7 @@ func _run() -> void:
 	await _collisions()
 	await _hand_collisions()
 	await _overlapping_chains()
+	await _scaled_components()
 	print("native springs: ", "ok" if failures == 0 else str(failures) + " failures")
 	quit(0 if failures == 0 else 1)
 
@@ -206,3 +207,32 @@ func _overlapping_chains() -> void:
 	check(simulation.chains.all(func(c): return c.current.size() == 1 and c.current[0].is_finite()), "overlapping native chains capture finite independent state")
 	check(simulation.apply_state(simulation.state()), "overlapping native chains replicate every endpoint")
 	skeleton.free()
+
+
+func _scaled_components() -> void:
+	for coupled in [false, true]:
+		var skeleton := Skeleton3D.new()
+		skeleton.modifier_callback_mode_process = Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL
+		root.add_child(skeleton)
+		for b in 5:
+			skeleton.add_bone(str(b))
+			skeleton.set_bone_parent(b, [-1, 0, 1, 0, 3][b])
+			skeleton.set_bone_rest(b, Transform3D(Basis.IDENTITY, Vector3(0, -0.2, 0)))
+		skeleton.set_bone_rest(1, Transform3D(Basis.IDENTITY.scaled(Vector3(2, 1, 1)), Vector3.ZERO))
+		skeleton.set_bone_rest(3, Transform3D(Basis.IDENTITY, Vector3(0.7, 0, 0)))
+		skeleton.reset_bone_poses()
+		var definition := {"springs": [], "colliders": [{"node": 1, "offset": Vector3.ZERO, "tail": Vector3.ZERO, "radius": 0.01}]}
+		for first in [1, 3]:
+			definition.springs.append({"joints": [Definition.joint_data(first, {}, false), Definition.joint_data(first + 1, {}, false)], "center": -1, "end_length": 0.0, "colliders": [0] if coupled and first == 3 else []})
+		var nodes := {}
+		for b in 5: nodes[b] = Bone.new(skeleton, b)
+		var simulation := Springs.new(definition, nodes)
+		await process_frame
+		await process_frame
+		check(simulation.point_count == 2, "scaled and unscaled chains both remain simulated")
+		check(simulation.chains[0].native == null, "nonuniform scale uses the constraint solver")
+		check((simulation.chains[1].native == null) == coupled, "only a dependency on the scaled chain requires the other chain to fall back")
+		skeleton.position.x = 0.1
+		for i in 10: tick(skeleton, simulation)
+		check(simulation.state().size() == 2 and simulation.state()[1].is_finite(), "mixed simulation retains every replicated endpoint")
+		skeleton.free()

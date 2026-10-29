@@ -29,9 +29,12 @@ retain every joint, with each joint driven once.
 `Node3D` objects or `skeleton_bone.gd.new(skeleton, bone_index)` handles.
 Their local transforms define the rest pose. Call `advance(delta)` after
 posing the body. Adjacent skeleton chains with unit transforms (allowing bind-matrix roundoff) use
-one Godot 4.6 `SpringBoneSimulator3D` per skeleton, sharing colliders. Groups with
-skipped bones, materially scaled transforms, or colliders/centers driven by another
-chain retain the 60 Hz constraint solver. Branches run in definition order. This capability selection is identical on every device.
+one Godot 4.6 `SpringBoneSimulator3D` per skeleton, sharing colliders. Chains connected
+through driven ancestors, shared joints, centers or colliders stay together. A component
+with skipped bones, materially scaled transforms or a collider dependency unsupported
+by the native solver retains the 60 Hz constraint solver; independent supported
+components remain native. Branches run in definition order. This capability selection
+is identical on every device.
 Sphere and capsule colliders follow their bound nodes.
 
 `targets[chain_index] = world_position` holds a tip within its reach; erase
