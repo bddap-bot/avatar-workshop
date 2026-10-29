@@ -74,12 +74,14 @@ func advance(delta: float) -> void:
 		simulator.update_hands(hands)
 		for component: Array in simulator.components:
 			var run: bool = component.all(func(chain: Dictionary) -> bool: return not targets.has(chain.index) and _unit_scale(chain))
-			if run and not component[0].native_active:
-				run = component.all(_rested)
-				if run:
-					for chain: Dictionary in component:
-						for joint: Dictionary in chain.joints:
-							joint.node.transform = joint.rest
+			if run == component[0].native_active:
+				continue
+			if run:
+				if not component.all(_rested):
+					continue
+				for chain: Dictionary in component:
+					for joint: Dictionary in chain.joints:
+						joint.node.transform = joint.rest
 			for chain: Dictionary in component:
 				simulator.set_chain_active(chain.native_setting, run)
 		simulator.active = simulator.chains.any(func(c: Dictionary) -> bool: return c.native_active)

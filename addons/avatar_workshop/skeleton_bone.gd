@@ -21,7 +21,7 @@ var global_position: Vector3:
 
 var global_basis: Basis:
 	get:
-		return global_transform.basis
+		return skeleton.global_basis * skeleton.get_bone_global_pose(bone).basis
 
 
 func _init(on: Skeleton3D, index: int) -> void:
