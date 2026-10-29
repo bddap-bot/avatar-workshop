@@ -54,16 +54,16 @@ func _run() -> void:
 	check(simulation.tip(1).distance_to(moving_neighbor) < 0.03, "a moving neighbor keeps its captured state when another chain is grabbed")
 	for i in 60:
 		tick(skeleton, simulation)
-	check(not simulation._native[0].active, "held tip uses constraints")
+	check(not simulation.chains[0].native_active and simulation.chains[1].native_active, "held tip uses constraints while its independent neighbor stays native")
 	check(simulation.tip(0).distance_to(simulation.targets[0]) < 0.01, "held tip reaches hand")
 	check(simulation.tip(1).distance_to(start + skeleton.position + Vector3(0.8, 0, 0)) < 0.015, "unheld chain keeps its pose through shared handoff")
 	var held := simulation.tip(0)
 	simulation.targets.clear()
 	tick(skeleton, simulation)
-	check(not simulation._native[0].active and simulation.tip(0).distance_to(held) < 0.05, "release retains momentum without a rest-pose snap")
+	check(not simulation.chains[0].native_active and simulation.tip(0).distance_to(held) < 0.05, "release retains momentum without a rest-pose snap")
 	for i in 300:
 		tick(skeleton, simulation)
-	check(simulation.tip(0).distance_to(start + skeleton.position) < 0.015 and simulation._native[0].active, "settled release returns to native simulation")
+	check(simulation.tip(0).distance_to(start + skeleton.position) < 0.015 and simulation.chains[0].native_active, "settled release returns to native simulation")
 	var state := simulation.state()
 	check(simulation.apply_state(state) and not simulation._native[0].active, "replica disables native simulation")
 	check(simulation.tip(0).distance_to(state[1]) < 0.0001, "replica displays captured native tip")
@@ -76,6 +76,7 @@ func _run() -> void:
 	await _hand_collisions()
 	await _overlapping_chains()
 	await _scaled_components()
+	await _folded_components()
 	print("native springs: ", "ok" if failures == 0 else str(failures) + " failures")
 	quit(0 if failures == 0 else 1)
 
@@ -236,3 +237,28 @@ func _scaled_components() -> void:
 		for i in 10: tick(skeleton, simulation)
 		check(simulation.state().size() == 2 and simulation.state()[1].is_finite(), "mixed simulation retains every replicated endpoint")
 		skeleton.free()
+
+
+func _folded_components() -> void:
+	var skeleton := Skeleton3D.new()
+	skeleton.modifier_callback_mode_process = Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL
+	root.add_child(skeleton)
+	for b in 6:
+		skeleton.add_bone(str(b))
+		skeleton.set_bone_parent(b, [-1, 0, 1, 2, 0, 4][b])
+		skeleton.set_bone_rest(b, Transform3D(Basis.IDENTITY, Vector3(0, -0.2, 0)))
+	skeleton.reset_bone_poses()
+	var nodes := {}
+	for b in 6: nodes[b] = Bone.new(skeleton, b)
+	var definition := {"springs": [], "colliders": []}
+	for start in [2, 4]:
+		definition.springs.append({"joints": [Definition.joint_data(start, {}, false), Definition.joint_data(start + 1, {}, false)], "center": -1, "end_length": 0.0, "colliders": []})
+	var simulation := Springs.new(definition, nodes)
+	tick(skeleton, simulation)
+	skeleton.set_bone_pose_scale(1, Vector3.ONE * 0.001)
+	tick(skeleton, simulation)
+	check(simulation.chains[1].native.active, "folding one hand leaves independent native spring components running")
+	check(skeleton.get_bone_pose_scale(1).is_equal_approx(Vector3.ONE * 0.001), "fallback preserves the folded parent scale")
+	check(simulation.point_count == 2, "folded hand retains both authored spring segments")
+	check(simulation.state().size() == 2 and simulation.state()[0].is_finite(), "folded hand fallback remains finite")
+	skeleton.free()

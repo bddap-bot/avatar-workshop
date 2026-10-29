@@ -35,7 +35,7 @@ func _init(definition: Dictionary, nodes: Dictionary) -> void:
 		var count := joints.size() if end_length > 0.0 else joints.size() - 1
 		if count == 0:
 			continue
-		var chain := {"index": chains.size(), "native": null, "endpoint": nodes[joints[-1].node] if count < joints.size() else null, "joints": [], "colliders": source.colliders, "collide": source.get("collide", EVERYONE), "grab": source.get("grab", EVERYONE), "center": nodes.get(source.center), "current": PackedVector3Array(), "previous": PackedVector3Array()}
+		var chain := {"index": chains.size(), "native": null, "native_active": false, "endpoint": nodes[joints[-1].node] if count < joints.size() else null, "joints": [], "colliders": source.colliders, "collide": source.get("collide", EVERYONE), "grab": source.get("grab", EVERYONE), "center": nodes.get(source.center), "current": PackedVector3Array(), "previous": PackedVector3Array()}
 		for i in count:
 			var joint: Dictionary = joints[i].duplicate()
 			var node = nodes[joint.node]
@@ -72,14 +72,17 @@ func reset() -> void:
 func advance(delta: float) -> void:
 	for simulator in _native:
 		simulator.update_hands(hands)
-		var run: bool = simulator.chains.all(func(chain: Dictionary) -> bool: return not targets.has(chain.index) and _unit_scale(chain))
-		if run and not simulator.active:
-			run = simulator.chains.all(_rested)
-			if run:
-				for chain: Dictionary in simulator.chains:
-					for joint: Dictionary in chain.joints:
-						joint.node.transform = joint.rest
-		simulator.active = run
+		for component: Array in simulator.components:
+			var run: bool = component.all(func(chain: Dictionary) -> bool: return not targets.has(chain.index) and _unit_scale(chain))
+			if run and not component[0].native_active:
+				run = component.all(_rested)
+				if run:
+					for chain: Dictionary in component:
+						for joint: Dictionary in chain.joints:
+							joint.node.transform = joint.rest
+			for chain: Dictionary in component:
+				simulator.set_chain_active(chain.native_setting, run)
+		simulator.active = simulator.chains.any(func(c: Dictionary) -> bool: return c.native_active)
 	if delta > 0.25:
 		reset()
 		return
@@ -91,7 +94,7 @@ func advance(delta: float) -> void:
 
 func _step() -> void:
 	for c in chains.size():
-		if chains[c].native != null and chains[c].native.active:
+		if chains[c].native_active:
 			continue
 		var chain: Dictionary = chains[c]
 		var center := _center(chain)
@@ -211,7 +214,7 @@ func grabs(chain: int, who: int) -> bool:
 
 
 func tip(chain: int) -> Vector3:
-	if chains[chain].native != null and chains[chain].native.active:
+	if chains[chain].native_active:
 		return _center(chains[chain]) * chains[chain].current[-1]
 	var joint: Dictionary = chains[chain].joints[-1]
 	return joint.node.global_transform * joint.tail
@@ -233,6 +236,8 @@ func apply_state(points: PackedVector3Array) -> bool:
 		if not point.is_finite():
 			return false
 	for simulator in _native:
+		for chain: Dictionary in simulator.chains:
+			simulator.set_chain_active(chain.native_setting, false)
 		simulator.active = false
 	var at := 0
 	for chain: Dictionary in chains:
@@ -257,8 +262,10 @@ func _bind_native() -> void:
 		groups[skeleton].append(chain)
 	for skeleton: Skeleton3D in groups:
 		var supported := {}
+		var components := []
 		for component: Array in _components(groups[skeleton], skeleton):
 			if _native_supported(component, skeleton):
+				components.append(component)
 				for chain: Dictionary in component:
 					supported[chain.index] = true
 		var bound: Array = groups[skeleton].filter(func(c: Dictionary) -> bool: return supported.has(c.index))
@@ -267,6 +274,7 @@ func _bind_native() -> void:
 		var simulator := preload("spring_native.gd").new()
 		simulator.active = false
 		skeleton.add_child(simulator)
+		simulator.components = components
 		simulator.configure(bound, colliders)
 		simulator.modification_processed.connect(_capture.bind(simulator))
 		_native.append(simulator)
@@ -356,6 +364,8 @@ static func _unit_scale(chain: Dictionary) -> bool:
 
 func _capture(simulator: SpringBoneSimulator3D) -> void:
 	for chain: Dictionary in simulator.chains:
+		if not chain.native_active:
+			continue
 		var inverse := _center(chain).affine_inverse()
 		chain.previous = chain.current.duplicate()
 		for i in chain.joints.size():

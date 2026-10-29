@@ -39,8 +39,9 @@ Sphere and capsule colliders follow their bound nodes.
 
 `targets[chain_index] = world_position` holds a tip within its reach; erase
 the entry to release it. Held tips yield to collisions and length constraints.
-A grip hands its native group to the constraint solver with the captured momentum.
-The group returns to native simulation once settled, without snapping to rest. Pauses longer than
+A grip or a scaled ancestor hands only its dependent component to the constraint solver
+with the captured momentum. Independent components keep running in the same native
+modifier. The component returns to native simulation once settled, without snapping to rest. Pauses longer than
 250 ms reset momentum. `tip(chain_index)` returns the last visible endpoint;
 native poses are captured when the skeleton modifier finishes.
 
