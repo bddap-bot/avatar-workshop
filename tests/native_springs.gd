@@ -77,6 +77,7 @@ func _run() -> void:
 	await _overlapping_chains()
 	await _scaled_components()
 	await _folded_components()
+	_capture_state()
 	print("native springs: ", "ok" if failures == 0 else str(failures) + " failures")
 	quit(0 if failures == 0 else 1)
 
@@ -261,4 +262,34 @@ func _folded_components() -> void:
 	check(skeleton.get_bone_pose_scale(1).is_equal_approx(Vector3.ONE * 0.001), "fallback preserves the folded parent scale")
 	check(simulation.point_count == 2, "folded hand retains both authored spring segments")
 	check(simulation.state().size() == 2 and simulation.state()[0].is_finite(), "folded hand fallback remains finite")
+	skeleton.free()
+
+
+func _capture_state() -> void:
+	var skeleton := Skeleton3D.new()
+	root.add_child(skeleton)
+	for i in 3:
+		skeleton.add_bone(str(i))
+		if i > 0:
+			skeleton.set_bone_parent(i, i - 1)
+			skeleton.set_bone_rest(i, Transform3D(Basis.IDENTITY, Vector3(0, -0.2, 0)))
+	skeleton.reset_bone_poses()
+	var nodes := {0: Bone.new(skeleton, 0), 1: Bone.new(skeleton, 1), 2: Bone.new(skeleton, 2)}
+	var definition := {"springs": [{"joints": [Definition.joint_data(1, {}, false), Definition.joint_data(2, {}, false)], "center": 0, "end_length": 0.1, "colliders": []}], "colliders": []}
+	var simulation := Springs.new(definition, nodes)
+	var simulator = simulation._native[0]
+	simulator.set_chain_active(0, true)
+	var previous: PackedVector3Array = simulation.chains[0].current.duplicate()
+	skeleton.transform = Transform3D(Basis.from_euler(Vector3(0.2, -0.4, 0.1)), Vector3(3, 2, -4))
+	skeleton.set_bone_pose_rotation(1, Quaternion(Vector3.RIGHT, 0.3))
+	simulation._capture(simulator)
+	var captured: PackedVector3Array = simulation.chains[0].current
+	check(simulation.chains[0].previous == previous, "capture preserves every previous point for handoff momentum")
+	for i in captured.size():
+		var joint: Dictionary = simulation.chains[0].joints[i]
+		var expected: Vector3 = nodes[0].global_transform.affine_inverse() * (joint.node.global_transform * joint.tail)
+		check(captured[i].distance_to(expected) < 0.00001, "capture retains centered tails under a rotated and translated skeleton")
+	skeleton.set_bone_pose_rotation(1, Quaternion(Vector3.RIGHT, 0.6))
+	simulation._capture(simulator)
+	check(simulation.chains[0].previous == captured, "a new capture does not mutate the retained previous state")
 	skeleton.free()

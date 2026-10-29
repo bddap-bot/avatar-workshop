@@ -366,11 +366,15 @@ func _capture(simulator: SpringBoneSimulator3D) -> void:
 	for chain: Dictionary in simulator.chains:
 		if not chain.native_active:
 			continue
-		var inverse := _center(chain).affine_inverse()
-		chain.previous = chain.current.duplicate()
+		var skeleton: Skeleton3D = chain.joints[0].node.skeleton
+		var into_center := _center(chain).affine_inverse() * skeleton.global_transform
+		var current := PackedVector3Array()
+		current.resize(chain.joints.size())
 		for i in chain.joints.size():
 			var joint: Dictionary = chain.joints[i]
-			chain.current[i] = inverse * (joint.node.global_transform * joint.tail)
+			current[i] = into_center * (skeleton.get_bone_global_pose(joint.node.bone) * joint.tail)
+		chain.previous = chain.current
+		chain.current = current
 
 
 static func _rested(chain: Dictionary) -> bool:
