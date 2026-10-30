@@ -1331,7 +1331,14 @@ fn model() -> AwAvatar {
                 ..clip(
                     "PropOff",
                     vec![
-                        curve(Binding::NodeActive { node: n(PROP) }, vec![key(0.0, 0.0)]),
+                        curve(
+                            Binding::NodeActive { node: n(PROP) },
+                            vec![Keyframe {
+                                in_tangent: f32::INFINITY,
+                                out_tangent: f32::NEG_INFINITY,
+                                ..key(0.0, 0.0)
+                            }],
+                        ),
                         curve(
                             Binding::RendererEnabled { node: n(BODY) },
                             vec![key(0.0, 1.0)],

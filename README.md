@@ -17,6 +17,27 @@ fixture, with every section filled. In `avatar-core/`, `nix-shell --run
 that the checked-in schema and fixture equal the generated ones; after changing the types,
 `AW_BLESS=1 cargo test` regenerates both.
 
+## Unity exporter
+
+[`unity/com.avatarworkshop.exporter`](unity/com.avatarworkshop.exporter) is a Unity 2022.3 editor
+package for projects with the VRChat Avatars SDK. It writes an avatar, as the SDK would upload it, to a
+`.glb` with `AW_avatar`. It exports a copy of the avatar: legacy DynamicBones converted by the SDK, then
+the SDK's build preprocess run, which applies build-time tools and strips EditorOnly objects. The scene
+is left unchanged. Add the package to the project's `Packages/manifest.json` as
+`"com.avatarworkshop.exporter": "file:<path to the package>"`. Then export the selected avatar with
+**Tools ▸ Avatar Workshop ▸ Export Avatar**, or in batch mode:
+
+```sh
+Unity -batchmode -projectPath <project> -executeMethod AvatarWorkshop.Exporter.Batch.Run \
+  -awOut <avatar.glb> [-awScene <scene path>] [-awAvatar <avatar object name>]
+```
+
+Without `-awAvatar`, the scene must hold exactly one active avatar. With `-awFixture`, it instead writes
+the synthetic fixture as a Unity avatar into `Assets/AvatarWorkshopFixture/`, replacing that folder and
+the open scene, and exports it. `avatar-core/fixtures/unity-synthetic.glb` is the result, and `cargo test`
+reads it. `cargo run --example read -- <file.glb>...`, run in `avatar-core/`, reads exports and prints
+their sections and their `unsupported` report.
+
 ## Expression mixer
 
 Preload `res://addons/avatar_workshop/expression_mixer.gd` and call

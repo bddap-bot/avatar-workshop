@@ -47,6 +47,27 @@ nodes, meshes (one primitive per renderer material slot, in slot order), skins w
 morph targets with normals, images and samplers. Each glTF material is a plain PBR fallback for generic viewers;
 the shading the runtime uses is the `AW_avatar.materials` record of the same index.
 
+Every position, direction and rotation is in glTF's right-handed space. That covers the glTF nodes, meshes and
+skins, every `AW_avatar` record, and the clip curves that animate them. Unity's left-handed values map into it by
+mirroring X:
+- positions, directions and vertex deltas negate X;
+- quaternions and Euler angles (Unity's ZXY order) negate Y and Z, and a roll negates;
+- matrices are conjugated by the mirror;
+- tangents become `(-x, y, z, -w)`, and triangle winding reverses.
+
+These stay as Unity holds them:
+- scales;
+- humanoid curves (muscles, root and IK goals), which are in Unity's humanoid space;
+- a PhysBone's per-bone curves (`curve` on a field, the limit rotation's `xCurve`/`yCurve`/`zCurve`), which scale
+  its mirrored value;
+- blendshape curve values, on Unity's scale where a shape's last frame weight is fully applied. A node's glTF
+  `weights` divide by that weight, so 1 is fully applied.
+
+Unity UV channel `n` is glTF `TEXCOORD_n`: its first two components, with `v` replaced by `1 - v`. Material tiling
+and offset still apply to Unity's `v`. A channel's third and fourth components keep Unity's values in
+`_TEXCOORD_n_ZW`, and a one-component channel is `_TEXCOORD_n`. A curve keeps Unity's stepped keys as infinite
+tangents, written `"Infinity"` and `"-Infinity"`.
+
 `AW_avatar` sections. Node, mesh, material and texture references are glTF indices; a blendshape is named
 by its mesh's `extras.targetNames` entry.
 

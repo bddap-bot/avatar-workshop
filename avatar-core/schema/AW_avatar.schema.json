@@ -1511,12 +1511,31 @@
           "format": "float"
         },
         "inTangent": {
-          "type": "number",
-          "format": "float"
+          "description": "An infinite tangent is Unity's stepped (constant) key.",
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "enum": [
+                "Infinity",
+                "-Infinity"
+              ]
+            }
+          ]
         },
         "outTangent": {
-          "type": "number",
-          "format": "float"
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "enum": [
+                "Infinity",
+                "-Infinity"
+              ]
+            }
+          ]
         },
         "inWeight": {
           "type": "number",

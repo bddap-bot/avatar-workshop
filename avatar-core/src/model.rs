@@ -493,7 +493,12 @@ pub struct AnimationCurve {
 pub struct Keyframe {
     pub time: f32,
     pub value: f32,
+    /// An infinite tangent is Unity's stepped (constant) key.
+    #[serde(with = "slope")]
+    #[schemars(schema_with = "slope::schema")]
     pub in_tangent: f32,
+    #[serde(with = "slope")]
+    #[schemars(schema_with = "slope::schema")]
     pub out_tangent: f32,
     pub in_weight: f32,
     pub out_weight: f32,
@@ -1426,4 +1431,45 @@ where
         return Err(serde::de::Error::custom("duplicate entries in a set"));
     }
     Ok(set)
+}
+
+/// A tangent as a JSON number, or `"Infinity"`/`"-Infinity"`, which JSON numbers cannot carry.
+mod slope {
+    use schemars::{json_schema, Schema, SchemaGenerator};
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(value: &f32, serializer: S) -> Result<S::Ok, S::Error> {
+        match *value {
+            f32::INFINITY => serializer.serialize_str("Infinity"),
+            f32::NEG_INFINITY => serializer.serialize_str("-Infinity"),
+            finite => serializer.serialize_f32(finite),
+        }
+    }
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Repr {
+        Number(f32),
+        Infinite(Infinite),
+    }
+
+    #[derive(Deserialize)]
+    enum Infinite {
+        #[serde(rename = "Infinity")]
+        Positive,
+        #[serde(rename = "-Infinity")]
+        Negative,
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+        Ok(match Repr::deserialize(deserializer)? {
+            Repr::Number(value) => value,
+            Repr::Infinite(Infinite::Positive) => f32::INFINITY,
+            Repr::Infinite(Infinite::Negative) => f32::NEG_INFINITY,
+        })
+    }
+
+    pub fn schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({ "oneOf": [{ "type": "number" }, { "enum": ["Infinity", "-Infinity"] }] })
+    }
 }

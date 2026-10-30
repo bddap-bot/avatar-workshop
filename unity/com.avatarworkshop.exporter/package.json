@@ -1,0 +1,9 @@
+{
+  "name": "com.avatarworkshop.exporter",
+  "version": "0.1.0",
+  "displayName": "Avatar Workshop exporter",
+  "description": "Writes a VRChat avatar, as the SDK uploads it, to an Avatar Workshop model file (.glb with AW_avatar).",
+  "unity": "2022.3",
+  "license": "MIT OR Apache-2.0",
+  "vpmDependencies": { "com.vrchat.avatars": ">=3.7.0" }
+}
