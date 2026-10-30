@@ -4,6 +4,11 @@ Portable Godot 4 avatar runtime components, licensed under MIT OR Apache-2.0.
 Copy `addons/avatar_workshop/` into a Godot 4.6 project. No editor plugin activation,
 native library, network access, file loading or third-party dependency is required.
 
+## Avatar model
+
+The data model every importer writes and every runtime reads, designed from VRChat avatars
+with VRM as one importer, is specified in [docs/model.md](docs/model.md).
+
 ## Expression mixer
 
 Preload `res://addons/avatar_workshop/expression_mixer.gd` and call
