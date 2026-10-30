@@ -9,6 +9,14 @@ native library, network access, file loading or third-party dependency is requir
 The data model every importer writes and every runtime reads, designed from VRChat avatars
 with VRM as one importer, is specified in [docs/model.md](docs/model.md).
 
+The Rust crate [`avatar-core`](avatar-core) holds its types, the `.glb` reader and writer
+(`read`, `write`) and [the `AW_avatar` JSON schema](avatar-core/schema/AW_avatar.schema.json)
+generated from the types. `avatar-core/fixtures/synthetic.glb` is the model's synthetic
+fixture, with every section filled. In `avatar-core/`, `nix-shell --run
+'cargo test'` checks that the fixture round-trips through reader and writer unchanged and
+that the checked-in schema and fixture equal the generated ones; after changing the types,
+`AW_BLESS=1 cargo test` regenerates both.
+
 ## Expression mixer
 
 Preload `res://addons/avatar_workshop/expression_mixer.gd` and call

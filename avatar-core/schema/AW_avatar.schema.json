@@ -1,0 +1,4504 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AW_avatar",
+  "description": "The `AW_avatar` extension on the glTF root.",
+  "type": "object",
+  "properties": {
+    "source": {
+      "$ref": "#/$defs/Source"
+    },
+    "humanoid": {
+      "$ref": "#/$defs/Humanoid"
+    },
+    "descriptor": {
+      "$ref": "#/$defs/Descriptor"
+    },
+    "renderers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Renderer"
+      }
+    },
+    "nodes": {
+      "description": "One entry per glTF node, in node order.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Node"
+      }
+    },
+    "materials": {
+      "description": "One entry per glTF material, in material order.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Material"
+      }
+    },
+    "physbones": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/PhysBone"
+      }
+    },
+    "colliders": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Collider"
+      }
+    },
+    "contacts": {
+      "$ref": "#/$defs/Contacts"
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Constraint"
+      }
+    },
+    "parameters": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Parameter"
+      }
+    },
+    "menu": {
+      "$ref": "#/$defs/Menu"
+    },
+    "layers": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/PlayableLayer"
+        },
+        "additive": {
+          "$ref": "#/$defs/PlayableLayer"
+        },
+        "base": {
+          "$ref": "#/$defs/PlayableLayer"
+        },
+        "fx": {
+          "$ref": "#/$defs/PlayableLayer"
+        },
+        "gesture": {
+          "$ref": "#/$defs/PlayableLayer"
+        },
+        "ikPose": {
+          "$ref": "#/$defs/PlayableLayer"
+        },
+        "sitting": {
+          "$ref": "#/$defs/PlayableLayer"
+        },
+        "tPose": {
+          "$ref": "#/$defs/PlayableLayer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "behaviours": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Behaviour"
+      }
+    },
+    "clips": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Clip"
+      }
+    },
+    "unsupported": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Unsupported"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "source",
+    "humanoid",
+    "descriptor",
+    "renderers",
+    "nodes",
+    "materials",
+    "physbones",
+    "colliders",
+    "contacts",
+    "constraints",
+    "parameters",
+    "menu",
+    "layers",
+    "behaviours",
+    "clips",
+    "unsupported"
+  ],
+  "$defs": {
+    "Source": {
+      "type": "object",
+      "properties": {
+        "importer": {
+          "type": "string"
+        },
+        "importerVersion": {
+          "type": "string"
+        },
+        "format": {
+          "$ref": "#/$defs/SourceFormat"
+        },
+        "licence": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "author": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "importer",
+        "importerVersion",
+        "format"
+      ]
+    },
+    "SourceFormat": {
+      "type": "string",
+      "enum": [
+        "vrchat",
+        "vrm0",
+        "vrm1"
+      ]
+    },
+    "Humanoid": {
+      "type": "object",
+      "properties": {
+        "bones": {
+          "type": "object",
+          "properties": {
+            "Chest": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "Head": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "Hips": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "Jaw": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftEye": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftFoot": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftHand": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftIndexDistal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftIndexIntermediate": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftIndexProximal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftLittleDistal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftLittleIntermediate": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftLittleProximal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftLowerArm": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftLowerLeg": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftMiddleDistal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftMiddleIntermediate": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftMiddleProximal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftRingDistal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftRingIntermediate": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftRingProximal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftShoulder": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftThumbDistal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftThumbIntermediate": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftThumbProximal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftToes": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftUpperArm": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "LeftUpperLeg": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "Neck": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightEye": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightFoot": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightHand": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightIndexDistal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightIndexIntermediate": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightIndexProximal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightLittleDistal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightLittleIntermediate": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightLittleProximal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightLowerArm": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightLowerLeg": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightMiddleDistal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightMiddleIntermediate": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightMiddleProximal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightRingDistal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightRingIntermediate": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightRingProximal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightShoulder": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightThumbDistal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightThumbIntermediate": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightThumbProximal": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightToes": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightUpperArm": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "RightUpperLeg": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "Spine": {
+              "$ref": "#/$defs/HumanBone"
+            },
+            "UpperChest": {
+              "$ref": "#/$defs/HumanBone"
+            }
+          },
+          "additionalProperties": false
+        },
+        "skeleton": {
+          "description": "The source's rest pose as given.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SkeletonBone"
+          }
+        },
+        "armStretch": {
+          "type": "number",
+          "format": "float"
+        },
+        "legStretch": {
+          "type": "number",
+          "format": "float"
+        },
+        "upperArmTwist": {
+          "type": "number",
+          "format": "float"
+        },
+        "lowerArmTwist": {
+          "type": "number",
+          "format": "float"
+        },
+        "upperLegTwist": {
+          "type": "number",
+          "format": "float"
+        },
+        "lowerLegTwist": {
+          "type": "number",
+          "format": "float"
+        },
+        "feetSpacing": {
+          "type": "number",
+          "format": "float"
+        },
+        "hasTranslationDoF": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bones",
+        "skeleton",
+        "armStretch",
+        "legStretch",
+        "upperArmTwist",
+        "lowerArmTwist",
+        "upperLegTwist",
+        "lowerLegTwist",
+        "feetSpacing",
+        "hasTranslationDoF"
+      ]
+    },
+    "HumanBone": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "$ref": "#/$defs/NodeIndex"
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MuscleLimit"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "node"
+      ]
+    },
+    "NodeIndex": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "MuscleLimit": {
+      "description": "Degrees; absent on a bone that uses Unity's default limits.",
+      "type": "object",
+      "properties": {
+        "min": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "max": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "center": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "axisLength": {
+          "type": "number",
+          "format": "float"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "min",
+        "max",
+        "center",
+        "axisLength"
+      ]
+    },
+    "SkeletonBone": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "$ref": "#/$defs/NodeIndex"
+        },
+        "position": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "rotation": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "scale": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "node",
+        "position",
+        "rotation",
+        "scale"
+      ]
+    },
+    "Descriptor": {
+      "type": "object",
+      "properties": {
+        "viewPosition": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "lipSync": {
+          "$ref": "#/$defs/LipSync"
+        },
+        "eyes": {
+          "$ref": "#/$defs/Eyes"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "viewPosition",
+        "lipSync",
+        "eyes"
+      ]
+    },
+    "LipSync": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "default"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "mode"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "jawFlapBone"
+            },
+            "bone": {
+              "$ref": "#/$defs/NodeIndex"
+            },
+            "closed": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              },
+              "minItems": 4,
+              "maxItems": 4
+            },
+            "open": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              },
+              "minItems": 4,
+              "maxItems": 4
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "bone",
+            "closed",
+            "open"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "jawFlapBlendShape"
+            },
+            "mesh": {
+              "$ref": "#/$defs/NodeIndex"
+            },
+            "blendShape": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "mesh",
+            "blendShape"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "visemeBlendShape"
+            },
+            "mesh": {
+              "$ref": "#/$defs/NodeIndex"
+            },
+            "visemes": {
+              "$ref": "#/$defs/Visemes"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "mesh",
+            "visemes"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "visemeParameterOnly"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "mode"
+          ]
+        }
+      ]
+    },
+    "Visemes": {
+      "description": "Blendshape names, in VRChat's viseme order.",
+      "type": "object",
+      "properties": {
+        "sil": {
+          "type": "string"
+        },
+        "PP": {
+          "type": "string"
+        },
+        "FF": {
+          "type": "string"
+        },
+        "TH": {
+          "type": "string"
+        },
+        "DD": {
+          "type": "string"
+        },
+        "kk": {
+          "type": "string"
+        },
+        "CH": {
+          "type": "string"
+        },
+        "SS": {
+          "type": "string"
+        },
+        "nn": {
+          "type": "string"
+        },
+        "RR": {
+          "type": "string"
+        },
+        "aa": {
+          "type": "string"
+        },
+        "E": {
+          "type": "string"
+        },
+        "ih": {
+          "type": "string"
+        },
+        "oh": {
+          "type": "string"
+        },
+        "ou": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "sil",
+        "PP",
+        "FF",
+        "TH",
+        "DD",
+        "kk",
+        "CH",
+        "SS",
+        "nn",
+        "RR",
+        "aa",
+        "E",
+        "ih",
+        "oh",
+        "ou"
+      ]
+    },
+    "Eyes": {
+      "type": "object",
+      "properties": {
+        "look": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EyeLook"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "eyelids": {
+          "$ref": "#/$defs/Eyelids"
+        },
+        "eyeMovement": {
+          "$ref": "#/$defs/EyeMovement"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "eyelids",
+        "eyeMovement"
+      ]
+    },
+    "EyeLook": {
+      "type": "object",
+      "properties": {
+        "leftEye": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NodeIndex"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rightEye": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NodeIndex"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "straight": {
+          "$ref": "#/$defs/EyeRotations"
+        },
+        "up": {
+          "$ref": "#/$defs/EyeRotations"
+        },
+        "down": {
+          "$ref": "#/$defs/EyeRotations"
+        },
+        "left": {
+          "$ref": "#/$defs/EyeRotations"
+        },
+        "right": {
+          "$ref": "#/$defs/EyeRotations"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "straight",
+        "up",
+        "down",
+        "left",
+        "right"
+      ]
+    },
+    "EyeRotations": {
+      "type": "object",
+      "properties": {
+        "linked": {
+          "type": "boolean"
+        },
+        "left": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "right": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "linked",
+        "left",
+        "right"
+      ]
+    },
+    "Eyelids": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "none"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "bones"
+            },
+            "leftUpper": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/NodeIndex"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "rightUpper": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/NodeIndex"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "leftLower": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/NodeIndex"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "rightLower": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/NodeIndex"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "default": {
+              "$ref": "#/$defs/EyelidRotations"
+            },
+            "closed": {
+              "$ref": "#/$defs/EyelidRotations"
+            },
+            "lookingUp": {
+              "$ref": "#/$defs/EyelidRotations"
+            },
+            "lookingDown": {
+              "$ref": "#/$defs/EyelidRotations"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "default",
+            "closed",
+            "lookingUp",
+            "lookingDown"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "blendShapes"
+            },
+            "mesh": {
+              "$ref": "#/$defs/NodeIndex"
+            },
+            "blink": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "lookingUp": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "lookingDown": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "mesh"
+          ]
+        }
+      ]
+    },
+    "EyelidRotations": {
+      "type": "object",
+      "properties": {
+        "upper": {
+          "$ref": "#/$defs/EyeRotations"
+        },
+        "lower": {
+          "$ref": "#/$defs/EyeRotations"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "upper",
+        "lower"
+      ]
+    },
+    "EyeMovement": {
+      "type": "object",
+      "properties": {
+        "confidence": {
+          "type": "number",
+          "format": "float"
+        },
+        "excitement": {
+          "type": "number",
+          "format": "float"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "confidence",
+        "excitement"
+      ]
+    },
+    "Renderer": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "$ref": "#/$defs/NodeIndex"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "materials": {
+          "description": "The renderer's material slots, in slot order. A mesh shared by several renderers keeps\nits own primitive materials as the generic viewer's fallback.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MaterialIndex"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "node",
+        "enabled",
+        "materials"
+      ]
+    },
+    "MaterialIndex": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "Node": {
+      "type": "object",
+      "properties": {
+        "active": {
+          "description": "After evaluating every playable layer's default state at time 0.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "active"
+      ]
+    },
+    "Material": {
+      "type": "object",
+      "properties": {
+        "shader": {
+          "$ref": "#/$defs/ShaderFamily"
+        },
+        "shaderName": {
+          "description": "The source shader's own name.",
+          "type": "string"
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/MaterialProperty"
+          }
+        },
+        "keywords": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "renderQueue": {
+          "description": "The render state the shader pass resolves from its properties.",
+          "type": "integer",
+          "format": "int32"
+        },
+        "cull": {
+          "$ref": "#/$defs/Cull"
+        },
+        "blend": {
+          "description": "Absent for opaque and cut-out materials.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Blend"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "depthWrite": {
+          "type": "boolean"
+        },
+        "depthTest": {
+          "$ref": "#/$defs/CompareFunction"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "shader",
+        "shaderName",
+        "properties",
+        "keywords",
+        "renderQueue",
+        "cull",
+        "depthWrite",
+        "depthTest"
+      ]
+    },
+    "ShaderFamily": {
+      "type": "string",
+      "enum": [
+        "poiyomi",
+        "liltoon",
+        "vrchat-mobile",
+        "mtoon",
+        "standard",
+        "unknown"
+      ]
+    },
+    "MaterialProperty": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "float": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "required": [
+            "float"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "int": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "required": [
+            "int"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "color": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              },
+              "minItems": 4,
+              "maxItems": 4
+            }
+          },
+          "required": [
+            "color"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "vector": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              },
+              "minItems": 4,
+              "maxItems": 4
+            }
+          },
+          "required": [
+            "vector"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "texture": {
+              "$ref": "#/$defs/TextureProperty"
+            }
+          },
+          "required": [
+            "texture"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "TextureProperty": {
+      "type": "object",
+      "properties": {
+        "texture": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TextureIndex"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tiling": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "offset": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "tiling",
+        "offset"
+      ]
+    },
+    "TextureIndex": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "Cull": {
+      "type": "string",
+      "enum": [
+        "off",
+        "front",
+        "back"
+      ]
+    },
+    "Blend": {
+      "type": "object",
+      "properties": {
+        "srcColor": {
+          "$ref": "#/$defs/BlendFactor"
+        },
+        "dstColor": {
+          "$ref": "#/$defs/BlendFactor"
+        },
+        "srcAlpha": {
+          "$ref": "#/$defs/BlendFactor"
+        },
+        "dstAlpha": {
+          "$ref": "#/$defs/BlendFactor"
+        },
+        "colorOp": {
+          "$ref": "#/$defs/BlendOp"
+        },
+        "alphaOp": {
+          "$ref": "#/$defs/BlendOp"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "srcColor",
+        "dstColor",
+        "srcAlpha",
+        "dstAlpha",
+        "colorOp",
+        "alphaOp"
+      ]
+    },
+    "BlendFactor": {
+      "type": "string",
+      "enum": [
+        "zero",
+        "one",
+        "dstColor",
+        "srcColor",
+        "oneMinusDstColor",
+        "srcAlpha",
+        "oneMinusSrcColor",
+        "dstAlpha",
+        "oneMinusDstAlpha",
+        "srcAlphaSaturate",
+        "oneMinusSrcAlpha"
+      ]
+    },
+    "BlendOp": {
+      "type": "string",
+      "enum": [
+        "add",
+        "subtract",
+        "reverseSubtract",
+        "min",
+        "max"
+      ]
+    },
+    "CompareFunction": {
+      "type": "string",
+      "enum": [
+        "never",
+        "less",
+        "equal",
+        "lessEqual",
+        "greater",
+        "notEqual",
+        "greaterEqual",
+        "always"
+      ]
+    },
+    "PhysBone": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "description": "The node the component sits on.",
+          "$ref": "#/$defs/NodeIndex"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "version": {
+          "$ref": "#/$defs/PhysBoneVersion"
+        },
+        "root": {
+          "$ref": "#/$defs/NodeIndex"
+        },
+        "ignoreTransforms": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NodeIndex"
+          }
+        },
+        "endpointPosition": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "multiChildType": {
+          "$ref": "#/$defs/MultiChildType"
+        },
+        "integrationType": {
+          "$ref": "#/$defs/IntegrationType"
+        },
+        "pull": {
+          "$ref": "#/$defs/Curved"
+        },
+        "spring": {
+          "description": "Called momentum under the advanced integration type.",
+          "$ref": "#/$defs/Curved"
+        },
+        "stiffness": {
+          "$ref": "#/$defs/Curved"
+        },
+        "gravity": {
+          "$ref": "#/$defs/Curved"
+        },
+        "gravityFalloff": {
+          "$ref": "#/$defs/Curved"
+        },
+        "immobileType": {
+          "$ref": "#/$defs/ImmobileType"
+        },
+        "immobile": {
+          "$ref": "#/$defs/Curved"
+        },
+        "limit": {
+          "$ref": "#/$defs/Limit"
+        },
+        "radius": {
+          "$ref": "#/$defs/Curved"
+        },
+        "maxStretch": {
+          "$ref": "#/$defs/Curved"
+        },
+        "stretchMotion": {
+          "$ref": "#/$defs/Curved"
+        },
+        "maxSquish": {
+          "$ref": "#/$defs/Curved"
+        },
+        "colliders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ColliderIndex"
+          }
+        },
+        "collision": {
+          "$ref": "#/$defs/Permission"
+        },
+        "grabbing": {
+          "$ref": "#/$defs/Permission"
+        },
+        "posing": {
+          "$ref": "#/$defs/Permission"
+        },
+        "grabMovement": {
+          "type": "number",
+          "format": "float"
+        },
+        "snapToHand": {
+          "type": "boolean"
+        },
+        "parameter": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "isAnimated": {
+          "type": "boolean"
+        },
+        "resetWhenDisabled": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "node",
+        "enabled",
+        "version",
+        "root",
+        "ignoreTransforms",
+        "endpointPosition",
+        "multiChildType",
+        "integrationType",
+        "pull",
+        "spring",
+        "stiffness",
+        "gravity",
+        "gravityFalloff",
+        "immobileType",
+        "immobile",
+        "limit",
+        "radius",
+        "maxStretch",
+        "stretchMotion",
+        "maxSquish",
+        "colliders",
+        "collision",
+        "grabbing",
+        "posing",
+        "grabMovement",
+        "snapToHand",
+        "isAnimated",
+        "resetWhenDisabled"
+      ]
+    },
+    "PhysBoneVersion": {
+      "type": "string",
+      "enum": [
+        "1.0",
+        "1.1"
+      ]
+    },
+    "MultiChildType": {
+      "type": "string",
+      "enum": [
+        "ignore",
+        "first",
+        "average"
+      ]
+    },
+    "IntegrationType": {
+      "type": "string",
+      "enum": [
+        "simplified",
+        "advanced"
+      ]
+    },
+    "Curved": {
+      "description": "A VRChat field with its optional curve over the chain.",
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "number",
+          "format": "float"
+        },
+        "curve": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AnimationCurve"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "value"
+      ]
+    },
+    "AnimationCurve": {
+      "description": "Unity's `AnimationCurve`.",
+      "type": "object",
+      "properties": {
+        "keys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Keyframe"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "keys"
+      ]
+    },
+    "Keyframe": {
+      "type": "object",
+      "properties": {
+        "time": {
+          "type": "number",
+          "format": "float"
+        },
+        "value": {
+          "type": "number",
+          "format": "float"
+        },
+        "inTangent": {
+          "type": "number",
+          "format": "float"
+        },
+        "outTangent": {
+          "type": "number",
+          "format": "float"
+        },
+        "inWeight": {
+          "type": "number",
+          "format": "float"
+        },
+        "outWeight": {
+          "type": "number",
+          "format": "float"
+        },
+        "weightedMode": {
+          "$ref": "#/$defs/WeightedMode"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "time",
+        "value",
+        "inTangent",
+        "outTangent",
+        "inWeight",
+        "outWeight",
+        "weightedMode"
+      ]
+    },
+    "WeightedMode": {
+      "type": "string",
+      "enum": [
+        "none",
+        "in",
+        "out",
+        "both"
+      ]
+    },
+    "ImmobileType": {
+      "type": "string",
+      "enum": [
+        "allMotion",
+        "world"
+      ]
+    },
+    "Limit": {
+      "description": "Angles in degrees.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "none"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "angle"
+            },
+            "maxAngleX": {
+              "$ref": "#/$defs/Curved"
+            },
+            "rotation": {
+              "$ref": "#/$defs/LimitRotation"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "maxAngleX",
+            "rotation"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "hinge"
+            },
+            "maxAngleX": {
+              "$ref": "#/$defs/Curved"
+            },
+            "rotation": {
+              "$ref": "#/$defs/LimitRotation"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "maxAngleX",
+            "rotation"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "polar"
+            },
+            "maxAngleX": {
+              "$ref": "#/$defs/Curved"
+            },
+            "maxAngleZ": {
+              "$ref": "#/$defs/Curved"
+            },
+            "rotation": {
+              "$ref": "#/$defs/LimitRotation"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "maxAngleX",
+            "maxAngleZ",
+            "rotation"
+          ]
+        }
+      ]
+    },
+    "LimitRotation": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "xCurve": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AnimationCurve"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "yCurve": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AnimationCurve"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "zCurve": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AnimationCurve"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "value"
+      ]
+    },
+    "ColliderIndex": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "Permission": {
+      "description": "Who may collide with, grab or pose a component.",
+      "type": "object",
+      "properties": {
+        "allowSelf": {
+          "type": "boolean"
+        },
+        "allowOthers": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "allowSelf",
+        "allowOthers"
+      ]
+    },
+    "Collider": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "$ref": "#/$defs/NodeIndex"
+        },
+        "shape": {
+          "$ref": "#/$defs/ColliderShape"
+        },
+        "position": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "rotation": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "bonesAsSpheres": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "node",
+        "shape",
+        "position",
+        "rotation",
+        "bonesAsSpheres"
+      ]
+    },
+    "ColliderShape": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "sphere"
+            },
+            "radius": {
+              "type": "number",
+              "format": "float"
+            },
+            "insideBounds": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "radius",
+            "insideBounds"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "capsule"
+            },
+            "radius": {
+              "type": "number",
+              "format": "float"
+            },
+            "height": {
+              "type": "number",
+              "format": "float"
+            },
+            "insideBounds": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "radius",
+            "height",
+            "insideBounds"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "plane"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ]
+        }
+      ]
+    },
+    "Contacts": {
+      "type": "object",
+      "properties": {
+        "senders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ContactSender"
+          }
+        },
+        "receivers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ContactReceiver"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "senders",
+        "receivers"
+      ]
+    },
+    "ContactSender": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "$ref": "#/$defs/NodeIndex"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "shape": {
+          "$ref": "#/$defs/ContactShape"
+        },
+        "position": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "rotation": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "collisionTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "node",
+        "enabled",
+        "shape",
+        "position",
+        "rotation",
+        "collisionTags"
+      ]
+    },
+    "ContactShape": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "sphere"
+            },
+            "radius": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "radius"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "capsule"
+            },
+            "radius": {
+              "type": "number",
+              "format": "float"
+            },
+            "height": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "radius",
+            "height"
+          ]
+        }
+      ]
+    },
+    "ContactReceiver": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "$ref": "#/$defs/NodeIndex"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "shape": {
+          "$ref": "#/$defs/ContactShape"
+        },
+        "position": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "rotation": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "collisionTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowSelf": {
+          "type": "boolean"
+        },
+        "allowOthers": {
+          "type": "boolean"
+        },
+        "localOnly": {
+          "type": "boolean"
+        },
+        "receiverType": {
+          "$ref": "#/$defs/ReceiverType"
+        },
+        "parameter": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "node",
+        "enabled",
+        "shape",
+        "position",
+        "rotation",
+        "collisionTags",
+        "allowSelf",
+        "allowOthers",
+        "localOnly",
+        "receiverType",
+        "parameter"
+      ]
+    },
+    "ReceiverType": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "constant"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "onEnter"
+            },
+            "minVelocity": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "minVelocity"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "proximity"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ]
+        }
+      ]
+    },
+    "Constraint": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "description": "The node the component sits on.",
+          "$ref": "#/$defs/NodeIndex"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "isActive": {
+          "type": "boolean"
+        },
+        "target": {
+          "description": "The node the constraint moves.",
+          "$ref": "#/$defs/NodeIndex"
+        },
+        "weight": {
+          "type": "number",
+          "format": "float"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConstraintSource"
+          }
+        },
+        "solveInLocalSpace": {
+          "type": "boolean"
+        },
+        "freezeToWorld": {
+          "type": "boolean"
+        },
+        "rebakeOffsetsWhenUnfrozen": {
+          "type": "boolean"
+        },
+        "kind": {
+          "$ref": "#/$defs/ConstraintKind"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "node",
+        "enabled",
+        "isActive",
+        "target",
+        "weight",
+        "sources",
+        "solveInLocalSpace",
+        "freezeToWorld",
+        "rebakeOffsetsWhenUnfrozen",
+        "kind"
+      ]
+    },
+    "ConstraintSource": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/SourceTarget"
+        },
+        "weight": {
+          "type": "number",
+          "format": "float"
+        },
+        "positionOffset": {
+          "description": "Parent constraints only.",
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "rotationOffset": {
+          "description": "Parent constraints only; Euler degrees.",
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "weight",
+        "positionOffset",
+        "rotationOffset"
+      ]
+    },
+    "SourceTarget": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "node": {
+              "$ref": "#/$defs/NodeIndex"
+            }
+          },
+          "required": [
+            "node"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "world": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              },
+              "minItems": 16,
+              "maxItems": 16
+            }
+          },
+          "required": [
+            "world"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ConstraintKind": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "parent"
+            },
+            "position": {
+              "$ref": "#/$defs/Channel"
+            },
+            "rotation": {
+              "$ref": "#/$defs/Channel"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "position",
+            "rotation"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "position"
+            },
+            "position": {
+              "$ref": "#/$defs/Channel"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "position"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "rotation"
+            },
+            "rotation": {
+              "$ref": "#/$defs/Channel"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "rotation"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "aim"
+            },
+            "rotation": {
+              "$ref": "#/$defs/Channel"
+            },
+            "aimAxis": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "upAxis": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "worldUp": {
+              "$ref": "#/$defs/WorldUp"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "rotation",
+            "aimAxis",
+            "upAxis",
+            "worldUp"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "lookAt"
+            },
+            "rotation": {
+              "$ref": "#/$defs/Channel"
+            },
+            "roll": {
+              "type": "number",
+              "format": "float"
+            },
+            "worldUpNode": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/NodeIndex"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "rotation",
+            "roll"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "scale"
+            },
+            "scale": {
+              "$ref": "#/$defs/Channel"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "scale"
+          ]
+        }
+      ]
+    },
+    "Channel": {
+      "description": "At-rest and offset values with the axes the constraint affects.",
+      "type": "object",
+      "properties": {
+        "atRest": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "offset": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "affects": {
+          "type": "array",
+          "items": {
+            "type": "boolean"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "atRest",
+        "offset",
+        "affects"
+      ]
+    },
+    "WorldUp": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "sceneUp"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "objectUp"
+            },
+            "node": {
+              "$ref": "#/$defs/NodeIndex"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "node"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "objectRotationUp"
+            },
+            "node": {
+              "$ref": "#/$defs/NodeIndex"
+            },
+            "vector": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "node",
+            "vector"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "vector"
+            },
+            "vector": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "vector"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "none"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ]
+        }
+      ]
+    },
+    "Parameter": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "default": {
+          "$ref": "#/$defs/ParameterValue"
+        },
+        "saved": {
+          "type": "boolean"
+        },
+        "synced": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "default",
+        "saved",
+        "synced"
+      ]
+    },
+    "ParameterValue": {
+      "description": "The variant is the parameter's type.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "int": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "required": [
+            "int"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "float": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "required": [
+            "float"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "bool": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "bool"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Menu": {
+      "type": "object",
+      "properties": {
+        "controls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Control"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "controls"
+      ]
+    },
+    "Control": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "icon": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TextureIndex"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/ControlKind"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind"
+      ]
+    },
+    "ControlKind": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "button"
+            },
+            "parameter": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "value": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "toggle"
+            },
+            "parameter": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "value": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "subMenu"
+            },
+            "parameter": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "value": {
+              "type": "number",
+              "format": "float"
+            },
+            "subMenu": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Menu"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "value"
+          ]
+        },
+        {
+          "description": "Labels are up, right, down, left.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "twoAxisPuppet"
+            },
+            "parameter": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "value": {
+              "type": "number",
+              "format": "float"
+            },
+            "subParameters": {
+              "type": "array",
+              "items": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Label"
+              },
+              "minItems": 4,
+              "maxItems": 4
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "value",
+            "subParameters",
+            "labels"
+          ]
+        },
+        {
+          "description": "Sub-parameters and labels are up, right, down, left.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "fourAxisPuppet"
+            },
+            "parameter": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "value": {
+              "type": "number",
+              "format": "float"
+            },
+            "subParameters": {
+              "type": "array",
+              "items": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "minItems": 4,
+              "maxItems": 4
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Label"
+              },
+              "minItems": 4,
+              "maxItems": 4
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "value",
+            "subParameters",
+            "labels"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "radialPuppet"
+            },
+            "parameter": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "value": {
+              "type": "number",
+              "format": "float"
+            },
+            "subParameter": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "value"
+          ]
+        }
+      ]
+    },
+    "Label": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "icon": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TextureIndex"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    },
+    "PlayableLayer": {
+      "type": "object",
+      "properties": {
+        "controller": {
+          "description": "Absent when the avatar uses VRChat's default controller for this layer.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Controller"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mask": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AvatarMask"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Controller": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AnimatorParameter"
+          }
+        },
+        "layers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AnimatorLayer"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "parameters",
+        "layers"
+      ]
+    },
+    "AnimatorParameter": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "default": {
+          "$ref": "#/$defs/AnimatorParameterValue"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "default"
+      ]
+    },
+    "AnimatorParameterValue": {
+      "description": "The variant is the parameter's type.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "float": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "required": [
+            "float"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "int": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "required": [
+            "int"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "bool": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "bool"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "trigger": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "trigger"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AnimatorLayer": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "defaultWeight": {
+          "type": "number",
+          "format": "float"
+        },
+        "blending": {
+          "$ref": "#/$defs/LayerBlending"
+        },
+        "mask": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AvatarMask"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ikPass": {
+          "type": "boolean"
+        },
+        "content": {
+          "$ref": "#/$defs/LayerContent"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "defaultWeight",
+        "blending",
+        "ikPass",
+        "content"
+      ]
+    },
+    "LayerBlending": {
+      "type": "string",
+      "enum": [
+        "override",
+        "additive"
+      ]
+    },
+    "AvatarMask": {
+      "type": "object",
+      "properties": {
+        "bodyParts": {
+          "description": "Humanoid body parts the mask lets through.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/BodyPart"
+          }
+        },
+        "transforms": {
+          "description": "Transforms the mask names, each let through or not.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MaskTransform"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bodyParts",
+        "transforms"
+      ]
+    },
+    "BodyPart": {
+      "type": "string",
+      "enum": [
+        "Root",
+        "Body",
+        "Head",
+        "LeftLeg",
+        "RightLeg",
+        "LeftArm",
+        "RightArm",
+        "LeftFingers",
+        "RightFingers",
+        "LeftFootIK",
+        "RightFootIK",
+        "LeftHandIK",
+        "RightHandIK"
+      ]
+    },
+    "MaskTransform": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "$ref": "#/$defs/NodeIndex"
+        },
+        "active": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "node",
+        "active"
+      ]
+    },
+    "LayerContent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "stateMachine"
+            },
+            "stateMachine": {
+              "$ref": "#/$defs/StateMachine"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "stateMachine"
+          ]
+        },
+        {
+          "description": "Runs the state machine of the layer at index `layer` with this layer's own motion and\nbehaviours for each state it lists.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "synced"
+            },
+            "layer": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "affectsTiming": {
+              "type": "boolean"
+            },
+            "states": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SyncedState"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "layer",
+            "affectsTiming",
+            "states"
+          ]
+        }
+      ]
+    },
+    "StateMachine": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/StateMachineId"
+        },
+        "name": {
+          "type": "string"
+        },
+        "states": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/State"
+          }
+        },
+        "stateMachines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StateMachine"
+          }
+        },
+        "defaultState": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StateId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "anyStateTransitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Transition"
+          }
+        },
+        "entryTransitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EntryTransition"
+          }
+        },
+        "stateMachineTransitions": {
+          "description": "Transitions from this machine's exit node, which Unity keeps on its parent.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EntryTransition"
+          }
+        },
+        "behaviours": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BehaviourIndex"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "states",
+        "stateMachines",
+        "anyStateTransitions",
+        "entryTransitions",
+        "stateMachineTransitions",
+        "behaviours"
+      ]
+    },
+    "StateMachineId": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "State": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/StateId"
+        },
+        "name": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        },
+        "speed": {
+          "type": "number",
+          "format": "float"
+        },
+        "speedParameter": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cycleOffset": {
+          "type": "number",
+          "format": "float"
+        },
+        "cycleOffsetParameter": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mirror": {
+          "type": "boolean"
+        },
+        "mirrorParameter": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timeParameter": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "motion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Motion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "writeDefaults": {
+          "type": "boolean"
+        },
+        "ikOnFeet": {
+          "type": "boolean"
+        },
+        "behaviours": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BehaviourIndex"
+          }
+        },
+        "transitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Transition"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "speed",
+        "cycleOffset",
+        "mirror",
+        "writeDefaults",
+        "ikOnFeet",
+        "behaviours",
+        "transitions"
+      ]
+    },
+    "StateId": {
+      "description": "Unique among the states of one controller.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "Motion": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "clip": {
+              "$ref": "#/$defs/ClipIndex"
+            }
+          },
+          "required": [
+            "clip"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "blendTree": {
+              "$ref": "#/$defs/BlendTree"
+            }
+          },
+          "required": [
+            "blendTree"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ClipIndex": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "BlendTree": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "algorithm": {
+          "$ref": "#/$defs/BlendAlgorithm"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "algorithm"
+      ]
+    },
+    "BlendAlgorithm": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "simple1D"
+            },
+            "blendParameter": {
+              "type": "string"
+            },
+            "children": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Child1D"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "blendParameter",
+            "children"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "simpleDirectional2D"
+            },
+            "blendParameter": {
+              "type": "string"
+            },
+            "blendParameterY": {
+              "type": "string"
+            },
+            "children": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Child2D"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "blendParameter",
+            "blendParameterY",
+            "children"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "freeformDirectional2D"
+            },
+            "blendParameter": {
+              "type": "string"
+            },
+            "blendParameterY": {
+              "type": "string"
+            },
+            "children": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Child2D"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "blendParameter",
+            "blendParameterY",
+            "children"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "freeformCartesian2D"
+            },
+            "blendParameter": {
+              "type": "string"
+            },
+            "blendParameterY": {
+              "type": "string"
+            },
+            "children": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Child2D"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "blendParameter",
+            "blendParameterY",
+            "children"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "direct"
+            },
+            "normalizedBlendValues": {
+              "type": "boolean"
+            },
+            "children": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ChildDirect"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "normalizedBlendValues",
+            "children"
+          ]
+        }
+      ]
+    },
+    "Child1D": {
+      "type": "object",
+      "properties": {
+        "motion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Motion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "threshold": {
+          "type": "number",
+          "format": "float"
+        },
+        "timeScale": {
+          "type": "number",
+          "format": "float"
+        },
+        "cycleOffset": {
+          "type": "number",
+          "format": "float"
+        },
+        "mirror": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "threshold",
+        "timeScale",
+        "cycleOffset",
+        "mirror"
+      ]
+    },
+    "Child2D": {
+      "type": "object",
+      "properties": {
+        "motion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Motion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "position": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "timeScale": {
+          "type": "number",
+          "format": "float"
+        },
+        "cycleOffset": {
+          "type": "number",
+          "format": "float"
+        },
+        "mirror": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "position",
+        "timeScale",
+        "cycleOffset",
+        "mirror"
+      ]
+    },
+    "ChildDirect": {
+      "type": "object",
+      "properties": {
+        "motion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Motion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "directBlendParameter": {
+          "type": "string"
+        },
+        "timeScale": {
+          "type": "number",
+          "format": "float"
+        },
+        "cycleOffset": {
+          "type": "number",
+          "format": "float"
+        },
+        "mirror": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "directBlendParameter",
+        "timeScale",
+        "cycleOffset",
+        "mirror"
+      ]
+    },
+    "BehaviourIndex": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "Transition": {
+      "type": "object",
+      "properties": {
+        "destination": {
+          "$ref": "#/$defs/Destination"
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Condition"
+          }
+        },
+        "exitTime": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "float"
+        },
+        "duration": {
+          "$ref": "#/$defs/Duration"
+        },
+        "offset": {
+          "type": "number",
+          "format": "float"
+        },
+        "interruptionSource": {
+          "$ref": "#/$defs/InterruptionSource"
+        },
+        "orderedInterruption": {
+          "type": "boolean"
+        },
+        "canTransitionToSelf": {
+          "type": "boolean"
+        },
+        "mute": {
+          "type": "boolean"
+        },
+        "solo": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "destination",
+        "conditions",
+        "duration",
+        "offset",
+        "interruptionSource",
+        "orderedInterruption",
+        "canTransitionToSelf",
+        "mute",
+        "solo"
+      ]
+    },
+    "Destination": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "state"
+            },
+            "id": {
+              "$ref": "#/$defs/StateId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "stateMachine"
+            },
+            "id": {
+              "$ref": "#/$defs/StateMachineId"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "id"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "exit"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ]
+        }
+      ]
+    },
+    "Condition": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/ConditionMode"
+        },
+        "parameter": {
+          "type": "string"
+        },
+        "threshold": {
+          "type": "number",
+          "format": "float"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "parameter",
+        "threshold"
+      ]
+    },
+    "ConditionMode": {
+      "type": "string",
+      "enum": [
+        "if",
+        "ifNot",
+        "greater",
+        "less",
+        "equals",
+        "notEqual"
+      ]
+    },
+    "Duration": {
+      "oneOf": [
+        {
+          "description": "Seconds.",
+          "type": "object",
+          "properties": {
+            "fixed": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "required": [
+            "fixed"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "description": "A fraction of the source state's length.",
+          "type": "object",
+          "properties": {
+            "normalized": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "required": [
+            "normalized"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "InterruptionSource": {
+      "type": "string",
+      "enum": [
+        "none",
+        "source",
+        "destination",
+        "sourceThenDestination",
+        "destinationThenSource"
+      ]
+    },
+    "EntryTransition": {
+      "type": "object",
+      "properties": {
+        "destination": {
+          "$ref": "#/$defs/Destination"
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Condition"
+          }
+        },
+        "mute": {
+          "type": "boolean"
+        },
+        "solo": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "destination",
+        "conditions",
+        "mute",
+        "solo"
+      ]
+    },
+    "SyncedState": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/StateId"
+        },
+        "motion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Motion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "behaviours": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BehaviourIndex"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "behaviours"
+      ]
+    },
+    "Behaviour": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "parameterDriver"
+            },
+            "localOnly": {
+              "type": "boolean"
+            },
+            "parameters": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/DriverEntry"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "localOnly",
+            "parameters"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "trackingControl"
+            },
+            "head": {
+              "$ref": "#/$defs/TrackingType"
+            },
+            "leftHand": {
+              "$ref": "#/$defs/TrackingType"
+            },
+            "rightHand": {
+              "$ref": "#/$defs/TrackingType"
+            },
+            "hip": {
+              "$ref": "#/$defs/TrackingType"
+            },
+            "leftFoot": {
+              "$ref": "#/$defs/TrackingType"
+            },
+            "rightFoot": {
+              "$ref": "#/$defs/TrackingType"
+            },
+            "leftFingers": {
+              "$ref": "#/$defs/TrackingType"
+            },
+            "rightFingers": {
+              "$ref": "#/$defs/TrackingType"
+            },
+            "eyes": {
+              "$ref": "#/$defs/TrackingType"
+            },
+            "mouth": {
+              "$ref": "#/$defs/TrackingType"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "head",
+            "leftHand",
+            "rightHand",
+            "hip",
+            "leftFoot",
+            "rightFoot",
+            "leftFingers",
+            "rightFingers",
+            "eyes",
+            "mouth"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "locomotionControl"
+            },
+            "disableLocomotion": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "disableLocomotion"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "playableLayerControl"
+            },
+            "layer": {
+              "$ref": "#/$defs/ControlledLayer"
+            },
+            "goalWeight": {
+              "type": "number",
+              "format": "float"
+            },
+            "blendDuration": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "layer",
+            "goalWeight",
+            "blendDuration"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "animatorLayerControl"
+            },
+            "playable": {
+              "$ref": "#/$defs/ControlledLayer"
+            },
+            "layer": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "goalWeight": {
+              "type": "number",
+              "format": "float"
+            },
+            "blendDuration": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "playable",
+            "layer",
+            "goalWeight",
+            "blendDuration"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "temporaryPoseSpace"
+            },
+            "enterPoseSpace": {
+              "type": "boolean"
+            },
+            "fixedDelay": {
+              "type": "boolean"
+            },
+            "delayTime": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "enterPoseSpace",
+            "fixedDelay",
+            "delayTime"
+          ]
+        }
+      ]
+    },
+    "DriverEntry": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "set"
+            },
+            "name": {
+              "type": "string"
+            },
+            "value": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "name",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "add"
+            },
+            "name": {
+              "type": "string"
+            },
+            "value": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "name",
+            "value"
+          ]
+        },
+        {
+          "description": "A bool destination uses `chance`; int and float destinations draw from `min..=max`.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "random"
+            },
+            "name": {
+              "type": "string"
+            },
+            "valueMin": {
+              "type": "number",
+              "format": "float"
+            },
+            "valueMax": {
+              "type": "number",
+              "format": "float"
+            },
+            "chance": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "name",
+            "valueMin",
+            "valueMax",
+            "chance"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "copy"
+            },
+            "source": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "convertRange": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ConvertRange"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "source",
+            "name"
+          ]
+        }
+      ]
+    },
+    "ConvertRange": {
+      "type": "object",
+      "properties": {
+        "sourceMin": {
+          "type": "number",
+          "format": "float"
+        },
+        "sourceMax": {
+          "type": "number",
+          "format": "float"
+        },
+        "destMin": {
+          "type": "number",
+          "format": "float"
+        },
+        "destMax": {
+          "type": "number",
+          "format": "float"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "sourceMin",
+        "sourceMax",
+        "destMin",
+        "destMax"
+      ]
+    },
+    "TrackingType": {
+      "type": "string",
+      "enum": [
+        "noChange",
+        "tracking",
+        "animation"
+      ]
+    },
+    "ControlledLayer": {
+      "type": "string",
+      "enum": [
+        "action",
+        "fx",
+        "gesture",
+        "additive"
+      ]
+    },
+    "Clip": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "length": {
+          "description": "Seconds.",
+          "type": "number",
+          "format": "float"
+        },
+        "loop": {
+          "type": "boolean"
+        },
+        "curves": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Curve"
+          }
+        },
+        "slotCurves": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SlotCurve"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "length",
+        "loop",
+        "curves",
+        "slotCurves"
+      ]
+    },
+    "Curve": {
+      "type": "object",
+      "properties": {
+        "binding": {
+          "$ref": "#/$defs/Binding"
+        },
+        "curve": {
+          "$ref": "#/$defs/AnimationCurve"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "binding",
+        "curve"
+      ]
+    },
+    "Binding": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "nodeActive"
+            },
+            "node": {
+              "$ref": "#/$defs/NodeIndex"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "node"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "rendererEnabled"
+            },
+            "node": {
+              "$ref": "#/$defs/NodeIndex"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "node"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "blendShape"
+            },
+            "node": {
+              "$ref": "#/$defs/NodeIndex"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "node",
+            "name"
+          ]
+        },
+        {
+          "description": "`property` is the shader property, with `.r`/`.x`-style component suffixes as Unity binds them.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "materialProperty"
+            },
+            "node": {
+              "$ref": "#/$defs/NodeIndex"
+            },
+            "property": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "node",
+            "property"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "transform"
+            },
+            "node": {
+              "$ref": "#/$defs/NodeIndex"
+            },
+            "property": {
+              "$ref": "#/$defs/TransformProperty"
+            },
+            "component": {
+              "$ref": "#/$defs/Axis"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "node",
+            "property",
+            "component"
+          ]
+        },
+        {
+          "description": "Unity's humanoid muscle or root curve name.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "muscle"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "animatorParameter"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "physBone"
+            },
+            "index": {
+              "$ref": "#/$defs/PhysBoneIndex"
+            },
+            "field": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "index",
+            "field"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "constraint"
+            },
+            "index": {
+              "$ref": "#/$defs/ConstraintIndex"
+            },
+            "field": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "index",
+            "field"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "contactSender"
+            },
+            "index": {
+              "$ref": "#/$defs/ContactIndex"
+            },
+            "field": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "index",
+            "field"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "contactReceiver"
+            },
+            "index": {
+              "$ref": "#/$defs/ContactIndex"
+            },
+            "field": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "index",
+            "field"
+          ]
+        }
+      ]
+    },
+    "TransformProperty": {
+      "type": "string",
+      "enum": [
+        "translation",
+        "rotation",
+        "eulerRotation",
+        "scale"
+      ]
+    },
+    "Axis": {
+      "type": "string",
+      "enum": [
+        "x",
+        "y",
+        "z",
+        "w"
+      ]
+    },
+    "PhysBoneIndex": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "ConstraintIndex": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "ContactIndex": {
+      "description": "Into the senders or the receivers, as the binding names.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "SlotCurve": {
+      "description": "A material swap: which material fills a renderer's slot over time.",
+      "type": "object",
+      "properties": {
+        "renderer": {
+          "$ref": "#/$defs/NodeIndex"
+        },
+        "slot": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SlotKey"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "renderer",
+        "slot",
+        "keys"
+      ]
+    },
+    "SlotKey": {
+      "type": "object",
+      "properties": {
+        "time": {
+          "type": "number",
+          "format": "float"
+        },
+        "material": {
+          "$ref": "#/$defs/MaterialIndex"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "time",
+        "material"
+      ]
+    },
+    "Unsupported": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "count"
+      ]
+    }
+  }
+}

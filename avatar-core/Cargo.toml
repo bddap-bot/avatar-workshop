@@ -1,0 +1,11 @@
+[package]
+name = "avatar-core"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "The Avatar Workshop avatar model: its types, the .glb reader and writer, and the JSON schema"
+
+[dependencies]
+schemars = "1.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }

@@ -47,7 +47,8 @@ nodes, meshes (one primitive per renderer material slot, in slot order), skins w
 morph targets with normals, images and samplers. Each glTF material is a plain PBR fallback for generic viewers;
 the shading the runtime uses is the `AW_avatar.materials` record of the same index.
 
-`AW_avatar` sections. Node, mesh, material and texture references are glTF indices.
+`AW_avatar` sections. Node, mesh, material and texture references are glTF indices; a blendshape is named
+by its mesh's `extras.targetNames` entry.
 
 | Section | Contents |
 |---|---|
