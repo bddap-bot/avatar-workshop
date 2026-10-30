@@ -1,0 +1,12 @@
+{
+  "name": "com.avatar-workshop.reference",
+  "displayName": "Avatar Workshop reference harness",
+  "version": "0.1.0",
+  "unity": "2022.3",
+  "description": "Batch-mode recorder of VRChat avatar behaviour under the SDK's editor simulation and Av3Emulator, plus a synthetic fixture avatar.",
+  "license": "MIT OR Apache-2.0",
+  "vpmDependencies": {
+    "com.vrchat.avatars": ">=3.7.0",
+    "lyuma.av3emulator": ">=3.4.0"
+  }
+}

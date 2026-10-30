@@ -1,0 +1,19 @@
+{
+  "name": "AvatarWorkshop.Reference.Editor",
+  "rootNamespace": "AvatarWorkshop.Reference",
+  "references": [
+    "VRC.SDKBase",
+    "VRC.SDK3A",
+    "VRC.SDKBase.Editor",
+    "VRC.SDK3A.Editor",
+    "lyuma.av3emulator"
+  ],
+  "includePlatforms": ["Editor"],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

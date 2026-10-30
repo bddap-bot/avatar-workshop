@@ -132,7 +132,7 @@ contacts and an open-source avatar emulator for the animator and menu. It record
 body and hand motion, every menu control swept, built-in parameters stepped. The core's output on the same inputs
 is compared trace for trace: PhysBone tip positions relative to chain length, parameter and state sequences, node
 states, blendshape weights, material property values; renderers are compared by image at matched camera and light.
-A change that moves a metric away from the reference does not land.
+A change that moves a metric away from the reference does not land. The harness is `reference/`, described in the README.
 
 ## What goes
 

@@ -134,6 +134,56 @@ render modes, optional features, linear colours and malformed input.
 The seven checks cover shared targets, separate meshes, neutral reset, empty
 input, clamping and reusable binding data. No asset downloads are needed.
 
+## Reference harness
+
+`reference/` is a Unity editor package that records how an avatar behaves under the VRChat SDK,
+for comparing runtimes against it, as `docs/model.md` ("Measurement") describes. It needs
+Unity 2022.3 with graphics (a display; Xvfb with software GL works), `com.vrchat.avatars` 3.7 or
+later and [Av3Emulator](https://github.com/lyuma/Av3Emulator) 3.4 (MIT) in the avatar's project;
+the SDK and the emulator are installed there, never copied here.
+
+`reference/run.sh PROJECT OUT [SCENE] [AVATAR]` adds the package to `PROJECT`, opens `SCENE`, enters play
+mode in batch mode (the emulator runs the SDK's build preprocess, so build-tool output is what is
+recorded) and drives the avatar at a fixed 60 Hz step with one scripted input: rest, six seconds of
+root and arm motion, settling, every expression-menu control swept (each toggle and button to its
+non-default value, each radial at 0, 0.25, 0.5, 0.75 and 1, each puppet axis to its extremes, inside
+its submenus), then the built-in parameters stepped (gestures, visemes, locomotion, tracking and
+state flags). `UNITY` names the editor command. With no `SCENE`, it generates the fixture into
+`PROJECT`'s `Assets/AWFixture` and records it, so point it at a scratch project. It restores
+`PROJECT`'s package manifest on exit and refuses an `OUT` that holds something other than an earlier recording.
+`OUT` receives:
+
+| File | Contents |
+|---|---|
+| `steps.tsv` | each step: index, first frame, frames, menu control, label, parameters set |
+| `params.tsv` | every animator parameter on each change, values printed round-trip exact |
+| `states.tsv` | every playable layer's state and transition on each change |
+| `values.tsv` | node active, renderer enabled, material slots, blendshape weights, animated material properties and animated transforms, on each change |
+| `tips.tsv`, `chains.tsv` | every PhysBone leaf (with its endpoint) each frame, in the avatar root's space, and its rest chain length |
+| `track.tsv` | the avatar root, head, hands and hips each frame, for replaying the same input elsewhere |
+| `render/`, `renders.tsv`, `camera.json` | a render at the end of every swept step from a fixed camera and light |
+| `menu.tsv` | every menu control: indexed path, name path (control names joined by `/`), type, parameter |
+| `coverage.json`, `meta.json` | the avatar's feature counts; versions and totals |
+
+The fixture (`reference/Editor/Fixture.cs`, licensed as this repository) is a synthetic humanoid
+authored for the harness: PhysBones covering both immobile types, every limit type, gravity with
+falloff, stretch and squish, curves, the three multi-child types, an endpoint and both versions
+and integrations, colliders of every shape including an inside-bounds sphere; a contact pair;
+the six constraint kinds, one frozen to world; a menu with every control type; transitions with fixed and normalised
+durations; every blend-tree algorithm; parameter drivers of each kind, one local-only; mixed write defaults. A
+fixture recording fails if any of these is missing from `coverage.json`.
+`reference/check.sh PROJECT OUT` records the fixture twice and requires every output but the log
+and `tips.tsv` to be byte-identical, and PhysBone tips within 1e-5 m.
+
+A runtime replays the recording from `track.tsv` and `steps.tsv` and writes `tips.tsv` and `render/`
+in the same layout; `reference/compare.py REFERENCE RUNTIME` (Python 3 with numpy and Pillow) scores
+it: PhysBone tip RMS error over chain length (a leaf or frame the runtime lacks counts as unmoving), the
+fraction of menu controls that match, and mean image error. A control matches when the runtime's
+`menu.tsv` lists its name path in the first column and each of its swept renders changes the same region as
+the reference's (intersection over union of changed pixels at least 0.5, or both unchanged); a control
+the runtime does not offer fails. It writes every source control's result to `compare-controls.tsv` and each
+swept step's to `compare-steps.tsv` in `RUNTIME`.
+
 ## License
 
 Original code is available under either [MIT](LICENSE-MIT) or
