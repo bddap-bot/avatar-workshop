@@ -18,7 +18,11 @@ MATCH_IOU = 0.5
 
 def rows(path):
     with open(path, newline="") as f:
-        return [r for r in csv.reader(f, delimiter="\t")]
+        return [r for r in csv.reader(f, delimiter="\t", quoting=csv.QUOTE_NONE)]
+
+
+def plain(name):
+    return " ".join(name.split())
 
 
 def tips(path):
@@ -99,9 +103,16 @@ def main(reference, runtime):
 
     offered = collections.Counter()
     if (runtime / "menu.tsv").exists():
-        offered.update(r[0] for r in rows(runtime / "menu.tsv") if r)
+        pending = []
+        for line in (runtime / "menu.tsv").read_text().splitlines():
+            if "\t" not in line:
+                pending.append(line)
+                continue
+            offered[plain(" ".join(pending + [line.split("\t", 1)[0]]))] += 1
+            pending = []
     menu, listing = {}, []
     for path, named, kind, *_ in (r for r in rows(reference / "menu.tsv") if r):
+        named = plain(named)
         present = offered[named] > 0
         if present:
             offered[named] -= 1

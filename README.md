@@ -160,8 +160,8 @@ state flags). `UNITY` names the editor command. With no `SCENE`, it generates th
 | `params.tsv` | every animator parameter on each change, values printed round-trip exact |
 | `states.tsv` | every playable layer's state and transition on each change |
 | `values.tsv` | node active, renderer enabled, material slots, blendshape weights, animated material properties and animated transforms, on each change |
-| `tips.tsv`, `chains.tsv` | every PhysBone leaf (with its endpoint) each frame, in the avatar root's space, and its rest chain length |
-| `track.tsv` | the avatar root, head, hands and hips each frame, for replaying the same input elsewhere |
+| `tips.tsv`, `chains.tsv` | every PhysBone leaf (with its endpoint) each frame, in metres from the avatar root along its axes (its scale ignored), and its rest chain length |
+| `track.tsv` | the avatar root in the world, and its head, hands and hips in metres from the root along its axes, each frame, for replaying the same input elsewhere |
 | `render/`, `renders.tsv`, `camera.json` | a render at the end of every swept step from a fixed camera and light |
 | `menu.tsv` | every menu control: indexed path, name path (control names joined by `/`), type, parameter |
 | `coverage.json`, `meta.json` | the avatar's feature counts; versions and totals |
@@ -180,7 +180,8 @@ A runtime replays the recording from `track.tsv` and `steps.tsv` and writes `tip
 in the same layout; `reference/compare.py REFERENCE RUNTIME` (Python 3 with numpy and Pillow) scores
 it: PhysBone tip RMS error over chain length (a leaf or frame the runtime lacks counts as unmoving), the
 fraction of menu controls that match, and mean image error. A control matches when the runtime's
-`menu.tsv` lists its name path in the first column and each of its swept renders changes the same region as
+`menu.tsv` lists its name path in the first column, before a tab (names compare with runs of whitespace
+collapsed, so a name may span lines), and each of its swept renders changes the same region as
 the reference's (intersection over union of changed pixels at least 0.5, or both unchanged); a control
 the runtime does not offer fails. It writes every source control's result to `compare-controls.tsv` and each
 swept step's to `compare-steps.tsv` in `RUNTIME`.

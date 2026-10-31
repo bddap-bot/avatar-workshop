@@ -209,6 +209,8 @@ namespace AvatarWorkshop.Reference
 
         string F(float v) => v.ToString("R", inv);
 
+        static string Clean(string name) => string.Join(" ", (name ?? "").Split((char[])null, StringSplitOptions.RemoveEmptyEntries));
+
         string Xf(Vector3 p, Quaternion q) => $"{F(p.x)},{F(p.y)},{F(p.z)},{F(q.x)},{F(q.y)},{F(q.z)},{F(q.w)}";
 
         public void Inputs()
@@ -258,13 +260,13 @@ namespace AvatarWorkshop.Reference
             foreach (var tip in tips)
             {
                 if (tip.Leaf == null) continue;
-                var p = root.InverseTransformPoint(tip.Leaf.TransformPoint(tip.Endpoint));
+                var p = Local(tip.Leaf.TransformPoint(tip.Endpoint));
                 tipsOut.Write($"{f}\t{tip.Id}\t{F(p.x)}\t{F(p.y)}\t{F(p.z)}\n");
             }
             var line = new StringBuilder(f);
             line.Append('\t').Append(Xf(root.position, root.rotation));
             foreach (var b in tracked)
-                line.Append('\t').Append(b == null ? "-" : Xf(root.InverseTransformPoint(b.position), Quaternion.Inverse(root.rotation) * b.rotation));
+                line.Append('\t').Append(b == null ? "-" : Xf(Local(b.position), Quaternion.Inverse(root.rotation) * b.rotation));
             trackOut.Write(line.Append('\n').ToString());
             var values = Values();
             foreach (var kv in values)
@@ -328,7 +330,7 @@ namespace AvatarWorkshop.Reference
             stepsOut = Open("steps.tsv");
             rendersOut = Open("renders.tsv");
             trackOut = Open("track.tsv");
-            trackOut.Write("frame\troot (world)\thead\tleft hand\tright hand\thips (each in root space: px,py,pz,qx,qy,qz,qw)\n");
+            trackOut.Write("frame\troot (world)\thead\tleft hand\tright hand\thips (each from the root position and rotation, its scale ignored, in metres: px,py,pz,qx,qy,qz,qw)\n");
             File.WriteAllText(Path.Combine(output, "chains.tsv"),
                 "tip\tlength\n" + string.Concat(tips.Select(t => $"{t.Id}\t{F(t.Length)}\n")));
             var coverage = Coverage.Count(root.gameObject);
@@ -342,6 +344,7 @@ namespace AvatarWorkshop.Reference
             {
                 ["avatar"] = avatarName,
                 ["fixture"] = fixture,
+                ["root_scale"] = new[] { root.lossyScale.x, root.lossyScale.y, root.lossyScale.z },
                 ["unity"] = Application.unityVersion,
                 ["rate"] = Harness.Rate,
                 ["steps"] = steps.Count,
@@ -380,7 +383,15 @@ namespace AvatarWorkshop.Reference
 
         StreamWriter Open(string name) => new StreamWriter(Path.Combine(output, name), false, new UTF8Encoding(false)) { NewLine = "\n" };
 
+        readonly Dictionary<Transform, string> paths = new Dictionary<Transform, string>();
+
         string PathOf(Transform t)
+        {
+            if (paths.TryGetValue(t, out var known)) return known;
+            return paths[t] = PathFrom(t);
+        }
+
+        string PathFrom(Transform t)
         {
             var parts = new List<string>();
             for (var x = t; x != null && x != root; x = x.parent) parts.Add(Segment(x));
@@ -396,7 +407,7 @@ namespace AvatarWorkshop.Reference
             return twin == 0 ? t.name : $"{t.name}#{twin}";
         }
 
-        Vector3 Local(Vector3 world) => root.InverseTransformPoint(world);
+        Vector3 Local(Vector3 world) => Quaternion.Inverse(root.rotation) * (world - root.position);
 
         void Tips(VRCPhysBoneBase pb)
         {
@@ -602,8 +613,8 @@ namespace AvatarWorkshop.Reference
             int index = 0;
             foreach (var c in menu.controls)
             {
-                var cpath = $"{path}{index++:00}:{c.name}";
-                var cnames = names + c.name;
+                var cpath = $"{path}{index++:00}:{Clean(c.name)}";
+                var cnames = names + Clean(c.name);
                 menuRows.Append($"{cpath}\t{cnames}\t{c.type}\t{c.parameter?.name}\n");
                 var open = new Dictionary<string, float>(held);
                 var p = c.parameter?.name;
@@ -663,7 +674,7 @@ namespace AvatarWorkshop.Reference
         void BeginStep(Step s)
         {
             foreach (var kv in s.Set) Apply(kv.Key, kv.Value);
-            stepsOut.Write($"{stepIndex}\t{frame}\t{s.Frames}\t{s.Control ?? "-"}\t{s.Label}\t{string.Join(",", s.Set.Select(kv => kv.Key + "=" + F(kv.Value)))}\n");
+            stepsOut.Write($"{stepIndex}\t{frame}\t{s.Frames}\t{s.Control ?? "-"}\t{Clean(s.Label)}\t{string.Join(",", s.Set.Select(kv => kv.Key + "=" + F(kv.Value)))}\n");
         }
 
         static string Q(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\t", "\\t") + "\"";
@@ -679,12 +690,12 @@ namespace AvatarWorkshop.Reference
             var bounds = renderers.Count > 0 ? renderers[0].bounds : new Bounds(root.position + Vector3.up, Vector3.one);
             foreach (var r in renderers) bounds.Encapsulate(r.bounds);
             var height = Mathf.Max(bounds.size.y, 0.5f);
-            var center = root.InverseTransformPoint(bounds.center);
+            var center = Local(bounds.center);
             const float fov = 30;
             var distance = height * 0.5f * 1.15f / Mathf.Tan(fov * 0.5f * Mathf.Deg2Rad) + bounds.extents.z;
             var camPos = new Vector3(center.x, center.y, center.z + distance);
             var go = new GameObject("AWCamera");
-            go.transform.position = root.TransformPoint(camPos);
+            go.transform.position = root.position + root.rotation * camPos;
             go.transform.rotation = root.rotation * Quaternion.Euler(0, 180, 0);
             camera = go.AddComponent<Camera>();
             camera.fieldOfView = fov;
@@ -706,7 +717,7 @@ namespace AvatarWorkshop.Reference
             light.transform.rotation = root.rotation * lightRot;
             File.WriteAllText(Path.Combine(output, "camera.json"), Json(new Dictionary<string, object>
             {
-                ["space"] = "avatar root, Unity axes (left-handed, +Z forward, metres)",
+                ["space"] = "avatar root position and rotation, unscaled: Unity axes (left-handed, +Z forward), metres",
                 ["position"] = new[] { camPos.x, camPos.y, camPos.z },
                 ["rotation_euler"] = new[] { 0f, 180f, 0f },
                 ["fov_vertical"] = fov,
