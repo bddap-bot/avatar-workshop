@@ -1010,7 +1010,7 @@
       "type": "object",
       "properties": {
         "active": {
-          "description": "After evaluating every playable layer's default state at time 0.",
+          "description": "As the uploaded avatar holds it; the animator's default states apply at runtime.",
           "type": "boolean"
         }
       },

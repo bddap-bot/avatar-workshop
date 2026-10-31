@@ -49,6 +49,14 @@ fixture, and `cargo test` reads it. In a scratch project holding both packages, 
 `-awScene Assets/AWFixture/Fixture.unity`. `cargo run --example read -- <file.glb>...`, run in `avatar-core/`, reads exports and prints
 their sections and their `unsupported` report.
 
+`unity/check.sh <project> <out> [scene] [avatar]` checks an export against Unity itself. With
+`-awCensus <census.json>` the exporter also writes what Unity holds for the preprocessed avatar, read
+straight from Unity's APIs: every serialized PhysBone field, component counts by kind, renderer slots,
+every vertex stream, menus, controllers and curve bindings. The script exports with it, records the wall
+time and peak RSS, and runs `avatar-core`'s `census` example, which prints one line per category and fails
+when a count, a PhysBone field or any vertex value differs, or when a component the model cannot hold is
+missing from `unsupported`.
+
 ## Expression mixer
 
 Preload `res://addons/avatar_workshop/expression_mixer.gd` and call

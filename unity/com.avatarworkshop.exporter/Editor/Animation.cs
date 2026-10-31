@@ -5,7 +5,6 @@ using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 using UnityEngine.Animations;
-using UnityEngine.Playables;
 using VRC.Dynamics;
 using VRC.SDK3.Avatars.Components;
 using VRC.SDK3.Avatars.ScriptableObjects;
@@ -81,6 +80,8 @@ namespace AvatarWorkshop.Exporter
             public readonly Dictionary<AnimatorState, int> states = new Dictionary<AnimatorState, int>();
             public readonly Dictionary<AnimatorStateMachine, int> machines = new Dictionary<AnimatorStateMachine, int>();
             public Dictionary<AnimationClip, AnimationClip> overrides = new Dictionary<AnimationClip, AnimationClip>();
+            public readonly HashSet<AnimatorState> layerStates = new HashSet<AnimatorState>();
+            public readonly HashSet<AnimatorStateMachine> layerMachines = new HashSet<AnimatorStateMachine>();
         }
 
         Obj Controller(RuntimeAnimatorController runtime)
@@ -133,6 +134,10 @@ namespace AvatarWorkshop.Exporter
                 }
                 else
                 {
+                    ids.layerStates.Clear();
+                    ids.layerStates.UnionWith(States(l.stateMachine));
+                    ids.layerMachines.Clear();
+                    ids.layerMachines.UnionWith(Machines(l.stateMachine));
                     record.Add("content", new Obj { { "type", "stateMachine" }, { "stateMachine", Machine(l.stateMachine, null, ids) } });
                 }
                 layers.Add(record);
@@ -146,6 +151,14 @@ namespace AvatarWorkshop.Exporter
             foreach (var s in m.states) yield return s.state;
             foreach (var sub in m.stateMachines)
                 foreach (var s in States(sub.stateMachine)) yield return s;
+        }
+
+        static IEnumerable<AnimatorStateMachine> Machines(AnimatorStateMachine m)
+        {
+            if (m == null) yield break;
+            yield return m;
+            foreach (var sub in m.stateMachines)
+                foreach (var s in Machines(sub.stateMachine)) yield return s;
         }
 
         static void Number(AnimatorStateMachine m, ControllerIds ids)
@@ -162,10 +175,10 @@ namespace AvatarWorkshop.Exporter
             o.Add("states", m.states.Select(s => (object)StateRecord(s.state, ids)).ToList());
             o.Add("stateMachines", m.stateMachines.Select(s => (object)Machine(s.stateMachine, m, ids)).ToList());
             if (m.defaultState != null && ids.states.TryGetValue(m.defaultState, out int d)) o.Add("defaultState", d);
-            o.Add("anyStateTransitions", m.anyStateTransitions.Select(t => (object)Transition(t, ids)).ToList());
-            o.Add("entryTransitions", m.entryTransitions.Select(t => (object)Entry(t, ids)).ToList());
+            o.Add("anyStateTransitions", m.anyStateTransitions.Select(t => (object)Transition(t, ids)).Where(t => t != null).ToList());
+            o.Add("entryTransitions", m.entryTransitions.Select(t => (object)Entry(t, ids)).Where(t => t != null).ToList());
             var exits = parent == null ? new AnimatorTransition[0] : parent.GetStateMachineTransitions(m);
-            o.Add("stateMachineTransitions", exits.Select(t => (object)Entry(t, ids)).ToList());
+            o.Add("stateMachineTransitions", exits.Select(t => (object)Entry(t, ids)).Where(t => t != null).ToList());
             o.Add("behaviours", Behaviours(m.behaviours));
             return o;
         }
@@ -185,12 +198,17 @@ namespace AvatarWorkshop.Exporter
             o.Add("writeDefaults", s.writeDefaultValues);
             o.Add("ikOnFeet", s.iKOnFeet);
             o.Add("behaviours", Behaviours(s.behaviours));
-            o.Add("transitions", s.transitions.Select(t => (object)Transition(t, ids)).ToList());
+            o.Add("transitions", s.transitions.Select(t => (object)Transition(t, ids)).Where(t => t != null).ToList());
             return o;
         }
 
         Obj Destination(AnimatorTransitionBase t, ControllerIds ids)
         {
+            if ((t.destinationState != null && !ids.layerStates.Contains(t.destinationState)) || (t.destinationStateMachine != null && !ids.layerMachines.Contains(t.destinationStateMachine)))
+            {
+                Drop("transition to another layer's state");
+                return null;
+            }
             if (t.destinationState != null && ids.states.TryGetValue(t.destinationState, out int s)) return new Obj { { "type", "state" }, { "id", s } };
             if (t.destinationStateMachine != null && ids.machines.TryGetValue(t.destinationStateMachine, out int m)) return new Obj { { "type", "stateMachine" }, { "id", m } };
             if (!t.isExit) Drop("transition with no destination");
@@ -205,7 +223,8 @@ namespace AvatarWorkshop.Exporter
 
         Obj Transition(AnimatorStateTransition t, ControllerIds ids)
         {
-            var o = new Obj { { "destination", Destination(t, ids) }, { "conditions", Conditions(t) } };
+            if (!(Destination(t, ids) is Obj destination)) return null;
+            var o = new Obj { { "destination", destination }, { "conditions", Conditions(t) } };
             if (t.hasExitTime) o.Add("exitTime", t.exitTime);
             o.Add("duration", t.hasFixedDuration ? new Obj { { "fixed", t.duration } } : new Obj { { "normalized", t.duration } });
             o.Add("offset", t.offset);
@@ -222,8 +241,9 @@ namespace AvatarWorkshop.Exporter
             return o;
         }
 
-        Obj Entry(AnimatorTransition t, ControllerIds ids) =>
-            new Obj { { "destination", Destination(t, ids) }, { "conditions", Conditions(t) }, { "mute", t.mute }, { "solo", t.solo } };
+        Obj Entry(AnimatorTransition t, ControllerIds ids) => Destination(t, ids) is Obj destination
+            ? new Obj { { "destination", destination }, { "conditions", Conditions(t) }, { "mute", t.mute }, { "solo", t.solo } }
+            : null;
 
         object MotionRecord(Motion m, ControllerIds ids)
         {
@@ -370,9 +390,10 @@ namespace AvatarWorkshop.Exporter
             {
                 var t = Path(binding.path);
                 const string prefix = "m_Materials.Array.data[";
-                if (t != null && typeof(Renderer).IsAssignableFrom(binding.type) && binding.propertyName.StartsWith(prefix) && t.GetComponent(binding.type) != null
+                if (t != null && Drawn(binding.type) && binding.propertyName.StartsWith(prefix) && t.GetComponent(binding.type) != null
                     && int.TryParse(binding.propertyName.Substring(prefix.Length).TrimEnd(']'), out int slot))
                 {
+                    if (slot >= ((Renderer)t.GetComponent(binding.type)).sharedMaterials.Length) { Drop("animated material slot past the renderer's slots"); continue; }
                     var keys = AnimationUtility.GetObjectReferenceCurve(clip, binding).Select(k => (object)new Obj { { "time", k.time }, { "material", Material(k.value as Material) } }).ToList();
                     slots.Add(new Obj { { "renderer", nodeIndex[t] }, { "slot", slot }, { "keys", keys } });
                 }
@@ -393,6 +414,8 @@ namespace AvatarWorkshop.Exporter
 
         static readonly string[] Axes = { "x", "y", "z", "w" };
 
+        static bool Drawn(Type t) => typeof(SkinnedMeshRenderer).IsAssignableFrom(t) || typeof(MeshRenderer).IsAssignableFrom(t);
+
         (Obj, bool) Binding(EditorCurveBinding b)
         {
             var t = Path(b.path);
@@ -412,7 +435,7 @@ namespace AvatarWorkshop.Exporter
                     return (new Obj { { "type", "transform" }, { "node", node }, { "property", kind }, { "component", axis } }, negate);
                 }
             }
-            if (typeof(Renderer).IsAssignableFrom(b.type) && t.GetComponent(b.type) != null)
+            if (Drawn(b.type) && t.GetComponent(b.type) != null)
             {
                 if (prop == "m_Enabled") return (new Obj { { "type", "rendererEnabled" }, { "node", node } }, false);
                 if (prop.StartsWith("blendShape.") && b.type == typeof(SkinnedMeshRenderer)) return (new Obj { { "type", "blendShape" }, { "node", node }, { "name", prop.Substring("blendShape.".Length) } }, false);
@@ -448,69 +471,6 @@ namespace AvatarWorkshop.Exporter
             if (name.Contains("rotation")) return axis == "y" || axis == "z";
             if (name.Contains("position") || name.Contains("translation") || name.Contains("axis") || name.Contains("vector")) return axis == "x";
             return false;
-        }
-
-        // Unity's own animator runs every custom playable layer's controller once, at time 0, with the
-        // expression parameters at their defaults, so node and component states are the ones VRChat starts from.
-        void EvaluateInitialState()
-        {
-            var animator = avatar.GetComponent<Animator>();
-            var layers = PlayableLayers().Where(l => Custom(descriptor, l)).ToList();
-            if (animator == null || layers.Count == 0) return;
-            var previous = animator.runtimeAnimatorController;
-            animator.runtimeAnimatorController = null;
-            var graph = PlayableGraph.Create("Avatar Workshop initial state");
-            try
-            {
-                graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-                var output = AnimationPlayableOutput.Create(graph, "avatar", animator);
-                var order = new[] { VRCAvatarDescriptor.AnimLayerType.Base, VRCAvatarDescriptor.AnimLayerType.Additive, VRCAvatarDescriptor.AnimLayerType.Gesture, VRCAvatarDescriptor.AnimLayerType.Action, VRCAvatarDescriptor.AnimLayerType.FX };
-                var running = order.Select(t => layers.FirstOrDefault(l => l.type == t)).Where(l => l.animatorController != null).ToList();
-                var mixer = AnimationLayerMixerPlayable.Create(graph, running.Count);
-                var playables = new List<AnimatorControllerPlayable>();
-                for (int i = 0; i < running.Count; i++)
-                {
-                    var p = AnimatorControllerPlayable.Create(graph, running[i].animatorController);
-                    graph.Connect(p, 0, mixer, i);
-                    // VRChat starts the Action layer at weight 0; a playable layer control raises it.
-                    mixer.SetInputWeight(i, running[i].type == VRCAvatarDescriptor.AnimLayerType.Action ? 0 : 1);
-                    if (running[i].type == VRCAvatarDescriptor.AnimLayerType.Additive) mixer.SetLayerAdditive((uint)i, true);
-                    if (running[i].mask != null) mixer.SetLayerMaskFromAvatarMask((uint)i, running[i].mask);
-                    playables.Add(p);
-                }
-                output.SetSourcePlayable(mixer);
-                foreach (var p in playables) SetDefaults(p);
-                graph.Evaluate(0);
-            }
-            finally
-            {
-                graph.Destroy();
-                animator.runtimeAnimatorController = previous;
-            }
-        }
-
-        void SetDefaults(AnimatorControllerPlayable p)
-        {
-            var values = new Dictionary<string, float>
-            {
-                ["IsLocal"] = 1, ["Grounded"] = 1, ["Upright"] = 1, ["VRMode"] = 1, ["TrackingType"] = 3, ["AvatarVersion"] = 3,
-                ["ScaleFactor"] = 1, ["ScaleFactorInverse"] = 1, ["EyeHeightAsMeters"] = descriptor.ViewPosition.y,
-            };
-            var ps = descriptor.customExpressions ? descriptor.expressionParameters : null;
-            if (ps?.parameters != null)
-                foreach (var e in ps.parameters)
-                    if (!string.IsNullOrEmpty(e.name)) values[e.name] = e.defaultValue;
-            for (int i = 0; i < p.GetParameterCount(); i++)
-            {
-                var param = p.GetParameter(i);
-                if (!values.TryGetValue(param.name, out float v)) continue;
-                switch (param.type)
-                {
-                    case AnimatorControllerParameterType.Float: p.SetFloat(param.nameHash, v); break;
-                    case AnimatorControllerParameterType.Int: p.SetInteger(param.nameHash, (int)v); break;
-                    case AnimatorControllerParameterType.Bool: p.SetBool(param.nameHash, v != 0); break;
-                }
-            }
         }
     }
 }

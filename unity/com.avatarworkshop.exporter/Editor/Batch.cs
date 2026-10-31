@@ -8,8 +8,9 @@ using VRC.SDK3.Avatars.Components;
 namespace AvatarWorkshop.Exporter
 {
     // Unity -batchmode -projectPath <project> -executeMethod AvatarWorkshop.Exporter.Batch.Run -awOut <file.glb>
-    //   [-awScene <scene path>] [-awAvatar <avatar object name>]
-    // Without -awAvatar the scene must hold exactly one active avatar.
+    //   [-awScene <scene path>] [-awAvatar <avatar object name>] [-awCensus <census.json>]
+    // Without -awAvatar the scene must hold exactly one active avatar. -awCensus also writes what Unity holds for the
+    // preprocessed avatar, which `avatar-core/examples/census.rs` compares the export against.
     public static class Batch
     {
         public static void Run()
@@ -26,8 +27,9 @@ namespace AvatarWorkshop.Exporter
                 var output = Arg("-awOut") ?? throw new ArgumentException("-awOut <file.glb> is required");
                 if (Arg("-awScene") is string scene) EditorSceneManager.OpenScene(scene, OpenSceneMode.Single);
                 var avatar = Find(Arg("-awAvatar"));
-                var report = Exporter.Export(avatar, output);
-                Debug.Log($"[aw] exported {avatar.name} to {report.Path}: {report.Nodes} nodes" + (report.MigratedDynamicBones ? ", DynamicBones migrated" : ""));
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                var report = Exporter.Export(avatar, output, Arg("-awCensus"));
+                Debug.Log($"[aw] exported {avatar.name} to {report.Path}: {report.Nodes} nodes in {clock.Elapsed.TotalSeconds:F1} s" + (report.MigratedDynamicBones ? ", DynamicBones migrated" : ""));
                 foreach (var kv in report.Unsupported) Debug.Log($"[aw] unsupported {kv.Value} × {kv.Key}");
                 code = 0;
             }

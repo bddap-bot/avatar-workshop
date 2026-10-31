@@ -24,7 +24,7 @@ whatever did not fit) has these losses, and they show as visible faults:
 | Per-material shader state (toon shader families' saved properties) | one atlas material with base colour only | normal, emission, matcap, rim, outline, two-sided and blended alpha lost |
 | Renderer material slots | inferred from the source mesh file's first-use order and names | wrong material on a submesh |
 | Visemes (15), eyelids, eye look | VRM expression presets and look-at range maps, or nothing | lip sync and blink lost or collapsed |
-| Initial visibility (the active state after the controller's default states run) | three encodings: omitted nodes, node-visibility extension, a side list | hidden-by-default props drawn when a reader honours the wrong encoding |
+| Initial visibility (the authored active state, then the controller's default states) | three encodings: omitted nodes, node-visibility extension, a side list | hidden-by-default props drawn when a reader honours the wrong encoding |
 | Humanoid and rest pose | VRM bone names; T-pose assumed | A-pose avatars stand differently per runtime |
 | Mesh (8+ bone weights, every UV set, vertex colours, all blendshapes with normals) | 4 weights, one UV set, blendshape budget baked into vertices | the importer edits meshes |
 
@@ -77,7 +77,7 @@ by its mesh's `extras.targetNames` entry.
 | `humanoid` | Unity HumanBodyBones name → node; the source's rest pose as given (no assumed T-pose); muscle limits from the human description |
 | `descriptor` | view position, lip-sync mode and the 15 viseme blendshapes, eyelid mode and shapes, eye bones and their rotation limits |
 | `renderers` | per mesh node: initially enabled, material slots |
-| `nodes` | per node: initially active, after evaluating every playable layer's default state at time 0 |
+| `nodes` | per node: active as the uploaded avatar holds it; the evaluation core's animator applies the default states |
 | `materials` | per material: shader family (`poiyomi`, `liltoon`, `vrchat-mobile`, `mtoon`, `standard`, `unknown`), version, and its saved properties as a typed map (floats, colours, vectors, texture references with tiling/offset, keywords); render queue, cull, blend and depth state |
 | `physbones` | per component: root, ignored nodes, endpoint, multi-child type, integration type and version, pull/spring (momentum)/stiffness/gravity/gravity falloff/immobile and immobile type, each with its curve, limit type and angles and rotation, radius with curve, max stretch, stretch motion, max squish, collider indices, allow collision/grabbing/posing filters, grab movement, snap to hand, parameter name, is-animated, reset-when-disabled, initially enabled |
 | `colliders` | per collider: node, shape (sphere, capsule, plane), position, rotation, radius, height, inside bounds, bones as spheres |

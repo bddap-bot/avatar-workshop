@@ -15,7 +15,7 @@ namespace AvatarWorkshop.Exporter
 
         // Exports the avatar as the SDK would upload it: a clone, DynamicBones migrated by the SDK's own
         // conversion, then the SDK's build preprocess (which runs every build-time tool and strips EditorOnly).
-        public static ExportReport Export(GameObject avatar, string path)
+        public static ExportReport Export(GameObject avatar, string path, string censusPath = null)
         {
             if (avatar.GetComponent<VRCAvatarDescriptor>() == null) throw new ArgumentException(avatar.name + " has no VRCAvatarDescriptor");
             var wasActive = avatar.activeSelf;
@@ -27,6 +27,7 @@ namespace AvatarWorkshop.Exporter
             {
                 bool migrated = MigrateDynamicBones(clone);
                 if (!VRCBuildPipelineCallbacks.OnPreprocessAvatar(clone)) throw new Exception("the SDK's build preprocess failed for " + avatar.name);
+                if (censusPath != null) Census.Write(clone, censusPath);
                 var export = new Export(clone);
                 export.Run(path);
                 return new ExportReport { Path = path, Nodes = export.NodeCount, Unsupported = export.Unsupported, MigratedDynamicBones = migrated };
@@ -118,16 +119,12 @@ namespace AvatarWorkshop.Exporter
             var menu = Menu();
             var layers = Layers();
 
-            // The default states run on the clone; everything read before this is the authored rest state.
-            EvaluateInitialState();
-
             model.Add("renderers", renderers.Select(r => (object)new Obj
             {
                 { "node", nodeIndex[r.transform] }, { "enabled", r.enabled },
                 { "materials", slots[r].Select(m => (object)Material(m)).ToList() },
             }).ToList());
             model.Add("nodes", nodes.Select(t => (object)new Obj { { "active", t.gameObject.activeSelf } }).ToList());
-            FillEnabled(physbones, constraints, contacts);
             model.Add("materials", materialRecords);
             model.Add("physbones", physbones.Select(p => (object)p.record).ToList());
             model.Add("colliders", colliders);

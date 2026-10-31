@@ -63,25 +63,22 @@ namespace AvatarWorkshop.Exporter
             var shaderName = shader != null ? shader.name : "";
             var family = Family(shaderName);
             if (family == "unknown") Drop("unknown shader " + shaderName);
-            var props = new SortedDictionary<string, object>(StringComparer.Ordinal);
-            var floats = new Dictionary<string, float>();
             var saved = new SerializedObject(m).FindProperty("m_SavedProperties");
+            var found = new Dictionary<string, List<(ShaderPropertyType[] types, Obj value, float? number)>>();
+            void Add(string name, ShaderPropertyType[] types, Obj value, float? number = null)
+            {
+                if (!found.TryGetValue(name, out var list)) found[name] = list = new List<(ShaderPropertyType[], Obj, float?)>();
+                list.Add((types, value, number));
+            }
             foreach (var (name, value) in Pairs(saved, "m_Floats"))
-            {
-                float f = value.floatValue;
-                floats[name] = f;
-                props[name] = new Obj { { "float", f } };
-            }
+                Add(name, new[] { ShaderPropertyType.Float, ShaderPropertyType.Range }, new Obj { { "float", value.floatValue } }, value.floatValue);
             foreach (var (name, value) in Pairs(saved, "m_Ints"))
-            {
-                floats[name] = value.intValue;
-                props[name] = new Obj { { "int", value.intValue } };
-            }
+                Add(name, new[] { ShaderPropertyType.Int }, new Obj { { "int", value.intValue } }, value.intValue);
             foreach (var (name, value) in Pairs(saved, "m_Colors"))
             {
                 var c = value.colorValue;
                 bool vector = shader != null && shader.FindPropertyIndex(name) is int pi && pi >= 0 && shader.GetPropertyType(pi) == ShaderPropertyType.Vector;
-                props[name] = new Obj { { vector ? "vector" : "color", new[] { c.r, c.g, c.b, c.a } } };
+                Add(name, new[] { ShaderPropertyType.Color, ShaderPropertyType.Vector }, new Obj { { vector ? "vector" : "color", new[] { c.r, c.g, c.b, c.a } } });
             }
             foreach (var (name, value) in Pairs(saved, "m_TexEnvs"))
             {
@@ -93,7 +90,21 @@ namespace AvatarWorkshop.Exporter
                 else if (tex != null) Drop(tex.GetType().Name + " material texture");
                 tp.Add("tiling", new[] { scale.x, scale.y });
                 tp.Add("offset", new[] { offset.x, offset.y });
-                props[name] = new Obj { { "texture", tp } };
+                Add(name, new[] { ShaderPropertyType.Texture }, new Obj { { "texture", tp } });
+            }
+            var props = new SortedDictionary<string, object>(StringComparer.Ordinal);
+            var floats = new Dictionary<string, float>();
+            foreach (var kv in found)
+            {
+                var kept = kv.Value[kv.Value.Count - 1];
+                if (kv.Value.Count > 1)
+                {
+                    Drop("material property saved under several types, kept the one the shader declares");
+                    if (shader != null && shader.FindPropertyIndex(kv.Key) is int declared && declared >= 0)
+                        foreach (var c in kv.Value) if (Array.IndexOf(c.types, shader.GetPropertyType(declared)) >= 0) kept = c;
+                }
+                props[kv.Key] = kept.value;
+                if (kept.number is float f) floats[kv.Key] = f;
             }
             var properties = new Obj();
             foreach (var kv in props) properties.Add(kv.Key, kv.Value);

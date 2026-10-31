@@ -373,7 +373,7 @@ pub struct Renderer {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Node {
-    /// After evaluating every playable layer's default state at time 0.
+    /// As the uploaded avatar holds it; the animator's default states apply at runtime.
     pub active: bool,
 }
 

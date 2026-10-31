@@ -278,7 +278,7 @@ fn unity_export_keeps_what_the_fixture_authored() {
     let model = &avatar.model;
     assert!(
         !model.nodes[node("Hat")].active,
-        "the FX default state keeps the hat off"
+        "the hat is authored off"
     );
     let body = model
         .renderers

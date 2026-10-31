@@ -13,7 +13,7 @@ namespace AvatarWorkshop.Exporter
 {
     sealed partial class Export
     {
-        sealed class Item<T> { public T component; public Obj record; public bool sender; }
+        sealed class Item<T> { public Obj record; public bool sender; }
 
         readonly Dictionary<Component, int> physboneIndex = new Dictionary<Component, int>();
         readonly Dictionary<Component, int> constraintIndex = new Dictionary<Component, int>();
@@ -253,7 +253,7 @@ namespace AvatarWorkshop.Exporter
                 if (!string.IsNullOrEmpty(p.parameter)) record.Add("parameter", p.parameter);
                 record.Add("isAnimated", p.isAnimated);
                 record.Add("resetWhenDisabled", p.resetWhenDisabled);
-                list.Add(new Item<VRCPhysBoneBase> { component = p, record = record });
+                list.Add(new Item<VRCPhysBoneBase> { record = record });
             }
             return list;
         }
@@ -311,7 +311,7 @@ namespace AvatarWorkshop.Exporter
                     record.Add("parameter", r.parameter ?? "");
                     receiverIndex[c] = list.Count(e => !e.sender);
                 }
-                list.Add(new Item<ContactBase> { component = c, record = record, sender = sender });
+                list.Add(new Item<ContactBase> { record = record, sender = sender });
             }
             return list;
         }
@@ -383,7 +383,7 @@ namespace AvatarWorkshop.Exporter
                         continue;
                 }
                 constraintIndex[c] = list.Count;
-                list.Add(new Item<Component> { component = c, record = new Obj
+                list.Add(new Item<Component> { record = new Obj
                 {
                     { "node", nodeIndex[c.transform] }, { "enabled", c.enabled }, { "isActive", c.IsActive },
                     { "target", NodeOr(c.TargetTransform, c, "constraint target") },
@@ -442,7 +442,7 @@ namespace AvatarWorkshop.Exporter
                             continue;
                     }
                     constraintIndex[component] = list.Count;
-                    list.Add(new Item<Component> { component = component, record = new Obj
+                    list.Add(new Item<Component> { record = new Obj
                     {
                         { "node", nodeIndex[t] }, { "enabled", component.enabled }, { "isActive", c.constraintActive }, { "target", nodeIndex[t] },
                         { "weight", c.weight }, { "sources", sources }, { "solveInLocalSpace", false }, { "freezeToWorld", false },
@@ -451,14 +451,6 @@ namespace AvatarWorkshop.Exporter
                 }
             }
             return list;
-        }
-
-        // Enabled states as the default states leave them.
-        void FillEnabled(List<Item<VRCPhysBoneBase>> physbones, List<Item<Component>> constraints, List<Item<ContactBase>> contacts)
-        {
-            foreach (var p in physbones) p.record["enabled"] = p.component.enabled;
-            foreach (var c in constraints) c.record["enabled"] = ((Behaviour)c.component).enabled;
-            foreach (var c in contacts) c.record["enabled"] = c.component.enabled;
         }
 
         List<object> Parameters()
