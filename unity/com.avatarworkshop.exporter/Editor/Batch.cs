@@ -8,9 +8,8 @@ using VRC.SDK3.Avatars.Components;
 namespace AvatarWorkshop.Exporter
 {
     // Unity -batchmode -projectPath <project> -executeMethod AvatarWorkshop.Exporter.Batch.Run -awOut <file.glb>
-    //   [-awScene <scene path>] [-awAvatar <avatar object name>] [-awFixture]
-    // -awFixture builds the synthetic fixture avatar and exports it. Without -awAvatar the scene must hold
-    // exactly one active avatar.
+    //   [-awScene <scene path>] [-awAvatar <avatar object name>]
+    // Without -awAvatar the scene must hold exactly one active avatar.
     public static class Batch
     {
         public static void Run()
@@ -25,13 +24,8 @@ namespace AvatarWorkshop.Exporter
                     return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
                 }
                 var output = Arg("-awOut") ?? throw new ArgumentException("-awOut <file.glb> is required");
-                GameObject avatar;
-                if (args.Contains("-awFixture")) avatar = Fixture.Build();
-                else
-                {
-                    if (Arg("-awScene") is string scene) EditorSceneManager.OpenScene(scene, OpenSceneMode.Single);
-                    avatar = Find(Arg("-awAvatar"));
-                }
+                if (Arg("-awScene") is string scene) EditorSceneManager.OpenScene(scene, OpenSceneMode.Single);
+                var avatar = Find(Arg("-awAvatar"));
                 var report = Exporter.Export(avatar, output);
                 Debug.Log($"[aw] exported {avatar.name} to {report.Path}: {report.Nodes} nodes" + (report.MigratedDynamicBones ? ", DynamicBones migrated" : ""));
                 foreach (var kv in report.Unsupported) Debug.Log($"[aw] unsupported {kv.Value} × {kv.Key}");

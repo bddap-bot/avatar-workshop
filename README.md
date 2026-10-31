@@ -32,10 +32,11 @@ Unity -batchmode -projectPath <project> -executeMethod AvatarWorkshop.Exporter.B
   -awOut <avatar.glb> [-awScene <scene path>] [-awAvatar <avatar object name>]
 ```
 
-Without `-awAvatar`, the scene must hold exactly one active avatar. With `-awFixture`, it instead writes
-the synthetic fixture as a Unity avatar into `Assets/AvatarWorkshopFixture/`, replacing that folder and
-the open scene, and exports it. `avatar-core/fixtures/unity-synthetic.glb` is the result, and `cargo test`
-reads it. `cargo run --example read -- <file.glb>...`, run in `avatar-core/`, reads exports and prints
+Without `-awAvatar`, the scene must hold exactly one active avatar.
+`avatar-core/fixtures/unity-synthetic.glb` is the export of the [reference harness](#reference-harness)'s
+fixture, and `cargo test` reads it. In a scratch project holding both packages, generate the fixture with
+`-executeMethod AvatarWorkshop.Reference.Fixture.Build -quit`, then export it with
+`-awScene Assets/AWFixture/Fixture.unity`. `cargo run --example read -- <file.glb>...`, run in `avatar-core/`, reads exports and prints
 their sections and their `unsupported` report.
 
 ## Expression mixer

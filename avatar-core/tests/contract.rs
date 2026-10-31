@@ -244,8 +244,17 @@ fn a_binary_chunk_after_another_chunk_is_refused() {
 }
 
 #[test]
+fn stepped_keys_round_trip() {
+    let mut avatar = fixture::avatar();
+    let key = &mut avatar.model.clips[0].curves[0].curve.keys[0];
+    key.in_tangent = f32::NEG_INFINITY;
+    key.out_tangent = f32::INFINITY;
+    assert_eq!(read(&write(&avatar).unwrap()).unwrap(), avatar);
+}
+
+#[test]
 fn unity_export_keeps_what_the_fixture_authored() {
-    use avatar_core::model::{Binding, Limit};
+    use avatar_core::model::Limit;
     let avatar = read(&std::fs::read(path("fixtures/unity-synthetic.glb")).unwrap()).unwrap();
     let nodes = avatar.gltf["nodes"].as_array().unwrap();
     let node = |name: &str| {
@@ -254,39 +263,41 @@ fn unity_export_keeps_what_the_fixture_authored() {
             .position(|n| n["name"] == name)
             .unwrap_or_else(|| panic!("no node {name}"))
     };
-    let x = nodes[node("LeftEye")]["translation"][0].as_f64().unwrap();
+    let x = nodes[node("LeftShoulder")]["translation"][0]
+        .as_f64()
+        .unwrap();
     assert!(
-        (x - 0.03).abs() < 1e-6,
-        "Unity's x = -0.03 mirrors to 0.03, got {x}"
+        (x - 0.05).abs() < 1e-6,
+        "Unity's x = -0.05 mirrors to 0.05, got {x}"
     );
     let model = &avatar.model;
     assert!(
-        !model.nodes[node("Prop")].active,
-        "the FX default state hides the prop"
+        !model.nodes[node("Hat")].active,
+        "the FX default state keeps the hat off"
     );
     let body = model
         .renderers
         .iter()
         .find(|r| r.node.0 as usize == node("Body"))
         .unwrap();
-    assert_eq!(body.materials.len(), 3);
-    assert!(matches!(model.physbones[0].limit, Limit::Polar { .. }));
-    let stepped = model.clips.iter().flat_map(|c| &c.curves).any(|c| {
-        matches!(c.binding, Binding::NodeActive { .. })
-            && c.curve.keys.iter().any(|k| k.out_tangent.is_infinite())
-    });
-    assert!(stepped, "a stepped key keeps its infinite tangent");
-    let unsupported: Vec<&str> = model.unsupported.iter().map(|u| u.kind.as_str()).collect();
-    for kind in [
-        "AudioSource",
-        "ParticleSystem",
-        "VRCAnimatorPlayAudio",
-        "blendshape frames beyond the last",
-        "menu that contains itself",
-    ] {
-        assert!(
-            unsupported.contains(&kind),
-            "{kind} is not reported: {unsupported:?}"
-        );
-    }
+    assert_eq!(body.materials.len(), 2);
+    let limits: std::collections::BTreeSet<&str> = model
+        .physbones
+        .iter()
+        .map(|p| match p.limit {
+            Limit::None {} => "none",
+            Limit::Angle { .. } => "angle",
+            Limit::Hinge { .. } => "hinge",
+            Limit::Polar { .. } => "polar",
+        })
+        .collect();
+    assert_eq!(limits, ["angle", "hinge", "none", "polar"].into());
+    assert!(
+        model
+            .unsupported
+            .iter()
+            .any(|u| u.kind == "animation curve on a missing object"),
+        "the empty clip's curve on a missing object is not reported: {:?}",
+        model.unsupported
+    );
 }
