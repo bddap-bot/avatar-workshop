@@ -180,6 +180,9 @@ pub fn write(avatar: &Avatar) -> Result<Vec<u8>, Error> {
     extensions.insert(EXTENSION.to_owned(), model);
     let mut json = serde_json::to_vec(&gltf).map_err(Error::Json)?;
     json.resize(json.len().next_multiple_of(4), b' ');
+    if json.len() > MAX_JSON_BYTES {
+        return Err(Error::TooLarge(json.len()));
+    }
     let mut bin = avatar.bin.clone();
     bin.resize(bin.len().next_multiple_of(4), 0);
 
