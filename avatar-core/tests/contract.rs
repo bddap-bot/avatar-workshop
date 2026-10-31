@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use avatar_core::model::{LayerContent, PlayableLayerType};
 use avatar_core::{read, schema, write, Error};
+use serde_json::json;
 
 fn path(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(relative)
@@ -122,10 +123,14 @@ fn with_json(bytes: &[u8], edit: impl FnOnce(&mut serde_json::Value)) -> Vec<u8>
     gltf.shift_remove("extensions");
     gltf.shift_remove("extensionsUsed");
     avatar.gltf = gltf;
-    let mut out = write(&avatar).unwrap();
+    let out = write(&avatar).unwrap();
     let mut doc = json_chunk(&out);
     doc["extensions"]["AW_avatar"] = model;
-    let mut text = serde_json::to_vec(&doc).unwrap();
+    with_json_chunk(out, &doc)
+}
+
+fn with_json_chunk(mut out: Vec<u8>, doc: &serde_json::Value) -> Vec<u8> {
+    let mut text = serde_json::to_vec(doc).unwrap();
     text.resize(text.len().next_multiple_of(4), b' ');
     let old = u32::from_le_bytes(out[12..16].try_into().unwrap()) as usize;
     out.splice(20..20 + old, text.iter().copied());
@@ -161,7 +166,7 @@ fn values_json_cannot_carry_are_refused_on_write() {
         unreachable!()
     };
     state_machine.states[0].transitions[0].exit_time = Some(f32::INFINITY);
-    assert!(matches!(write(&avatar), Err(Error::Unwritable(_))));
+    assert!(matches!(write(&avatar), Err(Error::Unrepresentable)));
 }
 
 #[test]
@@ -300,4 +305,164 @@ fn unity_export_keeps_what_the_fixture_authored() {
         "the empty clip's curve on a missing object is not reported: {:?}",
         model.unsupported
     );
+}
+
+fn fx(avatar: &mut avatar_core::Avatar) -> &mut avatar_core::model::Controller {
+    avatar
+        .model
+        .layers
+        .get_mut(&PlayableLayerType::Fx)
+        .and_then(|layer| layer.controller.as_mut())
+        .unwrap()
+}
+
+/// FX with a third layer whose one state, 9000, no other layer declares.
+fn with_foreign_state() -> avatar_core::Avatar {
+    let mut avatar = fixture::avatar();
+    let controller = fx(&mut avatar);
+    let mut foreign = controller.layers[0].clone();
+    let LayerContent::StateMachine { state_machine } = &mut foreign.content else {
+        unreachable!()
+    };
+    state_machine.id = avatar_core::model::StateMachineId(9000);
+    state_machine.state_machines.clear();
+    state_machine.states.truncate(1);
+    state_machine.states[0].id = avatar_core::model::StateId(9000);
+    state_machine.states[0].transitions.clear();
+    state_machine.any_state_transitions.clear();
+    state_machine.entry_transitions.clear();
+    state_machine.state_machine_transitions.clear();
+    state_machine.default_state = Some(avatar_core::model::StateId(9000));
+    controller.layers.push(foreign);
+    write(&avatar).unwrap();
+    avatar
+}
+
+fn refused_at(avatar: &avatar_core::Avatar, suffix: &str) {
+    match write(avatar) {
+        Err(Error::Invalid(invalid)) => assert!(
+            invalid.at.ends_with(suffix),
+            "{} ({})",
+            invalid.at,
+            invalid.reason
+        ),
+        other => panic!("not refused at {suffix}: {other:?}"),
+    }
+}
+
+#[test]
+fn states_are_reached_only_within_their_layer() {
+    use avatar_core::model::{Destination, StateId};
+    let mut avatar = with_foreign_state();
+    let LayerContent::StateMachine { state_machine } = &mut fx(&mut avatar).layers[0].content
+    else {
+        unreachable!()
+    };
+    state_machine.states[0].transitions[0].destination = Destination::State { id: StateId(9000) };
+    refused_at(&avatar, "/destination/id");
+
+    let mut avatar = with_foreign_state();
+    let LayerContent::StateMachine { state_machine } = &mut fx(&mut avatar).layers[0].content
+    else {
+        unreachable!()
+    };
+    state_machine.default_state = Some(StateId(9000));
+    refused_at(&avatar, "/defaultState");
+
+    let mut avatar = with_foreign_state();
+    let synced = fx(&mut avatar)
+        .layers
+        .iter_mut()
+        .find_map(|layer| match &mut layer.content {
+            LayerContent::Synced { states, .. } => Some(states),
+            _ => None,
+        })
+        .unwrap();
+    synced[0].state = StateId(9000);
+    refused_at(&avatar, "/states/0/state");
+}
+
+#[test]
+fn an_animator_layer_control_reaches_an_existing_layer() {
+    use avatar_core::model::Behaviour;
+    let mut avatar = fixture::avatar();
+    let layers = fx(&mut avatar).layers.len() as u32;
+    for behaviour in &mut avatar.model.behaviours {
+        if let Behaviour::AnimatorLayerControl { layer, .. } = behaviour {
+            *layer = layers;
+        }
+    }
+    refused_at(&avatar, "/layer");
+}
+
+#[test]
+fn a_number_past_f32_is_refused_on_read() {
+    let bytes = write(&fixture::avatar()).unwrap();
+    let huge = with_json(&bytes, |json| {
+        json["extensions"]["AW_avatar"]["descriptor"]["viewPosition"][0] = json!(1e39);
+    });
+    assert!(matches!(read(&huge), Err(Error::Unrepresentable)));
+}
+
+#[test]
+fn a_malformed_extensions_used_is_refused_on_read() {
+    let bytes = write(&fixture::avatar()).unwrap();
+    let mut doc = json_chunk(&bytes);
+    doc["extensionsUsed"] = json!("AW_avatar");
+    let odd = with_json_chunk(bytes, &doc);
+    assert!(matches!(read(&odd), Err(Error::Root(_))));
+}
+
+#[test]
+fn renderers_match_their_meshes() {
+    let mut avatar = fixture::avatar();
+    let renderer = avatar.model.renderers[0].clone();
+    avatar.model.renderers.push(renderer);
+    refused_at(&avatar, "/renderers/1/node");
+
+    let mut avatar = fixture::avatar();
+    let slot = avatar.model.renderers[0].materials[0];
+    avatar.model.renderers[0].materials.push(slot);
+    refused_at(&avatar, "/renderers/0/materials");
+}
+
+#[test]
+fn a_slot_curve_names_an_existing_slot() {
+    let mut avatar = fixture::avatar();
+    let curve = avatar
+        .model
+        .clips
+        .iter_mut()
+        .find_map(|clip| clip.slot_curves.first_mut())
+        .unwrap();
+    curve.slot = 1_000_000;
+    refused_at(&avatar, "/slot");
+}
+
+#[test]
+fn a_synced_layer_follows_another_state_machine_layer() {
+    let mut avatar = fixture::avatar();
+    let controller = fx(&mut avatar);
+    let (index, _) = controller
+        .layers
+        .iter()
+        .enumerate()
+        .find(|(_, layer)| matches!(layer.content, LayerContent::Synced { .. }))
+        .unwrap();
+    let LayerContent::Synced { layer, .. } = &mut controller.layers[index].content else {
+        unreachable!()
+    };
+    *layer = index as u32;
+    refused_at(&avatar, "/content/layer");
+
+    let mut avatar = fixture::avatar();
+    let controller = fx(&mut avatar);
+    let synced = controller.layers[index].clone();
+    controller.layers.push(synced);
+    let last = controller.layers.len() - 1;
+    let LayerContent::Synced { layer, .. } = &mut controller.layers[last].content else {
+        unreachable!()
+    };
+    *layer = index as u32;
+    refused_at(&avatar, "/content/layer");
 }

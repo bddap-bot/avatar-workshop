@@ -35,6 +35,8 @@ pub enum Error {
     NotAnObject,
     MissingExtension,
     Invalid(Invalid),
+    Unrepresentable,
+    Root(&'static str),
     Unwritable(&'static str),
 }
 
@@ -46,11 +48,16 @@ impl fmt::Display for Error {
             Error::Model(e) => write!(f, "{EXTENSION}: {e}"),
             Error::TooLarge(len) => write!(
                 f,
-                "glTF JSON chunk of {len} bytes is over the reader's {MAX_JSON_BYTES}"
+                "glTF JSON chunk of {len} bytes is over the reader's {MAX_JSON_BYTES} bytes"
             ),
             Error::NotAnObject => write!(f, "glTF JSON chunk is not an object"),
             Error::MissingExtension => write!(f, "no {EXTENSION} extension on the glTF root"),
             Error::Invalid(Invalid { at, reason }) => write!(f, "{EXTENSION}{at}: {reason}"),
+            Error::Unrepresentable => write!(
+                f,
+                "{EXTENSION} holds a value JSON cannot carry, such as NaN or a number past f32"
+            ),
+            Error::Root(what) => write!(f, "glTF root: {what}"),
             Error::Unwritable(what) => write!(f, "cannot write: {what}"),
         }
     }
@@ -111,45 +118,55 @@ pub fn read(bytes: &[u8]) -> Result<Avatar, Error> {
     let Value::Object(mut gltf) = serde_json::from_slice(json).map_err(Error::Json)? else {
         return Err(Error::NotAnObject);
     };
-    let model = take_extension(&mut gltf).ok_or(Error::MissingExtension)?;
+    let model = take_extension(&mut gltf)?;
     let model = serde_json::from_value(model).map_err(Error::Model)?;
     validate(&gltf, &model).map_err(Error::Invalid)?;
+    carried(&model)?;
     Ok(Avatar { gltf, bin, model })
 }
 
-fn take_extension(gltf: &mut Map<String, Value>) -> Option<Value> {
-    let extensions = gltf.get_mut("extensions")?.as_object_mut()?;
-    let model = extensions.shift_remove(EXTENSION)?;
+fn take_extension(gltf: &mut Map<String, Value>) -> Result<Value, Error> {
+    let Some(Value::Object(extensions)) = gltf.get_mut("extensions") else {
+        return Err(Error::MissingExtension);
+    };
+    let model = extensions
+        .shift_remove(EXTENSION)
+        .ok_or(Error::MissingExtension)?;
     if extensions.is_empty() {
         gltf.shift_remove("extensions");
     }
-    if let Some(Value::Array(used)) = gltf.get_mut("extensionsUsed") {
-        used.retain(|name| name != EXTENSION);
-        if used.is_empty() {
-            gltf.shift_remove("extensionsUsed");
+    match gltf.get_mut("extensionsUsed") {
+        None => {}
+        Some(Value::Array(used)) => {
+            used.retain(|name| name != EXTENSION);
+            if used.is_empty() {
+                gltf.shift_remove("extensionsUsed");
+            }
         }
+        Some(_) => return Err(Error::Root("extensionsUsed is not an array")),
     }
-    Some(model)
+    Ok(model)
+}
+
+/// The model as JSON, refused when JSON would not read back the same model: a NaN, or an
+/// out-of-range number that parsed as infinity, which JSON writes as `null`.
+fn carried(model: &AwAvatar) -> Result<Value, Error> {
+    let value = serde_json::to_value(model).map_err(Error::Model)?;
+    match serde_json::from_value::<AwAvatar>(value.clone()) {
+        Ok(again) if again == *model => Ok(value),
+        _ => Err(Error::Unrepresentable),
+    }
 }
 
 pub fn write(avatar: &Avatar) -> Result<Vec<u8>, Error> {
     validate(&avatar.gltf, &avatar.model).map_err(Error::Invalid)?;
-    let model = serde_json::to_value(&avatar.model).map_err(Error::Model)?;
-    if serde_json::from_value::<AwAvatar>(model.clone())
-        .ok()
-        .as_ref()
-        != Some(&avatar.model)
-    {
-        return Err(Error::Unwritable(
-            "the model holds a value JSON cannot carry, such as NaN",
-        ));
-    }
+    let model = carried(&avatar.model)?;
     let mut gltf = avatar.gltf.clone();
     let Value::Array(used) = gltf
         .entry("extensionsUsed")
         .or_insert_with(|| Value::Array(Vec::new()))
     else {
-        return Err(Error::Unwritable("extensionsUsed is not an array"));
+        return Err(Error::Root("extensionsUsed is not an array"));
     };
     if !used.iter().any(|name| name == EXTENSION) {
         used.push(Value::from(EXTENSION));
@@ -158,7 +175,7 @@ pub fn write(avatar: &Avatar) -> Result<Vec<u8>, Error> {
         .entry("extensions")
         .or_insert_with(|| Value::Object(Map::new()))
     else {
-        return Err(Error::Unwritable("extensions is not an object"));
+        return Err(Error::Root("extensions is not an object"));
     };
     extensions.insert(EXTENSION.to_owned(), model);
     let mut json = serde_json::to_vec(&gltf).map_err(Error::Json)?;
