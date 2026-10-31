@@ -2390,10 +2390,10 @@
               "const": "sceneUp"
             }
           },
+          "additionalProperties": false,
           "required": [
             "type"
-          ],
-          "additionalProperties": false
+          ]
         },
         {
           "type": "object",
@@ -4388,7 +4388,7 @@
               "const": "contactSender"
             },
             "index": {
-              "$ref": "#/$defs/ContactIndex"
+              "$ref": "#/$defs/ContactSenderIndex"
             },
             "field": {
               "type": "string"
@@ -4409,7 +4409,7 @@
               "const": "contactReceiver"
             },
             "index": {
-              "$ref": "#/$defs/ContactIndex"
+              "$ref": "#/$defs/ContactReceiverIndex"
             },
             "field": {
               "type": "string"
@@ -4452,8 +4452,12 @@
       "format": "uint32",
       "minimum": 0
     },
-    "ContactIndex": {
-      "description": "Into the senders or the receivers, as the binding names.",
+    "ContactSenderIndex": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "ContactReceiverIndex": {
       "type": "integer",
       "format": "uint32",
       "minimum": 0

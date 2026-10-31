@@ -12,10 +12,24 @@ with VRM as one importer, is specified in [docs/model.md](docs/model.md).
 The Rust crate [`avatar-core`](avatar-core) holds its types, the `.glb` reader and writer
 (`read`, `write`) and [the `AW_avatar` JSON schema](avatar-core/schema/AW_avatar.schema.json)
 generated from the types. `avatar-core/fixtures/synthetic.glb` is the model's synthetic
-fixture, with every section filled. In `avatar-core/`, `nix-shell --run
-'cargo test'` checks that the fixture round-trips through reader and writer unchanged and
-that the checked-in schema and fixture equal the generated ones; after changing the types,
-`AW_BLESS=1 cargo test` regenerates both.
+fixture, with every section filled.
+
+The reader is bounded: it parses a JSON chunk of at most `MAX_JSON_BYTES` (64 MiB) nested at
+most 128 deep. Both reader and writer refuse a model that does not hold together
+(`validate::validate`): one entry per glTF node and material, every node, material, texture,
+clip, behaviour, collider, physbone, constraint and contact index in range, state and
+state-machine ids unique in their controller and every transition reaching one, renderers on
+glTF mesh nodes with one slot per primitive, unique expression parameter names. A refusal
+names its place as a JSON pointer into `AW_avatar`. Whether an avatar is affordable (triangles,
+texture sizes, PhysBone counts) is the host's quality policy, applied to a model that read; the
+crate has none.
+
+In `avatar-core/`, `nix-shell --run 'cargo test'` checks that the fixture round-trips through
+reader and writer unchanged, that the checked-in schema and fixture equal the generated ones
+(after changing the types, `AW_BLESS=1 cargo test` regenerates both), and that 10,000 fuzzed
+invalid files are each refused with a reason and none panics. `nix-shell --run 'cargo build
+--lib --target aarch64-linux-android --target wasm32-unknown-unknown'` builds it for Android
+and the web.
 
 ## Unity exporter
 

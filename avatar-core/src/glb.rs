@@ -3,6 +3,7 @@ use std::fmt;
 use serde_json::{Map, Value};
 
 use crate::model::AwAvatar;
+use crate::validate::{validate, Invalid};
 
 pub const EXTENSION: &str = "AW_avatar";
 
@@ -10,6 +11,11 @@ const MAGIC: &[u8; 4] = b"glTF";
 const VERSION: u32 = 2;
 const CHUNK_JSON: &[u8; 4] = b"JSON";
 const CHUNK_BIN: &[u8; 4] = b"BIN\0";
+
+/// The largest JSON chunk the reader parses. Parsed JSON takes several times its size in
+/// memory, so this bounds the reader's memory; JSON nesting is bounded by `serde_json`'s
+/// recursion limit of 128.
+pub const MAX_JSON_BYTES: usize = 64 << 20;
 
 /// An avatar file: the glTF document without `AW_avatar`, its binary chunk, and the model.
 /// The writer pads `bin` to four bytes, so it reads back padded.
@@ -25,9 +31,10 @@ pub enum Error {
     Header(&'static str),
     Json(serde_json::Error),
     Model(serde_json::Error),
+    TooLarge(usize),
     NotAnObject,
     MissingExtension,
-    Mismatch(&'static str),
+    Invalid(Invalid),
     Unwritable(&'static str),
 }
 
@@ -37,12 +44,13 @@ impl fmt::Display for Error {
             Error::Header(what) => write!(f, "not a glTF binary: {what}"),
             Error::Json(e) => write!(f, "glTF JSON chunk: {e}"),
             Error::Model(e) => write!(f, "{EXTENSION}: {e}"),
+            Error::TooLarge(len) => write!(
+                f,
+                "glTF JSON chunk of {len} bytes is over the reader's {MAX_JSON_BYTES}"
+            ),
             Error::NotAnObject => write!(f, "glTF JSON chunk is not an object"),
             Error::MissingExtension => write!(f, "no {EXTENSION} extension on the glTF root"),
-            Error::Mismatch(what) => write!(
-                f,
-                "{EXTENSION}.{what} does not have one entry per glTF {what}"
-            ),
+            Error::Invalid(Invalid { at, reason }) => write!(f, "{EXTENSION}{at}: {reason}"),
             Error::Unwritable(what) => write!(f, "cannot write: {what}"),
         }
     }
@@ -84,6 +92,9 @@ pub fn read(bytes: &[u8]) -> Result<Avatar, Error> {
     if kind != CHUNK_JSON {
         return Err(Error::Header("the first chunk is not JSON"));
     }
+    if json.len() > MAX_JSON_BYTES {
+        return Err(Error::TooLarge(json.len()));
+    }
     let mut bin = Vec::new();
     let mut second = true;
     while next < bytes.len() {
@@ -102,19 +113,8 @@ pub fn read(bytes: &[u8]) -> Result<Avatar, Error> {
     };
     let model = take_extension(&mut gltf).ok_or(Error::MissingExtension)?;
     let model = serde_json::from_value(model).map_err(Error::Model)?;
-    check_counts(&gltf, &model)?;
+    validate(&gltf, &model).map_err(Error::Invalid)?;
     Ok(Avatar { gltf, bin, model })
-}
-
-fn check_counts(gltf: &Map<String, Value>, model: &AwAvatar) -> Result<(), Error> {
-    let count = |key: &str| gltf.get(key).and_then(Value::as_array).map_or(0, Vec::len);
-    if model.nodes.len() != count("nodes") {
-        return Err(Error::Mismatch("nodes"));
-    }
-    if model.materials.len() != count("materials") {
-        return Err(Error::Mismatch("materials"));
-    }
-    Ok(())
 }
 
 fn take_extension(gltf: &mut Map<String, Value>) -> Option<Value> {
@@ -133,7 +133,7 @@ fn take_extension(gltf: &mut Map<String, Value>) -> Option<Value> {
 }
 
 pub fn write(avatar: &Avatar) -> Result<Vec<u8>, Error> {
-    check_counts(&avatar.gltf, &avatar.model)?;
+    validate(&avatar.gltf, &avatar.model).map_err(Error::Invalid)?;
     let model = serde_json::to_value(&avatar.model).map_err(Error::Model)?;
     if serde_json::from_value::<AwAvatar>(model.clone())
         .ok()

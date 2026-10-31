@@ -1011,7 +1011,7 @@ fn model() -> AwAvatar {
                     rotation: channel(),
                     aim_axis: [0.0, 0.0, 1.0],
                     up_axis: [0.0, 1.0, 0.0],
-                    world_up: WorldUp::SceneUp,
+                    world_up: WorldUp::SceneUp {},
                 },
             },
             Constraint {
@@ -1366,14 +1366,14 @@ fn model() -> AwAvatar {
                         ),
                         curve(
                             Binding::ContactSender {
-                                index: ContactIndex(0),
+                                index: ContactSenderIndex(0),
                                 field: "enabled".into(),
                             },
                             vec![key(0.0, 0.0)],
                         ),
                         curve(
                             Binding::ContactReceiver {
-                                index: ContactIndex(1),
+                                index: ContactReceiverIndex(1),
                                 field: "enabled".into(),
                             },
                             vec![key(0.0, 1.0)],

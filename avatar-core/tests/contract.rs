@@ -207,10 +207,10 @@ fn unknown_chunks_are_skipped() {
 fn one_entry_per_gltf_node_and_material() {
     let mut avatar = fixture::avatar();
     avatar.model.nodes.pop();
-    assert!(matches!(write(&avatar), Err(Error::Mismatch("nodes"))));
+    assert!(matches!(write(&avatar), Err(Error::Invalid(i)) if i.at == "/nodes"));
     let mut avatar = fixture::avatar();
     avatar.model.materials.pop();
-    assert!(matches!(write(&avatar), Err(Error::Mismatch("materials"))));
+    assert!(matches!(write(&avatar), Err(Error::Invalid(i)) if i.at == "/materials"));
     let bytes = write(&fixture::avatar()).unwrap();
     let short = with_json(&bytes, |json| {
         json["extensions"]["AW_avatar"]["nodes"]
@@ -218,7 +218,7 @@ fn one_entry_per_gltf_node_and_material() {
             .unwrap()
             .pop();
     });
-    assert!(matches!(read(&short), Err(Error::Mismatch("nodes"))));
+    assert!(matches!(read(&short), Err(Error::Invalid(i)) if i.at == "/nodes"));
 }
 
 #[test]

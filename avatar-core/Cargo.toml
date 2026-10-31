@@ -9,3 +9,6 @@ description = "The Avatar Workshop avatar model: its types, the .glb reader and 
 schemars = "1.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+
+[profile.test]
+opt-level = 3

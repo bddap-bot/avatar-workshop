@@ -90,11 +90,15 @@ pub struct PhysBoneIndex(pub u32);
 )]
 pub struct ConstraintIndex(pub u32);
 
-/// Into the senders or the receivers, as the binding names.
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
-pub struct ContactIndex(pub u32);
+pub struct ContactSenderIndex(pub u32);
+
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+pub struct ContactReceiverIndex(pub u32);
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -792,7 +796,7 @@ pub enum ConstraintKind {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum WorldUp {
-    SceneUp,
+    SceneUp {},
     ObjectUp { node: NodeIndex },
     ObjectRotationUp { node: NodeIndex, vector: Vec3 },
     Vector { vector: Vec3 },
@@ -1385,11 +1389,11 @@ pub enum Binding {
         field: String,
     },
     ContactSender {
-        index: ContactIndex,
+        index: ContactSenderIndex,
         field: String,
     },
     ContactReceiver {
-        index: ContactIndex,
+        index: ContactReceiverIndex,
         field: String,
     },
 }
