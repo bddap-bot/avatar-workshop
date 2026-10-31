@@ -180,6 +180,7 @@ state flags). `UNITY` names the editor command. With no `SCENE`, it generates th
 | `values.tsv` | node active, renderer enabled, material slots, blendshape weights, animated material properties and animated transforms, on each change |
 | `tips.tsv`, `chains.tsv` | every PhysBone leaf (with its endpoint) each frame, in metres from the avatar root along its axes (its scale ignored), and its rest chain length |
 | `track.tsv` | the avatar root in the world, and its head, hands and hips in metres from the root along its axes, each frame, for replaying the same input elsewhere |
+| `poses.tsv`, `drivers.tsv` | the input the SDK's dynamics read, taken each frame after animation and before its constraints, PhysBones and contacts run: every transform they read besides the bones they simulate (each PhysBone root's parent and scene root, every collider and contact, each constraint's target, its parent, its sources and world-up transform) in metres from the root along its axes (`root` rows, scales world), each written when it changes, and each PhysBone bone's local pose (`local` rows) whenever it differs from the pose the SDK left it in the frame before, which is when animation set it. A row is `frame, space, transform, px,py,pz,qx,qy,qz,qw,sx,sy,sz`; the root itself is the empty path. `drivers.tsv` lists each transform with its roles; `moved-by-dynamics` marks one at or under a simulated bone or under a constraint target, whose recorded pose is the one before the dynamics moved it. A recording fails if any of them is gone or unposed on a frame |
 | `render/`, `renders.tsv`, `camera.json` | a render at the end of every swept step from a fixed camera and light |
 | `menu.tsv` | every menu control: indexed path, name path (control names joined by `/`), type, parameter |
 | `coverage.json`, `meta.json` | the avatar's feature counts; versions and totals |
@@ -191,10 +192,10 @@ and integrations, colliders of every shape including an inside-bounds sphere; a 
 the six constraint kinds, one frozen to world; a menu with every control type; transitions with fixed and normalised
 durations; every blend-tree algorithm; parameter drivers of each kind, one local-only; mixed write defaults. A
 fixture recording fails if any of these is missing from `coverage.json`.
-`reference/check.sh PROJECT OUT` records the fixture twice and requires every output but the log
-and `tips.tsv` to be byte-identical, and PhysBone tips within 1e-5 m.
+`reference/check.sh PROJECT OUT [SCENE] [AVATAR]` records the avatar (the fixture by default) twice and requires every output but the log,
+`tips.tsv` and `poses.tsv` to be byte-identical, and PhysBone tips and every pose value within 1e-5 (`reference/poses.py`, Python 3.10 or later).
 
-A runtime replays the recording from `track.tsv` and `steps.tsv` and writes `tips.tsv` and `render/`
+A runtime replays the recording from `track.tsv`, `poses.tsv` and `steps.tsv` and writes `tips.tsv` and `render/`
 in the same layout; `reference/compare.py REFERENCE RUNTIME` (Python 3 with numpy and Pillow) scores
 it: PhysBone tip RMS error over chain length (a leaf or frame the runtime lacks counts as unmoving), the
 fraction of menu controls that match, and mean image error. A control matches when the runtime's

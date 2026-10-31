@@ -95,10 +95,12 @@ namespace AvatarWorkshop.Reference
         struct InputsStage { }
         struct PoseStage { }
         struct RecordStage { }
+        struct DriversStage { }
 
         static void Install()
         {
             var loop = PlayerLoop.GetCurrentPlayerLoop();
+            var dynamics = false;
             for (int i = 0; i < loop.subSystemList.Length; i++)
             {
                 var sys = loop.subSystemList[i];
@@ -109,12 +111,19 @@ namespace AvatarWorkshop.Reference
                 {
                     int at = list.FindIndex(s => s.type == typeof(PreLateUpdate.ScriptRunBehaviourLateUpdate));
                     list.Insert(at < 0 ? 0 : at, new PlayerLoopSystem { type = typeof(PoseStage), updateDelegate = () => Guard(recorder.Pose) });
+                    int sdk = list.FindIndex(s => s.type?.Name == "VRCAvatarDynamicsPreSchedule");
+                    if (sdk >= 0)
+                    {
+                        list.Insert(sdk, new PlayerLoopSystem { type = typeof(DriversStage), updateDelegate = () => Guard(recorder.Drivers) });
+                        dynamics = true;
+                    }
                 }
                 if (sys.type == typeof(PostLateUpdate))
                     list.Add(new PlayerLoopSystem { type = typeof(RecordStage), updateDelegate = () => Guard(recorder.Record) });
                 sys.subSystemList = list.ToArray();
                 loop.subSystemList[i] = sys;
             }
+            if (!dynamics) throw new Exception("the VRChat SDK's VRCAvatarDynamicsPreSchedule stage is not in the player loop");
             PlayerLoop.SetPlayerLoop(loop);
         }
 
@@ -191,8 +200,13 @@ namespace AvatarWorkshop.Reference
         readonly List<(Renderer r, string path, string prop, ShaderPropertyType type)> materialProps = new List<(Renderer, string, string, ShaderPropertyType)>();
         readonly List<(Transform t, string path)> animatedTransforms = new List<(Transform, string)>();
         List<AnimatorControllerPlayable> playables;
+        (Transform t, string path)[] drivers = new (Transform, string)[0];
+        (Transform t, string path)[] bones = new (Transform, string)[0];
+        readonly Dictionary<string, string> lastPoses = new Dictionary<string, string>();
+        readonly Dictionary<string, string> simulated = new Dictionary<string, string>();
+        int posedFrame = -1;
 
-        StreamWriter paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut;
+        StreamWriter paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut;
         readonly Dictionary<string, string> lastParams = new Dictionary<string, string>();
         readonly Dictionary<string, string> lastStates = new Dictionary<string, string>();
         Dictionary<string, string> lastValues = new Dictionary<string, string>();
@@ -249,10 +263,45 @@ namespace AvatarWorkshop.Reference
             }
         }
 
+        public void Drivers()
+        {
+            if (root == null || stepIndex < 0 || Finished) return;
+            var f = frame.ToString(inv);
+            void Write(string space, string path, string pose)
+            {
+                var key = space + "\t" + path;
+                if (lastPoses.TryGetValue(key, out var old) && old == pose) return;
+                posesOut.Write($"{f}\t{space}\t{path}\t{pose}\n");
+                lastPoses[key] = pose;
+            }
+            foreach (var (t, path) in drivers)
+            {
+                if (t == null) throw new Exception($"driver transform {path} is gone at frame {f}");
+                var s = t.lossyScale;
+                Write("root", path, $"{Xf(Local(t.position), Quaternion.Inverse(root.rotation) * t.rotation)},{F(s.x)},{F(s.y)},{F(s.z)}");
+            }
+            foreach (var (t, path) in bones)
+            {
+                if (t == null) throw new Exception($"PhysBone transform {path} is gone at frame {f}");
+                var pose = LocalPose(t);
+                if (simulated.TryGetValue(path, out var own) && own == pose) continue;
+                Write("local", path, pose);
+            }
+            posedFrame = frame;
+        }
+
+        string LocalPose(Transform t)
+        {
+            var s = t.localScale;
+            return $"{Xf(t.localPosition, t.localRotation)},{F(s.x)},{F(s.y)},{F(s.z)}";
+        }
+
         public void Record()
         {
             if (root == null || stepIndex < 0 || Finished) return;
             var f = frame.ToString(inv);
+            if (posedFrame != frame) throw new Exception($"no driver poses were taken before the SDK's dynamics at frame {f}");
+            foreach (var (t, path) in bones) simulated[path] = LocalPose(t);
             foreach (var (name, value) in Parameters())
                 if (!lastParams.TryGetValue(name, out var old) || old != value) { paramsOut.Write($"{f}\t{name}\t{value}\n"); lastParams[name] = value; }
             foreach (var (layer, value) in States())
@@ -318,8 +367,10 @@ namespace AvatarWorkshop.Reference
                 if (t != null) animatedTransforms.Add((t, path));
             }
 
-            foreach (var pb in root.GetComponentsInChildren<VRCPhysBoneBase>(true).OrderBy(p => PathOf(p.transform), StringComparer.Ordinal))
-                Tips(pb);
+            var physBones = root.GetComponentsInChildren<VRCPhysBoneBase>(true).OrderBy(p => PathOf(p.transform), StringComparer.Ordinal).ToList();
+            foreach (var pb in physBones)
+                Tips(pb, physBones);
+            Inputs(physBones);
 
             Directory.CreateDirectory(output);
             Directory.CreateDirectory(Path.Combine(output, "render"));
@@ -330,6 +381,7 @@ namespace AvatarWorkshop.Reference
             stepsOut = Open("steps.tsv");
             rendersOut = Open("renders.tsv");
             trackOut = Open("track.tsv");
+            posesOut = Open("poses.tsv");
             trackOut.Write("frame\troot (world)\thead\tleft hand\tright hand\thips (each from the root position and rotation, its scale ignored, in metres: px,py,pz,qx,qy,qz,qw)\n");
             File.WriteAllText(Path.Combine(output, "chains.tsv"),
                 "tip\tlength\n" + string.Concat(tips.Select(t => $"{t.Id}\t{F(t.Length)}\n")));
@@ -353,6 +405,8 @@ namespace AvatarWorkshop.Reference
                 ["physbones"] = root.GetComponentsInChildren<VRCPhysBoneBase>(true).Length,
                 ["contacts"] = root.GetComponentsInChildren<ContactBase>(true).Length,
                 ["constraints"] = root.GetComponentsInChildren<VRCConstraintBase>(true).Length,
+                ["drivers"] = drivers.Length,
+                ["bones"] = bones.Length,
                 ["packages"] = Packages(),
             }));
         }
@@ -409,14 +463,32 @@ namespace AvatarWorkshop.Reference
 
         Vector3 Local(Vector3 world) => Quaternion.Inverse(root.rotation) * (world - root.position);
 
-        void Tips(VRCPhysBoneBase pb)
+        static List<Transform> Chain(VRCPhysBoneBase pb, List<VRCPhysBoneBase> physBones, out Dictionary<Transform, List<Transform>> children)
         {
-            var start = pb.rootTransform != null ? pb.rootTransform : pb.transform;
+            var start = pb.GetRootTransform();
+            var others = new HashSet<Transform>(physBones.Where(o => o != pb).Select(o => o.GetRootTransform()));
             var ignored = new HashSet<Transform>((pb.ignoreTransforms ?? new List<Transform>()).Where(x => x != null));
+            var order = new List<Transform>();
+            var kids = new Dictionary<Transform, List<Transform>>();
+            void Walk(Transform t)
+            {
+                order.Add(t);
+                kids[t] = Enumerable.Range(0, t.childCount).Select(t.GetChild)
+                    .Where(c => !ignored.Contains(c) && !(pb.ignoreOtherPhysBones && others.Contains(c))).ToList();
+                foreach (var c in kids[t]) Walk(c);
+            }
+            Walk(start);
+            children = kids;
+            return order;
+        }
+
+        void Tips(VRCPhysBoneBase pb, List<VRCPhysBoneBase> physBones)
+        {
+            var start = pb.GetRootTransform();
+            Chain(pb, physBones, out var kids);
             void Walk(Transform t, float length)
             {
-                var kids = Enumerable.Range(0, t.childCount).Select(t.GetChild).Where(c => !ignored.Contains(c)).ToList();
-                if (kids.Count == 0)
+                if (kids[t].Count == 0)
                 {
                     var end = pb.endpointPosition;
                     tips.Add(new Tip
@@ -428,9 +500,52 @@ namespace AvatarWorkshop.Reference
                     });
                     return;
                 }
-                foreach (var k in kids) Walk(k, length + (Local(k.position) - Local(t.position)).magnitude);
+                foreach (var k in kids[t]) Walk(k, length + (Local(k.position) - Local(t.position)).magnitude);
             }
             Walk(start, 0);
+        }
+
+        void Inputs(List<VRCPhysBoneBase> physBones)
+        {
+            var roles = new Dictionary<Transform, SortedSet<string>>();
+            void Role(Transform t, string role)
+            {
+                if (t == null) return;
+                if (!roles.TryGetValue(t, out var set)) roles[t] = set = new SortedSet<string>(StringComparer.Ordinal);
+                set.Add(role);
+            }
+            var bone = new HashSet<Transform>();
+            foreach (var pb in physBones)
+            {
+                var start = pb.GetRootTransform();
+                Role(start.parent, "physbone-parent");
+                if (start.root != start) Role(start.root, "physbone-scene-root");
+                bone.UnionWith(Chain(pb, physBones, out _));
+                foreach (var c in pb.colliders ?? new List<VRCPhysBoneColliderBase>())
+                    if (c != null) Role(c.GetRootTransform(), "collider");
+            }
+            var targets = new HashSet<Transform>();
+            foreach (var c in root.GetComponentsInChildren<VRCPhysBoneColliderBase>(true)) Role(c.GetRootTransform(), "collider");
+            foreach (var c in root.GetComponentsInChildren<ContactBase>(true)) Role(c.GetRootTransform(), "contact");
+            foreach (var c in root.GetComponentsInChildren<VRCConstraintBase>(true))
+            {
+                var target = c.GetEffectiveTargetTransform();
+                targets.Add(target);
+                Role(target, "constraint-target");
+                Role(target.parent, "constraint-parent");
+                for (int i = 0; i < c.Sources.Count; i++) Role(c.Sources[i].SourceTransform, "constraint-source");
+                if (c is VRC.Dynamics.ManagedTypes.VRCWorldUpConstraintBase up) Role(up.WorldUpTransform, "constraint-world-up");
+            }
+            foreach (var t in roles.Keys.ToList())
+                for (var x = t; x != null; x = x.parent)
+                    if (bone.Contains(x) || (x != t && targets.Contains(x))) { roles[t].Add("moved-by-dynamics"); break; }
+            foreach (var t in bone) Role(t, "physbone-bone");
+            drivers = roles.Keys.Where(t => roles[t].Any(r => r != "physbone-bone")).Select(t => (t, PathOf(t))).OrderBy(x => x.Item2, StringComparer.Ordinal).ToArray();
+            bones = bone.Select(t => (t, PathOf(t))).OrderBy(x => x.Item2, StringComparer.Ordinal).ToArray();
+            var dupes = roles.Keys.GroupBy(PathOf).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+            if (dupes.Count > 0) throw new Exception("transforms share a path: " + string.Join(", ", dupes));
+            File.WriteAllText(Path.Combine(output, "drivers.tsv"), "transform\troles\n" +
+                string.Concat(roles.Keys.Select(t => (PathOf(t), string.Join(",", roles[t]))).OrderBy(x => x.Item1, StringComparer.Ordinal).Select(x => $"{x.Item1}\t{x.Item2}\n")));
         }
 
         IEnumerable<(string, string)> Parameters()
@@ -747,7 +862,7 @@ namespace AvatarWorkshop.Reference
         void Complete()
         {
             Finished = true;
-            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut }) w?.Dispose();
+            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut }) w?.Dispose();
             File.WriteAllText(Path.Combine(output, "done"), frame.ToString(inv) + "\n");
             Debug.Log($"[aw-reference] recorded {frame} frames, {steps.Count} steps, {tips.Count} tips, {renderCount} renders into {output}");
             Harness.Finish(0);
