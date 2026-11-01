@@ -108,6 +108,7 @@ func _collisions() -> void:
 		var origin: Vector3 = nodes[3].global_position
 		var nearest := Geometry3D.get_closest_point_to_segment(simulation.tip(0), origin, origin + tail)
 		check(simulation.tip(0).distance_to(nearest) >= 0.059, "native sphere/capsule excludes endpoint")
+		check(simulation.chains[0].native_active and simulation.touches(0, 0.002), "a native chain resting on its collider touches it")
 		skeleton.free()
 
 

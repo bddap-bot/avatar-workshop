@@ -81,6 +81,7 @@ func _run() -> void:
 	for i in 120:
 		simulation.advance(1.0 / 60.0)
 	check(second.global_position.distance_to(collider.global_position) >= 0.059, "sphere excludes the chain joint")
+	check(simulation.touches(0, 0.002), "a chain resting on its collider touches it")
 	shape.tail = Vector3(0, -0.1, 0)
 	for i in 120:
 		simulation.advance(1.0 / 60.0)
@@ -152,7 +153,6 @@ func _hands_push(definition: Dictionary) -> void:
 	for i in 30:
 		simulation.advance(1.0 / 60.0)
 	check(second.global_position.distance_to(simulation.hands[0][0]) >= 0.049, "a hand pushes the joint it pokes")
-	check(simulation.contacts > 0, "a poke counts as a contact")
 	simulation.chains[0].collide = Definition.WEARER
 	simulation.reset()
 	for i in 30:

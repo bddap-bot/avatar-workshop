@@ -96,7 +96,9 @@ A grip or a scaled ancestor hands only its dependent component to the constraint
 with the captured momentum. Independent components keep running in the same native
 modifier. The component returns to native simulation once settled, without snapping to rest. Pauses longer than
 250 ms reset momentum. `tip(chain_index)` returns the last visible endpoint;
-native poses are captured when the skeleton modifier finishes.
+native poses are captured when the skeleton modifier finishes. `touches(chain_index, slack)` says
+whether a captured point of the chain lies within `slack` metres of one of its declared colliders,
+whichever solver placed it.
 
 Each spring also says whose hands touch it, as `collide` and `grab` bits of
 `WEARER` and `OTHERS`, read from the spring's (or VRM 0.x bone group's) glTF

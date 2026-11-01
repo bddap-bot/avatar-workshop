@@ -11,7 +11,6 @@ var colliders: Array = []
 var targets := {}
 ## World-space spheres [centre, radius, WEARER or OTHERS], set before advance.
 var hands: Array = []
-var contacts := 0
 var point_count := 0
 var _time := 0.0
 var _native: Array[SpringBoneSimulator3D] = []
@@ -178,11 +177,8 @@ func _step() -> void:
 					var away := point - closest
 					var extent := radii[i] + extents[j]
 					if away.length_squared() < extent * extent:
-						var before := point
 						point = closest + _direction(away, points[i] - closest) * extent
 						point = points[i] + _direction(point - points[i], Vector3.DOWN) * lengths[i]
-						if before.distance_squared_to(point) > 1e-12:
-							contacts += 1
 				points[i + 1] = point
 		chain.previous = current.duplicate()
 		for i in lengths.size():
@@ -220,6 +216,29 @@ func tip(chain: int) -> Vector3:
 		return _center(chains[chain]) * chains[chain].current[-1]
 	var joint: Dictionary = chains[chain].joints[-1]
 	return joint.node.global_transform * joint.tail
+
+
+## Whether a point of the chain rests on one of its declared colliders, whichever solver placed it.
+func touches(c: int, slack: float) -> bool:
+	var chain: Dictionary = chains[c]
+	var center := _center(chain)
+	for i in chain.joints.size():
+		var joint: Dictionary = chain.joints[i]
+		var scale: Vector3 = joint.node.global_basis.get_scale().abs()
+		var radius: float = joint.radius * maxf(scale.x, maxf(scale.y, scale.z))
+		var point: Vector3 = center * chain.current[i]
+		for index: int in chain.colliders:
+			var collider: Dictionary = colliders[index]
+			if collider.is_empty():
+				continue
+			var placed: Transform3D = collider.node.global_transform
+			var start: Vector3 = placed * collider.offset
+			var segment: Vector3 = placed * collider.tail - start
+			var closest := start + segment * clampf((point - start).dot(segment) / maxf(segment.length_squared(), 1e-12), 0.0, 1.0)
+			var size: Vector3 = placed.basis.get_scale().abs()
+			if point.distance_to(closest) < radius + collider.radius * maxf(size.x, maxf(size.y, size.z)) + slack:
+				return true
+	return false
 
 
 func state() -> PackedVector3Array:
