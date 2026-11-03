@@ -1318,6 +1318,10 @@
             "$ref": "#/$defs/NodeIndex"
           }
         },
+        "ignoreOtherPhysBones": {
+          "description": "The chain stops at another PhysBone's root instead of simulating its bones too.",
+          "type": "boolean"
+        },
         "endpointPosition": {
           "type": "array",
           "items": {

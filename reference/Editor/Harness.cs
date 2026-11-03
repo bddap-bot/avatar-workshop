@@ -47,10 +47,16 @@ namespace AvatarWorkshop.Reference
             var scenePath = Env("AW_SCENE");
             var avatarName = Env("AW_AVATAR");
             var fixture = scenePath == null;
+            var probe = scenePath == "probe";
             if (fixture)
             {
                 Fixture.Build();
                 scenePath = Fixture.ScenePath;
+            }
+            if (probe)
+            {
+                Fixture.BuildProbe();
+                scenePath = Fixture.ProbeScenePath;
             }
 
             EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
@@ -73,7 +79,7 @@ namespace AvatarWorkshop.Reference
             playModeSettings = (EditorSettings.enterPlayModeOptionsEnabled, EditorSettings.enterPlayModeOptions);
             EditorSettings.enterPlayModeOptionsEnabled = true;
             EditorSettings.enterPlayModeOptions = EnterPlayModeOptions.DisableDomainReload;
-            recorder = new Recorder(output, avatar.name, fixture);
+            recorder = new Recorder(output, avatar.name, fixture, probe);
             EditorApplication.playModeStateChanged += OnPlayMode;
             EditorApplication.EnterPlaymode();
         }
@@ -179,6 +185,7 @@ namespace AvatarWorkshop.Reference
         readonly string output;
         readonly string avatarName;
         readonly bool fixture;
+        readonly bool probe;
         readonly CultureInfo inv = CultureInfo.InvariantCulture;
 
         int frame = -1;
@@ -195,6 +202,7 @@ namespace AvatarWorkshop.Reference
         Transform leftArm, rightArm;
         Transform[] tracked = new Transform[0];
         Vector2 armSwing;
+        Vector3 held;
         readonly Dictionary<string, float> defaults = new Dictionary<string, float>();
         readonly Dictionary<int, string> stateNames = new Dictionary<int, string>();
         readonly List<(Renderer r, string path, string prop, ShaderPropertyType type)> materialProps = new List<(Renderer, string, string, ShaderPropertyType)>();
@@ -206,7 +214,8 @@ namespace AvatarWorkshop.Reference
         readonly Dictionary<string, string> simulated = new Dictionary<string, string>();
         int posedFrame = -1;
 
-        StreamWriter paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut;
+        StreamWriter paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, grabsOut;
+        PhysBoneManager.Grab grab;
         readonly Dictionary<string, string> lastParams = new Dictionary<string, string>();
         readonly Dictionary<string, string> lastStates = new Dictionary<string, string>();
         Dictionary<string, string> lastValues = new Dictionary<string, string>();
@@ -214,11 +223,12 @@ namespace AvatarWorkshop.Reference
         Camera camera;
         RenderTexture target;
 
-        public Recorder(string output, string avatarName, bool fixture)
+        public Recorder(string output, string avatarName, bool fixture, bool probe)
         {
             this.output = output;
             this.avatarName = avatarName;
             this.fixture = fixture;
+            this.probe = probe;
         }
 
         string F(float v) => v.ToString("R", inv);
@@ -382,6 +392,7 @@ namespace AvatarWorkshop.Reference
             rendersOut = Open("renders.tsv");
             trackOut = Open("track.tsv");
             posesOut = Open("poses.tsv");
+            grabsOut = Open("grabs.tsv");
             trackOut.Write("frame\troot (world)\thead\tleft hand\tright hand\thips (each from the root position and rotation, its scale ignored, in metres: px,py,pz,qx,qy,qz,qw)\n");
             File.WriteAllText(Path.Combine(output, "chains.tsv"),
                 "tip\tlength\n" + string.Concat(tips.Select(t => $"{t.Id}\t{F(t.Length)}\n")));
@@ -500,6 +511,7 @@ namespace AvatarWorkshop.Reference
                     });
                     return;
                 }
+                if (probe && t != start) tips.Add(new Tip { Id = PathOf(start) + "|" + PathOf(t), Leaf = t, Length = length });
                 foreach (var k in kids[t]) Walk(k, length + (Local(k.position) - Local(t.position)).magnitude);
             }
             Walk(start, 0);
@@ -591,6 +603,11 @@ namespace AvatarWorkshop.Reference
                     for (int i = 0; i < smr.sharedMesh.blendShapeCount; i++)
                         v[$"shape:{path}:{smr.sharedMesh.GetBlendShapeName(i)}"] = F(smr.GetBlendShapeWeight(i));
             }
+            foreach (var g in root.GetComponentsInChildren<VRCPhysBoneBase>(true).GroupBy(p => p.transform))
+            {
+                int k = 0;
+                foreach (var p in g) v[$"physbone:{PathOf(g.Key)}#{k++}"] = p.enabled ? "1" : "0";
+            }
             var block = new MaterialPropertyBlock();
             foreach (var (r, path, prop, type) in materialProps)
             {
@@ -669,7 +686,7 @@ namespace AvatarWorkshop.Reference
             Step S(string label, int frames, bool render = false, string control = null) =>
                 Add(new Step { Label = label, Frames = frames, Render = render, Control = control });
 
-            var rest = S("rest", 90, render: true);
+            var rest = S("rest", probe ? 900 : 90, render: true);
             foreach (var (n, v) in Builtins) rest.Set[n] = v;
 
             var motion = S("motion", 6 * Harness.Rate);
@@ -684,6 +701,7 @@ namespace AvatarWorkshop.Reference
             var stop = S("settle", 2 * Harness.Rate, render: true);
             stop.Each = (r, k) => { if (k == 0) { r.root.SetPositionAndRotation(r.rootPos, r.rootRot); r.armSwing = Vector2.zero; } };
 
+            if (probe) return;
             if (descriptor.expressionsMenu != null) Menu(descriptor.expressionsMenu, "", "", new HashSet<VRCExpressionsMenu>(), new Dictionary<string, float>());
 
             foreach (var n in new[] { "GestureLeft", "GestureRight" })
@@ -705,7 +723,51 @@ namespace AvatarWorkshop.Reference
                 st.Set[n] = v;
                 Reset(new List<string> { n });
             }
+            if (fixture)
+            {
+                Grab(S("grab Tail", 60), "Tail.4", new Vector3(0.15f, 0.12f, -0.1f), pose: true);
+                S("posed Tail", 60);
+                Grab(S("grab Tail again", 45), "Tail.4", new Vector3(-0.1f, 0, 0), pose: false);
+                S("released Tail", 60);
+                Grab(S("grab Antenna", 30), "Antenna.0.0", new Vector3(0, 0.05f, 0.05f), pose: false);
+                Grab(S("grab EarL", 45), "EarL.3", new Vector3(-0.08f, 0.1f, 0), pose: false);
+                S("released EarL", 45);
+            }
             S("final", 60, render: true);
+        }
+
+        // Grabs the bone nearest a ray at `bone` as the editor's grab helper does, moves the held point by
+        // `move` (root axes) over the step, and lets go on its last frame, posing the chain if `pose`.
+        void Grab(Step st, string bone, Vector3 move, bool pose)
+        {
+            st.Each = (r, k) =>
+            {
+                var f = r.frame.ToString(r.inv);
+                if (k == 0)
+                {
+                    var t = r.root.GetComponentsInChildren<Transform>(true).First(x => x.name == bone);
+                    var at = t.parent.position + (t.position - t.parent.position) * 0.75f;
+                    var from = at + r.root.rotation * new Vector3(0, 0, 0.5f);
+                    var player = VRC.SDKBase.Networking.LocalPlayer;
+                    r.grab = PhysBoneManager.Inst.AttemptGrab(player != null && player.IsValid() ? player.playerId : -1, new Ray(from, at - from), out var origin);
+                    var o = r.Local(origin);
+                    r.grabsOut.Write($"{f}\t{(r.grab == null ? "miss" : "grab")}\t{bone}\t{r.F(o.x)}\t{r.F(o.y)}\t{r.F(o.z)}\n");
+                    if (r.grab != null) r.held = r.grab.GlobalPosition;
+                    return;
+                }
+                if (r.grab == null) return;
+                if (k == st.Frames - 1)
+                {
+                    PhysBoneManager.Inst.ReleaseGrab(r.grab, pose);
+                    r.grab = null;
+                    r.grabsOut.Write($"{f}\t{(pose ? "pose" : "release")}\t{bone}\t-\t-\t-\n");
+                    return;
+                }
+                float s = Mathf.SmoothStep(0, 1, Mathf.Min(1, k / (st.Frames * 0.6f)));
+                r.grab.GlobalPosition = r.held + r.root.rotation * (move * s);
+                var p = r.Local(r.grab.GlobalPosition);
+                r.grabsOut.Write($"{f}\thold\t{bone}\t{r.F(p.x)}\t{r.F(p.y)}\t{r.F(p.z)}\n");
+            };
         }
 
         Step Add(Step s) { steps.Add(s); return s; }
@@ -862,7 +924,7 @@ namespace AvatarWorkshop.Reference
         void Complete()
         {
             Finished = true;
-            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut }) w?.Dispose();
+            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, grabsOut }) w?.Dispose();
             File.WriteAllText(Path.Combine(output, "done"), frame.ToString(inv) + "\n");
             Debug.Log($"[aw-reference] recorded {frame} frames, {steps.Count} steps, {tips.Count} tips, {renderCount} renders into {output}");
             Harness.Finish(0);

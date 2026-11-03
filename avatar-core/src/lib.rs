@@ -1,5 +1,7 @@
+pub mod curve;
 pub mod glb;
 pub mod model;
+pub mod physbones;
 pub mod validate;
 
 pub use glb::{read, write, Avatar, Error, MAX_JSON_BYTES};

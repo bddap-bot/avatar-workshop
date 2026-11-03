@@ -1,0 +1,3 @@
+0	5	900	-	rest	GestureLeft=0,GestureRight=0,GestureLeftWeight=0,GestureRightWeight=0,Viseme=0,Voice=0,Grounded=1,Seated=0,AFK=0,VelocityX=0,VelocityY=0,VelocityZ=0,AngularY=0,Upright=1,TrackingType=3,VRMode=1,InStation=0,IsOnFriendsList=0
+1	905	360	-	motion	
+2	1265	120	-	settle	

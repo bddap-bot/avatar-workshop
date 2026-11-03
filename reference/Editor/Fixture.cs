@@ -22,6 +22,8 @@ namespace AvatarWorkshop.Reference
         public const string Dir = "Assets/AWFixture";
         public const string ScenePath = Dir + "/Fixture.unity";
         public const string RootName = "AWFixture";
+        public const string ProbeScenePath = Dir + "/Probe.unity";
+        public const string ProbeName = "AWProbe";
 
         static readonly string[] Visemes = { "vrc.v_sil", "vrc.v_pp", "vrc.v_ff", "vrc.v_th", "vrc.v_dd", "vrc.v_kk", "vrc.v_ch", "vrc.v_ss", "vrc.v_nn", "vrc.v_rr", "vrc.v_aa", "vrc.v_e", "vrc.v_ih", "vrc.v_oh", "vrc.v_ou" };
         static readonly string[] Faces = { "Smile", "Fist", "Open", "Point", "Victory", "Rock", "Gun", "Thumbs", "Wave", "Pout", "TailAngle", "LeanUp", "LeanRight", "LeanDown", "LeanLeft" };
@@ -107,14 +109,20 @@ namespace AvatarWorkshop.Reference
             {"RightUpperLeg","RightUpperLeg"},{"RightLowerLeg","RightLowerLeg"},{"RightFoot","RightFoot"},{"RightToes","RightToes"},
         };
 
-        public static void Build()
+        public static void Build() => Build(false);
+
+        // The probe: the fixture's body with no menu or controller, and one short chain per PhysBone field value
+        // instead of its PhysBones, so each field's effect has a reference trace of its own.
+        public static void BuildProbe() => Build(true);
+
+        static void Build(bool probe)
         {
             if (AssetDatabase.IsValidFolder(Dir)) AssetDatabase.DeleteAsset(Dir);
             AssetDatabase.CreateFolder("Assets", "AWFixture");
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             DefineSkeleton();
 
-            var root = new GameObject(RootName);
+            var root = new GameObject(probe ? ProbeName : RootName);
             var t = new Dictionary<string, Transform>();
             foreach (var b in Skeleton)
             {
@@ -158,6 +166,16 @@ namespace AvatarWorkshop.Reference
             animator.avatar = HumanAvatar(root, t);
             animator.applyRootMotion = false;
 
+            var d = root.AddComponent<VRCAvatarDescriptor>();
+            if (probe)
+            {
+                Probes(t);
+                d.ViewPosition = new Vector3(0, 1.62f, 0.08f);
+                AssetDatabase.SaveAssets();
+                EditorSceneManager.SaveScene(scene, ProbeScenePath);
+                AssetDatabase.Refresh();
+                return;
+            }
             Orbs(root.transform, t, mats["Orb"]);
             PhysBones(t);
             Contacts(t);
@@ -166,7 +184,6 @@ namespace AvatarWorkshop.Reference
             var menu = Menu(parameters);
             var fx = FxController();
 
-            var d = root.AddComponent<VRCAvatarDescriptor>();
             d.ViewPosition = new Vector3(0, 1.62f, 0.08f);
             d.lipSync = VRC_AvatarDescriptor.LipSyncStyle.VisemeBlendShape;
             d.VisemeSkinnedMesh = smr;
@@ -471,9 +488,94 @@ namespace AvatarWorkshop.Reference
 
             var antenna = t["Antenna"].gameObject.AddComponent<VRCPhysBone>();
             antenna.multiChildType = VRCPhysBoneBase.MultiChildType.Ignore;
-            antenna.pull = 0.1f; antenna.spring = 0.9f; antenna.gravity = 0; antenna.immobile = 0.5f;
+            antenna.pull = 0.1f; antenna.spring = 0.9f; antenna.gravity = 0; antenna.immobile = 0.5f; antenna.radius = 0.02f;
             antenna.allowGrabbing = VRCPhysBoneBase.AdvancedBool.False;
             antenna.allowCollision = VRCPhysBoneBase.AdvancedBool.False;
+        }
+
+        // Each probe is a chain of three 0.1 m bones on the head, 0.3 m above it in a row 0.05 m apart, pointing
+        // forward unless set otherwise. The base is version 1.1, simplified, pull 0.2, spring 0.2, no gravity,
+        // immobile, limit or collision; each probe changes the fields its name says. A collider probe's collider
+        // sits on the head, placed from the probe's root, and its chain has gravity 0.4.
+        static void Probes(Dictionary<string, Transform> t)
+        {
+            var probes = new (string name, Vector3 dir, Action<VRCPhysBone> set)[]
+            {
+                ("Base", Vector3.forward, p => { }),
+                ("Pull05", Vector3.forward, p => p.pull = 0.05f),
+                ("Pull50", Vector3.forward, p => p.pull = 0.5f),
+                ("Pull90", Vector3.forward, p => p.pull = 0.9f),
+                ("Spring0", Vector3.forward, p => p.spring = 0),
+                ("Spring60", Vector3.forward, p => p.spring = 0.6f),
+                ("Spring95", Vector3.forward, p => p.spring = 0.95f),
+                ("Version10", Vector3.forward, p => p.version = VRCPhysBoneBase.Version.Version_1_0),
+                ("Momentum20Stiff0", Vector3.forward, p => { Advanced(p); p.spring = 0.2f; p.stiffness = 0; }),
+                ("Momentum20Stiff50", Vector3.forward, p => { Advanced(p); p.spring = 0.2f; p.stiffness = 0.5f; }),
+                ("Momentum80Stiff20", Vector3.forward, p => { Advanced(p); p.spring = 0.8f; p.stiffness = 0.2f; }),
+                ("Momentum80Stiff80", Vector3.forward, p => { Advanced(p); p.spring = 0.8f; p.stiffness = 0.8f; }),
+                ("Advanced10", Vector3.forward, p => { Advanced(p); p.version = VRCPhysBoneBase.Version.Version_1_0; p.spring = 0.5f; p.stiffness = 0.3f; }),
+                ("Gravity30", Vector3.forward, p => p.gravity = 0.3f),
+                ("Gravity100", Vector3.forward, p => p.gravity = 1),
+                ("Gravity50Down", Vector3.down, p => p.gravity = 0.5f),
+                ("Gravity50Falloff50", Vector3.forward, p => { p.gravity = 0.5f; p.gravityFalloff = 0.5f; }),
+                ("Gravity50Falloff100", Vector3.forward, p => { p.gravity = 0.5f; p.gravityFalloff = 1; }),
+                ("Gravity50Version10", Vector3.forward, p => { p.gravity = 0.5f; p.version = VRCPhysBoneBase.Version.Version_1_0; }),
+                ("Gravity50Advanced", Vector3.forward, p => { Advanced(p); p.gravity = 0.5f; p.spring = 0.5f; p.stiffness = 0.3f; }),
+                ("Immobile50", Vector3.forward, p => p.immobile = 0.5f),
+                ("Immobile100", Vector3.forward, p => p.immobile = 1),
+                ("Immobile50World", Vector3.forward, p => { p.immobile = 0.5f; p.immobileType = VRCPhysBoneBase.ImmobileType.World; }),
+                ("Angle30", Vector3.forward, p => { p.gravity = 0.6f; p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 30; }),
+                ("Angle30Rotated", Vector3.forward, p => { p.gravity = 0.6f; p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 30; p.limitRotation = new Vector3(20, 30, 0); }),
+                ("Hinge40", Vector3.forward, p => { p.gravity = 0.6f; p.limitType = VRCPhysBoneBase.LimitType.Hinge; p.maxAngleX = 40; }),
+                ("Hinge40Rotated", Vector3.forward, p => { p.gravity = 0.6f; p.limitType = VRCPhysBoneBase.LimitType.Hinge; p.maxAngleX = 40; p.limitRotation = new Vector3(0, 90, 30); }),
+                ("Polar50x10", Vector3.forward, p => { p.gravity = 0.6f; p.limitType = VRCPhysBoneBase.LimitType.Polar; p.maxAngleX = 50; p.maxAngleZ = 10; }),
+                ("Stretch50", Vector3.forward, p => { p.gravity = 1; p.maxStretch = 0.5f; }),
+                ("Stretch50Motion100", Vector3.forward, p => { p.gravity = 1; p.maxStretch = 0.5f; p.stretchMotion = 1; }),
+                ("Squish50Motion100", Vector3.forward, p => { p.gravity = 1; p.maxSquish = 0.5f; p.stretchMotion = 1; }),
+                ("PullCurve", Vector3.forward, p => { p.pull = 0.6f; p.pullCurve = Ramp(1, 0.1f); }),
+                ("Endpoint", Vector3.forward, p => p.endpointPosition = new Vector3(0, 0.08f, 0)),
+                ("Sphere", Vector3.forward, p => Collide(p, VRCPhysBoneColliderBase.ShapeType.Sphere, 0.06f, 0, new Vector3(0, -0.07f, 0.22f), Quaternion.identity)),
+                ("SphereInside", Vector3.forward, p => Collide(p, VRCPhysBoneColliderBase.ShapeType.Sphere, 0.31f, 0, new Vector3(0, 0, 0.05f), Quaternion.identity, inside: true)),
+                ("Capsule", Vector3.forward, p => Collide(p, VRCPhysBoneColliderBase.ShapeType.Capsule, 0.04f, 0.3f, new Vector3(0, -0.06f, 0.18f), Quaternion.Euler(0, 0, 90))),
+                ("CapsuleRadius", Vector3.forward, p => { p.radius = 0.03f; Collide(p, VRCPhysBoneColliderBase.ShapeType.Capsule, 0.04f, 0.3f, new Vector3(0, -0.09f, 0.18f), Quaternion.Euler(0, 0, 90)); }),
+                ("CapsuleBonesAsSpheres", Vector3.forward, p => { p.radius = 0.03f; Collide(p, VRCPhysBoneColliderBase.ShapeType.Capsule, 0.04f, 0.3f, new Vector3(0, -0.09f, 0.18f), Quaternion.Euler(0, 0, 90), spheres: true); }),
+                ("Plane", Vector3.forward, p => Collide(p, VRCPhysBoneColliderBase.ShapeType.Plane, 0, 0, new Vector3(0, -0.02f, 0), Quaternion.Euler(-10, 0, 0))),
+            };
+            for (int i = 0; i < probes.Length; i++)
+            {
+                var (name, dir, set) = probes[i];
+                var parent = t["Head"];
+                for (int k = 0; k < 4; k++)
+                {
+                    var go = new GameObject(k == 0 ? name : $"{name}.{k}");
+                    go.transform.SetParent(parent, false);
+                    go.transform.localPosition = k == 0 ? new Vector3((i - probes.Length / 2) * 0.05f, 0.3f, 0) : Vector3.up * 0.1f;
+                    if (k == 0) go.transform.localRotation = Quaternion.FromToRotation(Vector3.up, dir);
+                    parent = go.transform;
+                }
+                var root = t["Head"].Find(name);
+                var pb = root.gameObject.AddComponent<VRCPhysBone>();
+                pb.version = VRCPhysBoneBase.Version.Version_1_1;
+                pb.integrationType = VRCPhysBoneBase.IntegrationType.Simplified;
+                pb.pull = 0.2f; pb.spring = 0.2f; pb.stiffness = 0.2f; pb.gravity = 0; pb.gravityFalloff = 0; pb.immobile = 0;
+                pb.limitType = VRCPhysBoneBase.LimitType.None; pb.radius = 0;
+                pb.allowCollision = VRCPhysBoneBase.AdvancedBool.True;
+                pb.allowGrabbing = VRCPhysBoneBase.AdvancedBool.False;
+                pb.allowPosing = VRCPhysBoneBase.AdvancedBool.False;
+                set(pb);
+            }
+        }
+
+        static void Advanced(VRCPhysBone p) => p.integrationType = VRCPhysBoneBase.IntegrationType.Advanced;
+
+        static void Collide(VRCPhysBone p, VRCPhysBoneColliderBase.ShapeType shape, float radius, float height, Vector3 pos, Quaternion rot, bool inside = false, bool spheres = false)
+        {
+            var c = p.transform.parent.gameObject.AddComponent<VRCPhysBoneCollider>();
+            c.shapeType = shape; c.radius = radius; c.height = height; c.insideBounds = inside; c.bonesAsSpheres = spheres;
+            c.position = p.transform.localPosition + pos;
+            c.rotation = rot;
+            p.gravity = 0.4f;
+            p.colliders = new List<VRCPhysBoneColliderBase> { c };
         }
 
         static void Contacts(Dictionary<string, Transform> t)
@@ -611,7 +713,7 @@ namespace AvatarWorkshop.Reference
                 ("GestureLeft", AnimatorControllerParameterType.Int), ("GestureRight", AnimatorControllerParameterType.Int), ("GestureLeftWeight", AnimatorControllerParameterType.Float),
                 ("Proximity", AnimatorControllerParameterType.Float), ("Touched", AnimatorControllerParameterType.Bool),
                 ("Tail_Angle", AnimatorControllerParameterType.Float), ("Tail_IsGrabbed", AnimatorControllerParameterType.Bool), ("Tail_Stretch", AnimatorControllerParameterType.Float),
-                ("EarL_Squish", AnimatorControllerParameterType.Float), ("IsLocal", AnimatorControllerParameterType.Bool), ("Viseme", AnimatorControllerParameterType.Int),
+                ("EarL_Squish", AnimatorControllerParameterType.Float), ("Tail_IsPosed", AnimatorControllerParameterType.Bool), ("EarL_Stretch", AnimatorControllerParameterType.Float), ("EarL_Angle", AnimatorControllerParameterType.Float), ("EarL_IsGrabbed", AnimatorControllerParameterType.Bool), ("IsLocal", AnimatorControllerParameterType.Bool), ("Viseme", AnimatorControllerParameterType.Int),
                 ("Grounded", AnimatorControllerParameterType.Bool),
             }) ctrl.AddParameter(n, ty);
 

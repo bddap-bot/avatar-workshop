@@ -27,6 +27,33 @@ invalid files are each refused with a reason and none panics. `nix-shell --run '
 --lib --target aarch64-linux-android --target wasm32-unknown-unknown'` builds it for Android
 and the web.
 
+## PhysBones
+
+`avatar_core::physbones` runs a model's PhysBones. `PhysBones::new(&avatar)` builds each component's chain
+from the glTF node tree; `advance(dt, &frame)` steps every chain at the fixed `STEP` (1/60 s) however often the
+host calls it, interpolating the host's frames for steps between them and extrapolating past the last one, and
+`local(physbone)` returns each simulated bone's local pose at the host's current time, blended between the
+steps around it. A `Frame` carries, in the avatar's own space and scale (glTF axes, metres): the avatar root in
+the world, every node's pose relative to it after animation and IK, every node's animated local pose (read only
+for chains marked animated; others keep the authored rest), every node's active flag and every component's
+enabled flag. A chain runs while its component is enabled and active in the hierarchy. `grab`, `hold`,
+`release` and `unpose` drive a hand, honouring the grab and pose filters; `parameters(physbone)` gives
+`_IsGrabbed`, `_IsPosed`, `_Angle`, `_Stretch` and `_Squish`.
+
+The semantics were measured against the SDK's own simulation through the reference harness, not taken from its
+binaries. Simplified integration blends velocity toward pull by spring; advanced keeps momentum and pull,
+both scaled down by stiffness, and carries each bone with its parent's movement by stiffness. Version 1.1 gravity
+turns the rest direction toward down by the gravity value less its falloff; version 1.0 gravity is a force.
+Immobile all-motion follows the root's parent, world only the avatar's position. Curves are read by depth along
+the chain. Bones collide as spheres of their radius at their ends, and bones of radius 0 pass through spheres
+and capsules but not planes.
+
+`cargo test --test physbones` replays recordings in `avatar-core/fixtures/reference/` (the probe, the
+fixture's motion and its grabs, trimmed to what the replays read) and checks each field's probe, the fixture's
+median error, grabs, poses and their filters, the parameters, and that 72, 90 and 120 Hz hosts agree with 60 Hz
+within 1% of chain length. `cargo run --release --example physbones -- RECORDING AVATAR.glb [--chains]` scores
+any recording, and `--example physbones_cost -- AVATAR.glb` times a joint step.
+
 ## Unity exporter
 
 [`unity/com.avatarworkshop.exporter`](unity/com.avatarworkshop.exporter) is a Unity 2022.3 editor
@@ -170,7 +197,9 @@ root and arm motion, settling, every expression-menu control swept (each toggle 
 non-default value, each radial at 0, 0.25, 0.5, 0.75 and 1, each puppet axis to its extremes, inside
 its submenus), then the built-in parameters stepped (gestures, visemes, locomotion, tracking and
 state flags). `UNITY` names the editor command. With no `SCENE`, it generates the fixture into
-`PROJECT`'s `Assets/AWFixture` and records it, so point it at a scratch project. It restores
+`PROJECT`'s `Assets/AWFixture` and records it, so point it at a scratch project. With `SCENE` `probe`, it generates and
+records the probe there: the fixture's body with one three-bone chain per PhysBone field value (`Fixture.Probes` lists
+them), so each field's effect has a reference trace of its own. The probe rests 15 s before its motion, so even its lightly damped chains start it settled. It restores
 `PROJECT`'s package manifest on exit and refuses an `OUT` that holds something other than an earlier recording.
 `OUT` receives:
 
@@ -179,10 +208,11 @@ state flags). `UNITY` names the editor command. With no `SCENE`, it generates th
 | `steps.tsv` | each step: index, first frame, frames, menu control, label, parameters set |
 | `params.tsv` | every animator parameter on each change, values printed round-trip exact |
 | `states.tsv` | every playable layer's state and transition on each change |
-| `values.tsv` | node active, renderer enabled, material slots, blendshape weights, animated material properties and animated transforms, on each change |
-| `tips.tsv`, `chains.tsv` | every PhysBone leaf (with its endpoint) each frame, in metres from the avatar root along its axes (its scale ignored), and its rest chain length |
+| `values.tsv` | node active, renderer enabled, PhysBone enabled (`physbone:<path>#<k>`, the k-th on that object), material slots, blendshape weights, animated material properties and animated transforms, on each change |
+| `tips.tsv`, `chains.tsv` | every PhysBone leaf (with its endpoint; for the probe, every bone below each root) each frame, in metres from the avatar root along its axes (its scale ignored), and its rest chain length |
 | `track.tsv` | the avatar root in the world, and its head, hands and hips in metres from the root along its axes, each frame, for replaying the same input elsewhere |
 | `poses.tsv`, `drivers.tsv` | the input the SDK's dynamics read, taken each frame after animation and before its constraints, PhysBones and contacts run: every transform they read besides the bones they simulate (each PhysBone root's parent and scene root, every collider and contact, each constraint's target, its parent, its sources and world-up transform) in metres from the root along its axes (`root` rows, scales world), each written when it changes, and each PhysBone bone's local pose (`local` rows) whenever it differs from the pose the SDK left it in the frame before, which is when animation set it. A row is `frame, space, transform, px,py,pz,qx,qy,qz,qw,sx,sy,sz`; the root itself is the empty path. `drivers.tsv` lists each transform with its roles; `moved-by-dynamics` marks one at or under a simulated bone or under a constraint target, whose recorded pose is the one before the dynamics moved it. A recording fails if any of them is gone or unposed on a frame |
+| `grabs.tsv` | empty but for the fixture, which after the built-in steps has its tail, antenna and left ear grabbed through the SDK's own grab call (a ray at the bone, as its editor grab helper casts), the held point moved and let go, the tail once posed; each row is `frame, event, bone, x,y,z`, the event `grab` (at the point the SDK grabbed), `miss`, `hold` (the held point that frame), `release` or `pose` |
 | `render/`, `renders.tsv`, `camera.json` | a render at the end of every swept step from a fixed camera and light |
 | `menu.tsv` | every menu control: indexed path, name path (control names joined by `/`), type, parameter |
 | `coverage.json`, `meta.json` | the avatar's feature counts; versions and totals |
@@ -197,7 +227,7 @@ fixture recording fails if any of these is missing from `coverage.json`.
 `reference/check.sh PROJECT OUT [SCENE] [AVATAR]` records the avatar (the fixture by default) twice and requires every output but the log,
 `tips.tsv` and `poses.tsv` to be byte-identical, and PhysBone tips and every pose value within 1e-5 (`reference/poses.py`, Python 3.10 or later).
 
-A runtime replays the recording from `track.tsv`, `poses.tsv` and `steps.tsv` and writes `tips.tsv` and `render/`
+A runtime replays the recording from `track.tsv`, `poses.tsv`, `values.tsv`, `grabs.tsv` and `steps.tsv` and writes `tips.tsv` and `render/`
 in the same layout; `reference/compare.py REFERENCE RUNTIME` (Python 3 with numpy and Pillow) scores
 it: PhysBone tip RMS error over chain length (a leaf or frame the runtime lacks counts as unmoving), the
 fraction of menu controls that match, and mean image error. A control matches when the runtime's

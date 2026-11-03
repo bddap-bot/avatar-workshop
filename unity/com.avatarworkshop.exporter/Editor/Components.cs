@@ -220,7 +220,6 @@ namespace AvatarWorkshop.Exporter
                     VRCPhysBoneBase.LimitType.Polar => new Obj { { "type", "polar" }, { "maxAngleX", Curved(p.maxAngleX, p.maxAngleXCurve) }, { "maxAngleZ", Curved(p.maxAngleZ, p.maxAngleZCurve) }, { "rotation", LimitRotation(p) } },
                     _ => new Obj { { "type", "none" } },
                 };
-                if (p.ignoreOtherPhysBones) Drop("physbone ignoreOtherPhysBones");
                 if (p.staticFreezeAxis != Vector3.zero) Drop("physbone staticFreezeAxis");
                 var record = new Obj
                 {
@@ -236,6 +235,7 @@ namespace AvatarWorkshop.Exporter
                     { "limit", limit }, { "radius", Curved(p.radius, p.radiusCurve) },
                     { "maxStretch", Curved(p.maxStretch, p.maxStretchCurve) }, { "stretchMotion", Curved(p.stretchMotion, p.stretchMotionCurve) }, { "maxSquish", Curved(p.maxSquish, p.maxSquishCurve) },
                 };
+                if (p.ignoreOtherPhysBones) record.Add("ignoreOtherPhysBones", true);
                 int outside = 0;
                 var colliders = new List<object>();
                 foreach (var c in p.colliders)

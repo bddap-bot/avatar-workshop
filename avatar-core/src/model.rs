@@ -544,6 +544,9 @@ pub struct PhysBone {
     pub version: PhysBoneVersion,
     pub root: NodeIndex,
     pub ignore_transforms: Vec<NodeIndex>,
+    /// The chain stops at another PhysBone's root instead of simulating its bones too.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ignore_other_phys_bones: bool,
     pub endpoint_position: Vec3,
     pub multi_child_type: MultiChildType,
     pub integration_type: IntegrationType,

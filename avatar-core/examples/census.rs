@@ -244,7 +244,13 @@ impl Check<'_> {
                     "grabMovement" => eq(name, jf(num(value)), "/grabMovement"),
                     "snapToHand" | "isAnimated" | "resetWhenDisabled" => eq(name, value.clone(), &format!("/{name}")),
                     "parameter" => eq(name, if value.as_str() == Some("") { json!("<absent>") } else { value.clone() }, "/parameter"),
-                    "ignoreOtherPhysBones" | "staticFreezeAxis" => {
+                    "ignoreOtherPhysBones" => {
+                        let actual = m.pointer("/ignoreOtherPhysBones").cloned().unwrap_or(json!(false));
+                        if !values_equal(value, &actual, non_finite) {
+                            found.borrow_mut().push(format!("physbone {i} (node {node}): {name}: Unity {value}, model {actual}"));
+                        }
+                    }
+                    "staticFreezeAxis" => {
                         let default = value == &json!(false) || value == &json!([0.0, 0.0, 0.0]);
                         if !default && self.unsupported(&format!("physbone {name}")) == 0 {
                             found.borrow_mut().push(format!("physbone {i} (node {node}): {name} {value} is neither in the model nor reported"));

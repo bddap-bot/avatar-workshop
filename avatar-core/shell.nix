@@ -8,7 +8,7 @@ let
     sha256 = "1klgyhj98j3gfsql5sn9rapyx62qk5g8adk5zh9mnc4d0fj61gdr";
   }) { overlays = [ rust-overlay ]; };
   rust = pkgs.rust-bin.stable."1.91.1".default.override {
-    targets = [ "aarch64-linux-android" "wasm32-unknown-unknown" ];
+    targets = [ "aarch64-linux-android" "aarch64-unknown-linux-musl" "wasm32-unknown-unknown" ];
   };
 in
 pkgs.mkShell {
