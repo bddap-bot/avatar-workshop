@@ -169,25 +169,25 @@ func _hand_collisions() -> void:
 	var simulation := Springs.new(definition, nodes)
 	await process_frame
 	await process_frame
+	var sphere := func(at: Vector3, who: int) -> Array: return [{"key": "right", "from": at, "to": at, "radius": 0.06, "who": who}]
 	var hand := Vector3(0.03, -0.19, 0)
-	simulation.hands = [[hand, 0.06, Definition.WEARER]]
+	simulation.hands = sphere.call(hand, Definition.WEARER)
 	for i in 120:
 		tick(skeleton, simulation)
-	check(simulation._native[0].active and simulation.tip(0).distance_to(hand) >= 0.059, "a permitted hand pushes the native spring")
+	check(not simulation.chains[0].native_active and simulation.tip(0).distance_to(hand) >= 0.059, "a permitted hand within reach hands the chain to the solver that pushes it")
 	check(simulation.grabs(0, Definition.OTHERS) and not simulation.grabs(0, Definition.WEARER), "native chains retain their grab permissions")
-	simulation.hands[0][2] = Definition.OTHERS
+	simulation.hands = sphere.call(hand, Definition.OTHERS)
 	for i in 300:
 		tick(skeleton, simulation)
-	check(simulation.tip(0).distance_to(Vector3(0, -0.2, 0)) < 0.015, "changing the hand owner updates native collision permissions")
-	simulation.hands[0][2] = Definition.WEARER
-	simulation.hands[0][0] = Vector3(-0.03, -0.19, 0)
+	check(simulation.chains[0].native_active and simulation.tip(0).distance_to(Vector3(0, -0.2, 0)) < 0.015, "a hand the chain does not collide with leaves it to the native solver")
+	simulation.hands = sphere.call(Vector3(-0.03, -0.19, 0), Definition.WEARER)
 	for i in 120:
 		tick(skeleton, simulation)
-	check(simulation.tip(0).distance_to(simulation.hands[0][0]) >= 0.059, "native hand colliders follow moving hands")
+	check(simulation.tip(0).distance_to(Vector3(-0.03, -0.19, 0)) >= 0.059, "the pushing solver follows moving hands")
 	simulation.hands.clear()
 	for i in 300:
 		tick(skeleton, simulation)
-	check(simulation.tip(0).distance_to(Vector3(0, -0.2, 0)) < 0.015, "a departing hand removes its native collider")
+	check(simulation.chains[0].native_active and simulation.tip(0).distance_to(Vector3(0, -0.2, 0)) < 0.015, "a departing hand returns the rested chain to the native solver")
 	skeleton.free()
 
 

@@ -119,7 +119,7 @@ Sphere and capsule colliders follow their bound nodes.
 
 `targets[chain_index] = world_position` holds a tip within its reach; erase
 the entry to release it. Held tips yield to collisions and length constraints.
-A grip or a scaled ancestor hands only its dependent component to the constraint solver
+A grip, a hand within reach or a scaled ancestor hands only its dependent component to the constraint solver
 with the captured momentum. Independent components keep running in the same native
 modifier. The component returns to native simulation once settled, without snapping to rest. Pauses longer than
 250 ms reset momentum. `tip(chain_index)` returns the last visible endpoint;
@@ -131,10 +131,13 @@ Each spring also says whose hands touch it, as `collide` and `grab` bits of
 `WEARER` and `OTHERS`, read from the spring's (or VRM 0.x bone group's) glTF
 `extras`: `"collide"` and `"grab"` each list `"wearer"` and `"others"`, as a
 VRChat PhysBone's allowCollision and allowGrabbing filters do; a spring without
-them is everyone's to touch. Set `hands` before `advance` to spheres
-`[world_center, radius, WEARER or OTHERS]`: each pushes the chains whose
-`collide` bits share its own, so a poke moves hair, ears or a tail, and a held
-chain follows its holder instead. `grabs(chain_index, who)` says whether a hand
+them is everyone's to touch. Set `hands` before `advance` to world-space
+capsules `{"key", "from", "to", "radius", "who"}` (a sphere where the ends
+meet, `who` WEARER or OTHERS, `key` the same hand's name every frame): each
+pushes the chains whose `collide` bits share its own, so a poke moves hair, ears
+or a tail, and carries what it pushed along as it moves, never pulling it as it
+draws away, so a strand caught in a hand drags with it until its own pull wins;
+a held chain follows its holder instead. `grabs(chain_index, who)` says whether a hand
 of `who` may hold that chain; the caller checks it before setting a target.
 
 The caller owns input arbitration and networking. `state()` returns world-space

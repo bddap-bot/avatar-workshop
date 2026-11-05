@@ -3,8 +3,6 @@ extends SpringBoneSimulator3D
 var chains: Array = []
 var components: Array = []
 var _collisions: Array = []
-var _hands: Array[SpringBoneCollisionSphere3D] = []
-var _hand_masks := PackedInt32Array()
 
 
 func configure(bound: Array, colliders: Array) -> void:
@@ -83,27 +81,3 @@ func _configure_chain(i: int) -> void:
 		set_center_bone(i, chain.center.bone)
 	set_enable_all_child_collisions(i, false)
 
-
-func update_hands(hands: Array) -> void:
-	while _hands.size() > hands.size():
-		_hands.pop_back().free()
-	while _hands.size() < hands.size():
-		var sphere := SpringBoneCollisionSphere3D.new()
-		add_child(sphere)
-		_hands.append(sphere)
-	var masks := PackedInt32Array()
-	for i in hands.size():
-		_hands[i].global_position = hands[i][0]
-		_hands[i].radius = hands[i][1]
-		masks.append(hands[i][2])
-	if masks == _hand_masks:
-		return
-	_hand_masks = masks
-	for i in chains.size():
-		var shapes: Array = _collisions[i].duplicate()
-		for j in _hands.size():
-			if chains[i].collide & masks[j]:
-				shapes.append(_hands[j])
-		set_collision_count(i, shapes.size())
-		for j in shapes.size():
-			set_collision_path(i, j, get_path_to(shapes[j]))

@@ -149,10 +149,28 @@ func _hands_push(definition: Dictionary) -> void:
 	second.position = Vector3(0, -0.2, 0)
 	var simulation := Springs.new(definition, {1: first, 2: second})
 	var rest := second.global_position
-	simulation.hands = [[rest + Vector3(0.02, 0, 0), 0.05, Definition.OTHERS]]
+	var poke := rest + Vector3(0.02, 0, 0)
+	simulation.hands = [{"key": "right", "from": poke, "to": poke, "radius": 0.05, "who": Definition.OTHERS}]
 	for i in 30:
 		simulation.advance(1.0 / 60.0)
-	check(second.global_position.distance_to(simulation.hands[0][0]) >= 0.049, "a hand pushes the joint it pokes")
+	check(second.global_position.distance_to(poke) >= 0.049, "a hand pushes the joint it pokes")
+	var pushed := second.global_position
+	for i in 20:
+		var at := poke + Vector3(0, 0, 0.004 * (i + 1))
+		simulation.hands = [{"key": "right", "from": at, "to": at, "radius": 0.05, "who": Definition.OTHERS}]
+		simulation.advance(1.0 / 60.0)
+	check(second.global_position.z - pushed.z > 0.015, "a hand carries what it pushes along as it moves (%.3f m)" % (second.global_position.z - pushed.z))
+	var away := poke + Vector3(0.3, 0, 0.08)
+	simulation.hands = [{"key": "right", "from": away, "to": away, "radius": 0.05, "who": Definition.OTHERS}]
+	for i in 300:
+		simulation.advance(1.0 / 60.0)
+	check(second.global_position.distance_to(rest) < 0.01, "a hand drawn away lets go")
+	var capsule := {"key": "left", "from": rest + Vector3(0.03, 0.1, 0), "to": rest + Vector3(0.03, -0.1, 0), "radius": 0.02, "who": Definition.OTHERS}
+	simulation.hands = [capsule]
+	for i in 30:
+		simulation.advance(1.0 / 60.0)
+	check(absf(second.global_position.x - capsule.from.x) >= 0.019, "a hand pushes along its whole length")
+	simulation.hands = [{"key": "right", "from": poke, "to": poke, "radius": 0.05, "who": Definition.OTHERS}]
 	simulation.chains[0].collide = Definition.WEARER
 	simulation.reset()
 	for i in 30:

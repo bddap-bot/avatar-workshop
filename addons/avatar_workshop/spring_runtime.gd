@@ -9,11 +9,14 @@ const STEP := 1.0 / 60.0
 var chains: Array = []
 var colliders: Array = []
 var targets := {}
-## World-space spheres [centre, radius, WEARER or OTHERS], set before advance.
+## World-space capsules {"key", "from", "to", "radius", "who": WEARER or OTHERS}, a sphere where the ends meet, set
+## before advance; "key" tells a hand from the others across frames.
 var hands: Array = []
 var point_count := 0
 var _time := 0.0
 var _native: Array[SpringBoneSimulator3D] = []
+var _hands_before := {}
+var _share := 1.0
 
 
 func _init(definition: Dictionary, nodes: Dictionary) -> void:
@@ -34,7 +37,7 @@ func _init(definition: Dictionary, nodes: Dictionary) -> void:
 		var count := joints.size() if end_length > 0.0 else joints.size() - 1
 		if count == 0:
 			continue
-		var chain := {"index": chains.size(), "native": null, "native_active": false, "endpoint": nodes[joints[-1].node] if count < joints.size() else null, "joints": [], "colliders": source.colliders, "collide": source.get("collide", EVERYONE), "grab": source.get("grab", EVERYONE), "center": nodes.get(source.center), "current": PackedVector3Array(), "previous": PackedVector3Array()}
+		var chain := {"index": chains.size(), "native": null, "native_active": false, "endpoint": nodes[joints[-1].node] if count < joints.size() else null, "joints": [], "colliders": source.colliders, "collide": source.get("collide", EVERYONE), "grab": source.get("grab", EVERYONE), "center": nodes.get(source.center), "current": PackedVector3Array(), "previous": PackedVector3Array(), "reach": 0.0, "gripped": {}}
 		for i in count:
 			var joint: Dictionary = joints[i].duplicate()
 			var node = nodes[joint.node]
@@ -48,6 +51,7 @@ func _init(definition: Dictionary, nodes: Dictionary) -> void:
 				var direction: Vector3 = node.global_position - nodes[joints[i - 1].node].global_position
 				tail = node.global_basis.inverse() * direction.normalized() * end_length
 			joint.tail = tail
+			chain.reach += (node.global_basis * tail).length()
 			chain.joints.append(joint)
 		chains.append(chain)
 	reset()
@@ -70,9 +74,8 @@ func reset() -> void:
 
 func advance(delta: float) -> void:
 	for simulator in _native:
-		simulator.update_hands(hands)
 		for component: Array in simulator.components:
-			var run: bool = component.all(func(chain: Dictionary) -> bool: return not targets.has(chain.index) and _unit_scale(chain))
+			var run: bool = component.all(func(chain: Dictionary) -> bool: return not targets.has(chain.index) and _unit_scale(chain) and not _within_hand(chain))
 			if run == component[0].native_active:
 				continue
 			if run:
@@ -88,9 +91,14 @@ func advance(delta: float) -> void:
 		reset()
 		return
 	_time += maxf(delta, 0.0)
-	while _time >= STEP:
+	var steps := floori(_time / STEP)
+	_share = 1.0 / maxi(steps, 1)
+	for i in steps:
 		_time -= STEP
 		_step()
+	_hands_before.clear()
+	for hand: Dictionary in hands:
+		_hands_before[hand.key] = [hand.from, hand.to]
 
 
 func _step() -> void:
@@ -143,15 +151,26 @@ func _step() -> void:
 			extents.append(extent)
 			centers.append(start + segment * 0.5)
 			bounds.append(segment.length() * 0.5 + extent)
+		var keys: Array[String] = []
+		keys.resize(starts.size())
+		var gripped := {}
 		if not targets.get(c) is Vector3:
-			for hand: Array in hands:
-				if chain.collide & hand[2]:
-					starts.append(hand[0])
-					segments.append(Vector3.ZERO)
-					squared.append(1e-12)
-					extents.append(hand[1])
-					centers.append(hand[0])
-					bounds.append(hand[1])
+			var now := {}
+			for hand: Dictionary in hands:
+				if chain.collide & hand.who:
+					now[hand.key] = hand
+					var segment: Vector3 = hand.to - hand.from
+					starts.append(hand.from)
+					segments.append(segment)
+					squared.append(maxf(segment.length_squared(), 1e-12))
+					extents.append(hand.radius)
+					centers.append(hand.from + segment * 0.5)
+					bounds.append(segment.length() * 0.5 + hand.radius)
+					keys.append(hand.key)
+			for i: int in chain.gripped:
+				var key: String = chain.gripped[i]
+				if now.has(key) and _hands_before.has(key):
+					points[i + 1] += _carried(points[i + 1], _hands_before[key], now[key], _share)
 		var anchor := points[0]
 		var held: Variant = targets.get(c)
 		if held is Vector3:
@@ -179,11 +198,38 @@ func _step() -> void:
 					if away.length_squared() < extent * extent:
 						point = closest + _direction(away, points[i] - closest) * extent
 						point = points[i] + _direction(point - points[i], Vector3.DOWN) * lengths[i]
+						if keys[j] != "":
+							gripped[i] = keys[j]
 				points[i + 1] = point
+		chain.gripped = gripped
 		chain.previous = current.duplicate()
 		for i in lengths.size():
 			chain.current[i] = inverse * points[i + 1]
 		_apply(chain, points)
+
+
+## Whether a hand that may push `chain` is within the chain's reach of its first joint.
+func _within_hand(chain: Dictionary) -> bool:
+	var anchor: Vector3 = chain.joints[0].node.global_position
+	for hand: Dictionary in hands:
+		if chain.collide & hand.who:
+			var segment: Vector3 = hand.to - hand.from
+			var closest: Vector3 = hand.from + segment * clampf((anchor - hand.from).dot(segment) / maxf(segment.length_squared(), 1e-12), 0.0, 1.0)
+			if anchor.distance_to(closest) < chain.reach + hand.radius:
+				return true
+	return false
+
+
+## How far a hand that pushed the point at `at` carries it, `share` of its move from `before` ([from, to]) to `now`:
+## as the nearest point of its axis moved, but never pulled along as the hand draws away, so what a hand catches drags
+## with it until its own pull wins or the hand leaves it.
+static func _carried(at: Vector3, before: Array, now: Dictionary, share: float) -> Vector3:
+	var span: Vector3 = before[1] - before[0]
+	var along := clampf((at - before[0]).dot(span) / maxf(span.length_squared(), 1e-12), 0.0, 1.0)
+	var near: Vector3 = before[0] + span * along
+	var moved: Vector3 = ((now.from as Vector3).lerp(now.to, along) - near) * share
+	var normal := (at - near).normalized()
+	return moved - normal * minf(moved.dot(normal), 0.0)
 
 
 static func _direction(value: Vector3, fallback: Vector3) -> Vector3:
