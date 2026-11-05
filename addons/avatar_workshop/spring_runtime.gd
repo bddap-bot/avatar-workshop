@@ -5,6 +5,10 @@ const EVERYONE := Definition.WEARER | Definition.OTHERS
 const SkeletonBone = preload("skeleton_bone.gd")
 
 const STEP := 1.0 / 60.0
+## The most a hand carries a point in one step, so a snap of the hand or its tracking does not fling what it holds.
+const CARRY := 0.05
+## How near a hand's surface a point it carried stays held, against the float error of a point just pushed onto it.
+const SKIN := 0.002
 
 var chains: Array = []
 var colliders: Array = []
@@ -37,7 +41,7 @@ func _init(definition: Dictionary, nodes: Dictionary) -> void:
 		var count := joints.size() if end_length > 0.0 else joints.size() - 1
 		if count == 0:
 			continue
-		var chain := {"index": chains.size(), "native": null, "native_active": false, "endpoint": nodes[joints[-1].node] if count < joints.size() else null, "joints": [], "colliders": source.colliders, "collide": source.get("collide", EVERYONE), "grab": source.get("grab", EVERYONE), "center": nodes.get(source.center), "current": PackedVector3Array(), "previous": PackedVector3Array(), "reach": 0.0, "gripped": {}}
+		var chain := {"index": chains.size(), "native": null, "native_active": false, "endpoint": nodes[joints[-1].node] if count < joints.size() else null, "joints": [], "colliders": source.colliders, "collide": source.get("collide", EVERYONE), "grab": source.get("grab", EVERYONE), "center": nodes.get(source.center), "current": PackedVector3Array(), "previous": PackedVector3Array(), "reach": 0.0, "gripped": {}, "stepped_center": Transform3D.IDENTITY}
 		for i in count:
 			var joint: Dictionary = joints[i].duplicate()
 			var node = nodes[joint.node]
@@ -51,8 +55,11 @@ func _init(definition: Dictionary, nodes: Dictionary) -> void:
 				var direction: Vector3 = node.global_position - nodes[joints[i - 1].node].global_position
 				tail = node.global_basis.inverse() * direction.normalized() * end_length
 			joint.tail = tail
-			chain.reach += (node.global_basis * tail).length()
+			var scale: Vector3 = node.global_basis.get_scale().abs()
+			chain.reach = maxf(chain.reach, joint.radius * maxf(scale.x, maxf(scale.y, scale.z)))
 			chain.joints.append(joint)
+		for joint: Dictionary in chain.joints:
+			chain.reach += (joint.node.global_basis * joint.tail).length()
 		chains.append(chain)
 	reset()
 	_bind_native()
@@ -67,6 +74,9 @@ func reset() -> void:
 			node.transform = joint.rest
 			chain.current.append(center.affine_inverse() * (node.global_transform * joint.tail))
 		chain.previous = chain.current.duplicate()
+		chain.gripped = {}
+		chain.stepped_center = center
+	_hands_before.clear()
 	_time = 0.0
 	for simulator in _native:
 		simulator.reset()
@@ -96,9 +106,10 @@ func advance(delta: float) -> void:
 	for i in steps:
 		_time -= STEP
 		_step()
-	_hands_before.clear()
-	for hand: Dictionary in hands:
-		_hands_before[hand.key] = [hand.from, hand.to]
+	if steps > 0:
+		_hands_before.clear()
+		for hand: Dictionary in hands:
+			_hands_before[hand.key] = [hand.from, hand.to]
 
 
 func _step() -> void:
@@ -128,7 +139,7 @@ func _step() -> void:
 			radii.append(joint.radius * maxf(scale.x, maxf(scale.y, scale.z)))
 			var now := center * current[i]
 			var before := center * previous[i]
-			points.append(now + (now - before) * (1.0 - joint.drag) + along.normalized() * joint.stiffness * STEP + joint.gravity * STEP)
+			points.append(now if chain.gripped.has(i) else now + (now - before) * (1.0 - joint.drag) + along.normalized() * joint.stiffness * STEP + joint.gravity * STEP)
 		# Poses stay fixed until _apply; prepare collision geometry once per chain.
 		var starts := PackedVector3Array()
 		var segments := PackedVector3Array()
@@ -154,10 +165,11 @@ func _step() -> void:
 		var keys: Array[String] = []
 		keys.resize(starts.size())
 		var gripped := {}
+		var carried := {}
 		if not targets.get(c) is Vector3:
 			var now := {}
 			for hand: Dictionary in hands:
-				if chain.collide & hand.who:
+				if _reaches(chain, hand):
 					now[hand.key] = hand
 					var segment: Vector3 = hand.to - hand.from
 					starts.append(hand.from)
@@ -167,10 +179,14 @@ func _step() -> void:
 					centers.append(hand.from + segment * 0.5)
 					bounds.append(segment.length() * 0.5 + hand.radius)
 					keys.append(hand.key)
+			var moved: Transform3D = center * chain.stepped_center.affine_inverse()
 			for i: int in chain.gripped:
 				var key: String = chain.gripped[i]
 				if now.has(key) and _hands_before.has(key):
-					points[i + 1] += _carried(points[i + 1], _hands_before[key], now[key], _share)
+					var was: Array = _hands_before[key]
+					var carry := _carried(points[i + 1], [moved * was[0], moved * was[1]], now[key], _share).limit_length(CARRY)
+					points[i + 1] += carry
+					carried[i] = carry
 		var anchor := points[0]
 		var held: Variant = targets.get(c)
 		if held is Vector3:
@@ -195,29 +211,38 @@ func _step() -> void:
 					var closest := starts[j] + segments[j] * clampf((point - starts[j]).dot(segments[j]) / squared[j], 0.0, 1.0)
 					var away := point - closest
 					var extent := radii[i] + extents[j]
+					if keys[j] != "" and away.length_squared() < (extent + SKIN) * (extent + SKIN):
+						gripped[i] = keys[j]
 					if away.length_squared() < extent * extent:
 						point = closest + _direction(away, points[i] - closest) * extent
 						point = points[i] + _direction(point - points[i], Vector3.DOWN) * lengths[i]
-						if keys[j] != "":
-							gripped[i] = keys[j]
 				points[i + 1] = point
 		chain.gripped = gripped
+		chain.stepped_center = center
 		chain.previous = current.duplicate()
+		for i: int in carried:
+			chain.previous[i] += inverse.basis * carried[i]
 		for i in lengths.size():
 			chain.current[i] = inverse * points[i + 1]
 		_apply(chain, points)
 
 
-## Whether a hand that may push `chain` is within the chain's reach of its first joint.
+## Whether a hand that may push `chain` is within its reach.
 func _within_hand(chain: Dictionary) -> bool:
-	var anchor: Vector3 = chain.joints[0].node.global_position
 	for hand: Dictionary in hands:
-		if chain.collide & hand.who:
-			var segment: Vector3 = hand.to - hand.from
-			var closest: Vector3 = hand.from + segment * clampf((anchor - hand.from).dot(segment) / maxf(segment.length_squared(), 1e-12), 0.0, 1.0)
-			if anchor.distance_to(closest) < chain.reach + hand.radius:
-				return true
+		if _reaches(chain, hand):
+			return true
 	return false
+
+
+## Whether `hand` may push `chain` and comes within the chain's reach of its first joint.
+static func _reaches(chain: Dictionary, hand: Dictionary) -> bool:
+	if not chain.collide & hand.who:
+		return false
+	var anchor: Vector3 = chain.joints[0].node.global_position
+	var segment: Vector3 = hand.to - hand.from
+	var closest: Vector3 = hand.from + segment * clampf((anchor - hand.from).dot(segment) / maxf(segment.length_squared(), 1e-12), 0.0, 1.0)
+	return anchor.distance_to(closest) < chain.reach + hand.radius
 
 
 ## How far a hand that pushed the point at `at` carries it, `share` of its move from `before` ([from, to]) to `now`:

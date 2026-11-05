@@ -135,9 +135,10 @@ them is everyone's to touch. Set `hands` before `advance` to world-space
 capsules `{"key", "from", "to", "radius", "who"}` (a sphere where the ends
 meet, `who` WEARER or OTHERS, `key` the same hand's name every frame): each
 pushes the chains whose `collide` bits share its own, so a poke moves hair, ears
-or a tail, and carries what it pushed along as it moves, never pulling it as it
-draws away, so a strand caught in a hand drags with it until its own pull wins;
-a held chain follows its holder instead. `grabs(chain_index, who)` says whether a hand
+or a tail, and a point it pushes holds to its surface, carried as the hand moves
+but never pulled as it draws away, so a strand caught in a hand drags with it
+until the hand leaves it or the chain's length draws it off; a held chain follows
+its holder instead. `grabs(chain_index, who)` says whether a hand
 of `who` may hold that chain; the caller checks it before setting a target.
 
 The caller owns input arbitration and networking. `state()` returns world-space
