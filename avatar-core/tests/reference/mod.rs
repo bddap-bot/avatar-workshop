@@ -290,6 +290,11 @@ fn blend(a: &Frame, b: &Frame, s: f32) -> Frame {
     }
 }
 
+/// The first frame of the step labelled `label`.
+pub fn step(dir: &Path, label: &str) -> usize {
+    rows(&dir.join("steps.tsv")).iter().find(|r| r[4] == label).map(|r| r[1].parse().unwrap()).unwrap()
+}
+
 /// The scored window: from the motion step's start to the settle step's end.
 pub fn window(dir: &Path) -> Range<usize> {
     let steps = rows(&dir.join("steps.tsv"));

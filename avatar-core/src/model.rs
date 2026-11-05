@@ -899,9 +899,12 @@ pub struct Label {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PlayableLayer {
-    /// Absent when the avatar uses VRChat's default controller for this layer.
+    /// The controller VRChat runs for this layer: the avatar's own, or the SDK's default for a layer left
+    /// at the default. Absent when none runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub controller: Option<Controller>,
+    /// The mask the layer runs under: its own, or the one imposed on a default layer and on an FX layer
+    /// without one, as Av3Emulator imposes it. Absent lets everything through.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mask: Option<AvatarMask>,
 }

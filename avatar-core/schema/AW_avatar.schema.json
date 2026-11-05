@@ -2823,7 +2823,7 @@
       "type": "object",
       "properties": {
         "controller": {
-          "description": "Absent when the avatar uses VRChat's default controller for this layer.",
+          "description": "The controller VRChat runs for this layer: the avatar's own, or the SDK's default for a layer left\nat the default. Absent when none runs.",
           "anyOf": [
             {
               "$ref": "#/$defs/Controller"
@@ -2834,6 +2834,7 @@
           ]
         },
         "mask": {
+          "description": "The mask the layer runs under: its own, or the one imposed on a default layer and on an FX layer\nwithout one, as Av3Emulator imposes it. Absent lets everything through.",
           "anyOf": [
             {
               "$ref": "#/$defs/AvatarMask"

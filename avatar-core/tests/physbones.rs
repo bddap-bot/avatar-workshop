@@ -112,7 +112,8 @@ fn fixture_median_and_multi_child_types() {
 #[test]
 fn grabs_poses_and_their_filters() {
     let dir = path("fixtures/reference/fixture-grabs");
-    let replay = replay("fixtures/reference/fixture-grabs", "fixtures/unity-synthetic.glb", 3960..4408);
+    let (grab, ear, end) = (reference::step(&dir, "grab Tail"), reference::step(&dir, "grab EarL"), reference::step(&dir, "final"));
+    let replay = replay("fixtures/reference/fixture-grabs", "fixtures/unity-synthetic.glb", grab - 103..end);
     assert!(replay.grabs.values().any(|g| g.event == "miss"), "the antenna, which allows no grabbing, refuses its grab");
     let trace = replay.run(60.0);
     let recorded = parameters(&dir);
@@ -135,13 +136,13 @@ fn grabs_poses_and_their_filters() {
             .collect();
         frames.map(|f| rows[&f]).collect()
     };
-    let ear = "Armature/Hips/Spine/Chest/Neck/Head/EarL.0|Armature/Hips/Spine/Chest/Neck/Head/EarL.0/EarL.1/EarL.2/EarL.3";
-    let (ours, theirs) = (tips(ear, 4318..4408), recorded_tips(ear, 4318..4408));
+    let held = "Armature/Hips/Spine/Chest/Neck/Head/EarL.0|Armature/Hips/Spine/Chest/Neck/Head/EarL.0/EarL.1/EarL.2/EarL.3";
+    let (ours, theirs) = (tips(held, ear..end), recorded_tips(held, ear..end));
     let rms = (ours.iter().zip(&theirs).map(|(a, b)| a.distance_squared(*b)).sum::<f32>() / ours.len() as f32).sqrt();
     assert!(rms / 0.1746 <= 0.2, "held ear tip RMS error {rms} m");
     let tail = "Armature/Hips/Tail.0|Armature/Hips/Tail.0/Tail.1/Tail.2/Tail.3/Tail.4";
     let moved = |p: Vec<glam::Vec3>| p[p.len() - 1] - p[0];
-    let (ours, theirs) = (moved(tips(tail, 4063..4110)), moved(recorded_tips(tail, 4063..4110)));
+    let (ours, theirs) = (moved(tips(tail, grab..grab + 47)), moved(recorded_tips(tail, grab..grab + 47)));
     assert!(ours.distance(theirs) <= 0.03, "the held tail moved {ours}, the reference's {theirs}");
 }
 
@@ -207,7 +208,8 @@ fn filters_decide_by_toucher() {
     let tail = avatar.model.physbones.iter().position(|p| p.parameter.as_deref() == Some("Tail")).unwrap();
     avatar.model.physbones[tail].grabbing.allow_others = false;
     avatar.model.physbones[tail].posing.allow_self = false;
-    let replay = Replay::load(&path("fixtures/reference/fixture-grabs"), avatar, 3960..3970);
+    let start = reference::step(&path("fixtures/reference/fixture-grabs"), "grab Tail") - 103;
+    let replay = Replay::load(&path("fixtures/reference/fixture-grabs"), avatar, start..start + 10);
     let mut pb = avatar_core::physbones::PhysBones::new(&replay.avatar).unwrap();
     pb.advance(0.0, &replay.frames[0]);
     let node = pb.bones(tail).last().unwrap();

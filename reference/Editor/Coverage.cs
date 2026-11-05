@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 using VRC.Dynamics;
@@ -27,6 +28,12 @@ namespace AvatarWorkshop.Reference
             "blendtree.simple_1d", "blendtree.simple_directional_2d", "blendtree.freeform_directional_2d", "blendtree.freeform_cartesian_2d", "blendtree.direct",
             "driver.set", "driver.add", "driver.random", "driver.copy", "driver.local_only",
             "write_defaults.on", "write_defaults.off",
+            "playable.base", "playable.additive", "playable.gesture", "playable.action", "playable.fx", "playable.sitting", "playable.t_pose", "playable.ik_pose",
+            "behaviour.tracking", "behaviour.locomotion", "behaviour.playable_layer", "behaviour.animator_layer", "behaviour.temporary_pose_space",
+            "mask.body_part", "mask.transform", "layer.additive", "layer.synced", "parameter.trigger",
+            "submachine.entry", "submachine.exit", "transition.exit_time_offset",
+            "state.speed_parameter", "state.time_parameter", "state.cycle_offset_parameter", "state.mirror_parameter",
+            "curve.animator_parameter", "curve.stepped", "curve.weighted", "curve.euler", "curve.material_swap",
         };
 
         public static SortedDictionary<string, int> Count(GameObject root)
@@ -86,30 +93,104 @@ namespace AvatarWorkshop.Reference
             }
             Menu(d.expressionsMenu);
 
-            var controllers = d.baseAnimationLayers.Concat(d.specialAnimationLayers ?? new VRCAvatarDescriptor.CustomAnimLayer[0])
-                .Where(l => !l.isDefault).Select(l => l.animatorController as AnimatorController).Where(x => x != null).Distinct();
-            foreach (var ctrl in controllers)
+            var custom = d.baseAnimationLayers.Concat(d.specialAnimationLayers ?? new VRCAvatarDescriptor.CustomAnimLayer[0])
+                .Where(l => !l.isDefault && l.animatorController is AnimatorController).ToList();
+            foreach (var l in custom)
+            {
+                Add("playable." + Playable[l.type]);
+                if (l.mask != null) Mask(l.mask, Add);
+            }
+            foreach (var ctrl in custom.Select(l => (AnimatorController)l.animatorController).Distinct())
+            {
+                var parameters = new HashSet<string>(ctrl.parameters.Select(p => p.name));
+                var triggers = new HashSet<string>(ctrl.parameters.Where(p => p.type == AnimatorControllerParameterType.Trigger).Select(p => p.name));
                 foreach (var layer in ctrl.layers)
-                    Machine(layer.stateMachine, Add);
+                {
+                    if (layer.avatarMask != null) Mask(layer.avatarMask, Add);
+                    if (layer.blendingMode == AnimatorLayerBlendingMode.Additive) Add("layer.additive");
+                    if (layer.syncedLayerIndex >= 0) Add("layer.synced");
+                    else Machine(layer.stateMachine, null, parameters, triggers, Add);
+                }
+                foreach (var clip in ctrl.animationClips.Distinct()) Curves(clip, parameters, Add);
+            }
             return c;
         }
 
-        static void Machine(AnimatorStateMachine sm, System.Action<string> add)
+        static readonly Dictionary<VRCAvatarDescriptor.AnimLayerType, string> Playable = new Dictionary<VRCAvatarDescriptor.AnimLayerType, string>
         {
-            foreach (var t in sm.anyStateTransitions.Cast<AnimatorStateTransition>().Concat(sm.states.SelectMany(s => s.state.transitions)))
+            { VRCAvatarDescriptor.AnimLayerType.Base, "base" }, { VRCAvatarDescriptor.AnimLayerType.Additive, "additive" },
+            { VRCAvatarDescriptor.AnimLayerType.Gesture, "gesture" }, { VRCAvatarDescriptor.AnimLayerType.Action, "action" },
+            { VRCAvatarDescriptor.AnimLayerType.FX, "fx" }, { VRCAvatarDescriptor.AnimLayerType.Sitting, "sitting" },
+            { VRCAvatarDescriptor.AnimLayerType.TPose, "t_pose" }, { VRCAvatarDescriptor.AnimLayerType.IKPose, "ik_pose" },
+        };
+
+        static void Mask(AvatarMask m, System.Action<string> add)
+        {
+            if (Enumerable.Range(0, m.transformCount).Any(i => !m.GetTransformActive(i))) add("mask.transform");
+            for (var p = AvatarMaskBodyPart.Root; p < AvatarMaskBodyPart.LastBodyPart; p++)
+                if (!m.GetHumanoidBodyPartActive(p)) { add("mask.body_part"); break; }
+        }
+
+        static void Curves(AnimationClip clip, HashSet<string> parameters, System.Action<string> add)
+        {
+            foreach (var b in AnimationUtility.GetCurveBindings(clip))
+            {
+                if (b.type == typeof(Animator) && parameters.Contains(b.propertyName)) add("curve.animator_parameter");
+                if (b.type == typeof(Transform) && b.propertyName.Contains("EulerAngles")) add("curve.euler");
+                var keys = AnimationUtility.GetEditorCurve(clip, b).keys;
+                if (keys.Any(k => float.IsInfinity(k.inTangent) || float.IsInfinity(k.outTangent))) add("curve.stepped");
+                if (keys.Any(k => k.weightedMode != WeightedMode.None)) add("curve.weighted");
+            }
+            foreach (var b in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                if (b.propertyName.StartsWith("m_Materials.Array.data[")) add("curve.material_swap");
+        }
+
+        static void Machine(AnimatorStateMachine sm, AnimatorStateMachine parent, HashSet<string> parameters, HashSet<string> triggers, System.Action<string> add)
+        {
+            var transitions = sm.anyStateTransitions.Cast<AnimatorStateTransition>().Concat(sm.states.SelectMany(s => s.state.transitions)).ToList();
+            foreach (var t in transitions.Cast<AnimatorTransitionBase>().Concat(sm.entryTransitions))
+                foreach (var c in t.conditions)
+                    if (triggers.Contains(c.parameter)) add("parameter.trigger");
+            foreach (var t in transitions)
+            {
                 if (t.duration > 0) add(t.hasFixedDuration ? "transition.fixed_duration" : "transition.normalized_duration");
+                if (t.hasExitTime && t.offset > 0) add("transition.exit_time_offset");
+            }
+            if (parent != null)
+            {
+                if (sm.entryTransitions.Length > 0) add("submachine.entry");
+                if (transitions.Any(t => t.isExit) && parent.GetStateMachineTransitions(sm).Length > 0) add("submachine.exit");
+            }
+            Behaviours(sm.behaviours, add);
             foreach (var cs in sm.states)
             {
                 var s = cs.state;
                 add(s.writeDefaultValues ? "write_defaults.on" : "write_defaults.off");
+                if (s.speedParameterActive && parameters.Contains(s.speedParameter)) add("state.speed_parameter");
+                if (s.timeParameterActive && parameters.Contains(s.timeParameter)) add("state.time_parameter");
+                if (s.cycleOffsetParameterActive && parameters.Contains(s.cycleOffsetParameter)) add("state.cycle_offset_parameter");
+                if (s.mirrorParameterActive && parameters.Contains(s.mirrorParameter)) add("state.mirror_parameter");
                 if (s.motion is BlendTree bt) Tree(bt, add);
-                foreach (var b in s.behaviours.OfType<VRC_AvatarParameterDriver>())
-                {
-                    if (b.localOnly) add("driver.local_only");
-                    foreach (var p in b.parameters) add("driver." + p.type.ToString().ToLowerInvariant());
-                }
+                Behaviours(s.behaviours, add);
             }
-            foreach (var child in sm.stateMachines) Machine(child.stateMachine, add);
+            foreach (var child in sm.stateMachines) Machine(child.stateMachine, sm, parameters, triggers, add);
+        }
+
+        static void Behaviours(StateMachineBehaviour[] behaviours, System.Action<string> add)
+        {
+            foreach (var b in behaviours)
+                switch (b)
+                {
+                    case VRC_AvatarParameterDriver d:
+                        if (d.localOnly) add("driver.local_only");
+                        foreach (var p in d.parameters) add("driver." + p.type.ToString().ToLowerInvariant());
+                        break;
+                    case VRC_AnimatorTrackingControl _: add("behaviour.tracking"); break;
+                    case VRC_AnimatorLocomotionControl _: add("behaviour.locomotion"); break;
+                    case VRC_PlayableLayerControl _: add("behaviour.playable_layer"); break;
+                    case VRC_AnimatorLayerControl _: add("behaviour.animator_layer"); break;
+                    case VRC_AnimatorTemporaryPoseSpace _: add("behaviour.temporary_pose_space"); break;
+                }
         }
 
         static void Tree(BlendTree bt, System.Action<string> add)

@@ -79,7 +79,8 @@ their sections and their `unsupported` report.
 `unity/check.sh <project> <out> [scene] [avatar]` checks an export against Unity itself. With
 `-awCensus <census.json>` the exporter also writes what Unity holds for the preprocessed avatar, read
 straight from Unity's APIs: every serialized PhysBone field, component counts by kind, renderer slots,
-every vertex stream, menus, controllers and curve bindings. The script exports with it, records the wall
+every vertex stream, menus, controllers and curve bindings. A playable layer left at the default counts and
+exports the SDK's own default controller for it, with the mask imposed on it, as Av3Emulator runs them. The script exports with it, records the wall
 time and peak RSS, and runs `avatar-core`'s `census` example, which prints one line per category and fails
 when a count, a PhysBone field or any vertex value differs, or when a component the model cannot hold is
 missing from `unsupported`.
@@ -212,7 +213,7 @@ them), so each field's effect has a reference trace of its own. The probe rests 
 | `steps.tsv` | each step: index, first frame, frames, menu control, label, parameters set |
 | `params.tsv` | every animator parameter on each change, values printed round-trip exact |
 | `states.tsv` | every playable layer's state and transition on each change |
-| `values.tsv` | node active, renderer enabled, PhysBone enabled (`physbone:<path>#<k>`, the k-th on that object), material slots, blendshape weights, animated material properties and animated transforms, on each change |
+| `values.tsv` | node active, renderer enabled, PhysBone enabled (`physbone:<path>#<k>`, the k-th on that object), material slots, blendshape weights, animated material properties and animated transforms, and what the behaviours set: each playable layer's weight (`playable:<i>`, numbered as in `states.tsv`), each animator layer's weight (`weight:<i>:<l>:<name>`, numbered as in `states.tsv`), each animator parameter a clip curve drives (`curve:<i>:<name>`), the tracking of each body part (`tracking:<part>`), `locomotion:disabled` and the view position (`view`); each on change |
 | `tips.tsv`, `chains.tsv` | every PhysBone leaf (with its endpoint; for the probe, every bone below each root) each frame, in metres from the avatar root along its axes (its scale ignored), and its rest chain length |
 | `track.tsv` | the avatar root in the world, and its head, hands and hips in metres from the root along its axes, each frame, for replaying the same input elsewhere |
 | `poses.tsv`, `drivers.tsv` | the input the SDK's dynamics read, taken each frame after animation and before its constraints, PhysBones and contacts run: every transform they read besides the bones they simulate (each PhysBone root's parent and scene root, every collider and contact, each constraint's target, its parent, its sources and world-up transform) in metres from the root along its axes (`root` rows, scales world), each written when it changes, and each PhysBone bone's local pose (`local` rows) whenever it differs from the pose the SDK left it in the frame before, which is when animation set it. A row is `frame, space, transform, px,py,pz,qx,qy,qz,qw,sx,sy,sz`; the root itself is the empty path. `drivers.tsv` lists each transform with its roles; `moved-by-dynamics` marks one at or under a simulated bone or under a constraint target, whose recorded pose is the one before the dynamics moved it. A recording fails if any of them is gone or unposed on a frame |
@@ -226,8 +227,13 @@ authored for the harness: PhysBones covering both immobile types, every limit ty
 falloff, stretch and squish, curves, the three multi-child types, an endpoint and both versions
 and integrations, colliders of every shape including an inside-bounds sphere; a contact pair;
 the six constraint kinds, one frozen to world; a menu with every control type; transitions with fixed and normalised
-durations; every blend-tree algorithm; parameter drivers of each kind, one local-only; mixed write defaults. A
-fixture recording fails if any of these is missing from `coverage.json`.
+durations; every blend-tree algorithm; parameter drivers of each kind, one local-only; mixed write defaults. It
+has its own controller for every playable layer (the SDK's default controllers are not in this repository), together
+covering tracking, locomotion, playable-layer and animator-layer control and temporary pose space behaviours,
+body-part and transform masks, additive and synced layers, sub-machine entry and exit transitions, exit-time
+transitions with offsets, speed, time, cycle-offset and mirror parameters, a trigger, an animator-parameter curve,
+stepped and weighted keys, Euler rotation curves and material swaps. A fixture recording fails if any of these is
+missing from `coverage.json`.
 `reference/check.sh PROJECT OUT [SCENE] [AVATAR]` records the avatar (the fixture by default) twice and requires every output but the log,
 `tips.tsv` and `poses.tsv` to be byte-identical, and PhysBone tips and every pose value within 1e-5 (`reference/poses.py`, Python 3.10 or later).
 

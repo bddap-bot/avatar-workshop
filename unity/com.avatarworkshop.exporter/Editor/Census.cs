@@ -254,13 +254,13 @@ namespace AvatarWorkshop.Exporter
             Obj Layers(List<AnimationClip> clips)
             {
                 var o = new Obj();
-                var playable = (descriptor.baseAnimationLayers ?? new VRCAvatarDescriptor.CustomAnimLayer[0]).Concat(descriptor.specialAnimationLayers ?? new VRCAvatarDescriptor.CustomAnimLayer[0]);
-                foreach (var l in playable)
+                foreach (var l in Playable.Layers(descriptor))
                 {
-                    if (!descriptor.customizeAnimationLayers || l.isDefault || l.animatorController == null) continue;
+                    var runs = Playable.Controller(l);
+                    if (runs == null) continue;
                     var overrides = new Dictionary<AnimationClip, AnimationClip>();
-                    var controller = l.animatorController as AnimatorController;
-                    if (l.animatorController is AnimatorOverrideController ovr)
+                    var controller = runs as AnimatorController;
+                    if (runs is AnimatorOverrideController ovr)
                     {
                         controller = ovr.runtimeAnimatorController as AnimatorController;
                         var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
@@ -358,9 +358,8 @@ namespace AvatarWorkshop.Exporter
             {
                 var counts = new SortedDictionary<string, int>(StringComparer.Ordinal);
                 void Count(string kind) { counts.TryGetValue(kind, out int n); counts[kind] = n + 1; }
-                var parameters = new HashSet<string>((descriptor.baseAnimationLayers ?? new VRCAvatarDescriptor.CustomAnimLayer[0]).Concat(descriptor.specialAnimationLayers ?? new VRCAvatarDescriptor.CustomAnimLayer[0])
-                    .Where(l => descriptor.customizeAnimationLayers && !l.isDefault && l.animatorController != null)
-                    .SelectMany(l => (l.animatorController as AnimatorController ?? (l.animatorController as AnimatorOverrideController)?.runtimeAnimatorController as AnimatorController)?.parameters ?? new AnimatorControllerParameter[0])
+                var parameters = new HashSet<string>(Playable.Layers(descriptor)
+                    .SelectMany(l => Playable.Resolved(Playable.Controller(l))?.parameters ?? new AnimatorControllerParameter[0])
                     .Select(p => p.name));
                 foreach (var clip in clips)
                 {

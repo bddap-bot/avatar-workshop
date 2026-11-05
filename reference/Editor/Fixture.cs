@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEditor.SceneManagement;
@@ -164,6 +165,9 @@ namespace AvatarWorkshop.Reference
 
             var animator = root.AddComponent<Animator>();
             animator.avatar = HumanAvatar(root, t);
+            var rest = new HumanPose();
+            new HumanPoseHandler(animator.avatar, root.transform).GetHumanPose(ref rest);
+            RestMuscles = rest.muscles;
             animator.applyRootMotion = false;
 
             var d = root.AddComponent<VRCAvatarDescriptor>();
@@ -182,7 +186,9 @@ namespace AvatarWorkshop.Reference
 
             var parameters = Parameters();
             var menu = Menu(parameters);
-            var fx = FxController();
+            var clips = new Clips(Dir + "/Clips");
+            AssetDatabase.CreateFolder(Dir, "Clips");
+            var fx = FxController(clips);
 
             d.ViewPosition = new Vector3(0, 1.62f, 0.08f);
             d.lipSync = VRC_AvatarDescriptor.LipSyncStyle.VisemeBlendShape;
@@ -194,17 +200,17 @@ namespace AvatarWorkshop.Reference
             d.customizeAnimationLayers = true;
             d.baseAnimationLayers = new[]
             {
-                Default(VRCAvatarDescriptor.AnimLayerType.Base),
-                Default(VRCAvatarDescriptor.AnimLayerType.Additive),
-                Default(VRCAvatarDescriptor.AnimLayerType.Gesture),
-                Default(VRCAvatarDescriptor.AnimLayerType.Action),
-                new VRCAvatarDescriptor.CustomAnimLayer { type = VRCAvatarDescriptor.AnimLayerType.FX, animatorController = fx, isDefault = false, isEnabled = true },
+                Custom(VRCAvatarDescriptor.AnimLayerType.Base, BaseController(clips)),
+                Custom(VRCAvatarDescriptor.AnimLayerType.Additive, AdditiveController(clips)),
+                Custom(VRCAvatarDescriptor.AnimLayerType.Gesture, GestureController(clips), Mask("Hands", new[] { AvatarMaskBodyPart.LeftFingers, AvatarMaskBodyPart.RightFingers, AvatarMaskBodyPart.LeftArm })),
+                Custom(VRCAvatarDescriptor.AnimLayerType.Action, ActionController(clips)),
+                Custom(VRCAvatarDescriptor.AnimLayerType.FX, fx),
             };
             d.specialAnimationLayers = new[]
             {
-                Default(VRCAvatarDescriptor.AnimLayerType.Sitting),
-                Default(VRCAvatarDescriptor.AnimLayerType.TPose),
-                Default(VRCAvatarDescriptor.AnimLayerType.IKPose),
+                Custom(VRCAvatarDescriptor.AnimLayerType.Sitting, SittingController(clips)),
+                Custom(VRCAvatarDescriptor.AnimLayerType.TPose, PoseController(clips, "TPose", 0)),
+                Custom(VRCAvatarDescriptor.AnimLayerType.IKPose, PoseController(clips, "IKPose", 0.2f)),
             };
 
             AssetDatabase.SaveAssets();
@@ -213,8 +219,8 @@ namespace AvatarWorkshop.Reference
             AssetDatabase.Refresh();
         }
 
-        static VRCAvatarDescriptor.CustomAnimLayer Default(VRCAvatarDescriptor.AnimLayerType type) =>
-            new VRCAvatarDescriptor.CustomAnimLayer { type = type, isDefault = true, isEnabled = true };
+        static VRCAvatarDescriptor.CustomAnimLayer Custom(VRCAvatarDescriptor.AnimLayerType type, AnimatorController controller, AvatarMask mask = null) =>
+            new VRCAvatarDescriptor.CustomAnimLayer { type = type, animatorController = controller, mask = mask, isDefault = false, isEnabled = true };
 
         class MeshBuilder
         {
@@ -396,6 +402,13 @@ namespace AvatarWorkshop.Reference
 
             Orb("Puppet", new Vector3(0, 2.0f, 0), 0.07f);
             Orb("Free", new Vector3(0, 2.15f, 0), 0.05f);
+            Orb("Sync", new Vector3(0.3f, 2.3f, 0), 0.05f);
+            Orb("Bob", new Vector3(0, 2.3f, 0), 0.05f);
+            Orb("Spin", new Vector3(-0.3f, 2.3f, 0), 0.05f);
+            Orb("Masked", new Vector3(0.5f, 2.3f, 0), 0.05f);
+            Orb("Unmasked", new Vector3(-0.5f, 2.3f, 0), 0.05f);
+            Orb("Scrub", new Vector3(-0.3f, 2.45f, 0), 0.05f);
+            Orb("Pulse", new Vector3(0.3f, 2.45f, 0), 0.05f);
         }
 
         static void Flags(Component c, params (string name, object value)[] values)
@@ -612,6 +625,7 @@ namespace AvatarWorkshop.Reference
                 P("Wave", B, 0, saved: false), P("InPuppets", B, 0, saved: false, synced: false),
                 P("Counter", I, 0, saved: false, synced: false), P("Rand", F, 0, saved: false), P("Copied", F, 0, saved: false),
                 P("Setter", B, 0, saved: false), P("Local", B, 0, saved: false, synced: false), P("Chance", B, 0, saved: false),
+                P("Swap", B, 0, saved: false), P("Flip", B, 0, saved: false), P("Pose", B, 0, saved: false), P("Dial", F, 0, saved: false),
             };
             AssetDatabase.CreateAsset(p, $"{Dir}/Parameters.asset");
             return p;
@@ -633,6 +647,10 @@ namespace AvatarWorkshop.Reference
             {
                 C("Lean", Control.ControlType.TwoAxisPuppet, null, 1, "PuppetX", "PuppetY"),
                 C("Blend", Control.ControlType.FourAxisPuppet, null, 1, "Up", "Right", "Down", "Left"),
+                C("Swap", Control.ControlType.Toggle, "Swap"),
+                C("Flip", Control.ControlType.Toggle, "Flip"),
+                C("Pose", Control.ControlType.Toggle, "Pose"),
+                C("Dial", Control.ControlType.RadialPuppet, null, 1, "Dial"),
             };
             AssetDatabase.CreateAsset(puppets, $"{Dir}/MenuPuppets.asset");
             var main = ScriptableObject.CreateInstance<VRCExpressionsMenu>();
@@ -687,6 +705,13 @@ namespace AvatarWorkshop.Reference
             Const(c, path, typeof(Transform), "m_LocalPosition.z", p.z);
         }
 
+        static void Scale(AnimationClip c, string path, Vector3 s)
+        {
+            Const(c, path, typeof(Transform), "m_LocalScale.x", s.x);
+            Const(c, path, typeof(Transform), "m_LocalScale.y", s.y);
+            Const(c, path, typeof(Transform), "m_LocalScale.z", s.z);
+        }
+
         static void Color(AnimationClip c, string prop, Color col)
         {
             Const(c, "Body", typeof(SkinnedMeshRenderer), $"material.{prop}.r", col.r);
@@ -695,14 +720,44 @@ namespace AvatarWorkshop.Reference
             Const(c, "Body", typeof(SkinnedMeshRenderer), $"material.{prop}.a", col.a);
         }
 
-        static AnimatorController FxController()
+        sealed class Ctl
         {
-            var dir = Dir + "/Clips";
-            AssetDatabase.CreateFolder(Dir, "Clips");
-            var k = new Clips(dir);
-            var ctrl = AnimatorController.CreateAnimatorControllerAtPath($"{Dir}/FX.controller");
-            ctrl.RemoveLayer(0);
-            foreach (var (n, ty) in new[]
+            public readonly AnimatorController C;
+
+            public Ctl(string name, params (string, AnimatorControllerParameterType)[] parameters)
+            {
+                C = AnimatorController.CreateAnimatorControllerAtPath($"{Dir}/{name}.controller");
+                C.RemoveLayer(0);
+                foreach (var (n, ty) in parameters) C.AddParameter(n, ty);
+            }
+
+            public AnimatorControllerLayer Layer(string name, AnimatorLayerBlendingMode mode = AnimatorLayerBlendingMode.Override, AvatarMask mask = null)
+            {
+                var sm = new AnimatorStateMachine { name = name, hideFlags = HideFlags.HideInHierarchy };
+                AssetDatabase.AddObjectToAsset(sm, C);
+                var l = new AnimatorControllerLayer { name = name, stateMachine = sm, defaultWeight = 1, blendingMode = mode, avatarMask = mask };
+                C.AddLayer(l);
+                return l;
+            }
+
+            public BlendTree Tree(string name, BlendTreeType type, string px, string py = null)
+            {
+                var bt = new BlendTree { name = name, blendType = type, blendParameter = px, blendParameterY = py ?? px, useAutomaticThresholds = false, hideFlags = HideFlags.HideInHierarchy };
+                AssetDatabase.AddObjectToAsset(bt, C);
+                return bt;
+            }
+        }
+
+        static AnimatorStateTransition Go(AnimatorState from, AnimatorState to, float duration, bool fixedDuration = true)
+        {
+            var tr = from.AddTransition(to);
+            tr.hasExitTime = false; tr.duration = duration; tr.hasFixedDuration = fixedDuration;
+            return tr;
+        }
+
+        static AnimatorController FxController(Clips k)
+        {
+            var fx = new Ctl("FX", new[]
             {
                 ("Hat", AnimatorControllerParameterType.Bool), ("Outfit", AnimatorControllerParameterType.Int), ("Smile", AnimatorControllerParameterType.Float),
                 ("Hue", AnimatorControllerParameterType.Float), ("PuppetX", AnimatorControllerParameterType.Float), ("PuppetY", AnimatorControllerParameterType.Float),
@@ -715,41 +770,21 @@ namespace AvatarWorkshop.Reference
                 ("Tail_Angle", AnimatorControllerParameterType.Float), ("Tail_IsGrabbed", AnimatorControllerParameterType.Bool), ("Tail_Stretch", AnimatorControllerParameterType.Float),
                 ("EarL_Squish", AnimatorControllerParameterType.Float), ("Tail_IsPosed", AnimatorControllerParameterType.Bool), ("EarL_Stretch", AnimatorControllerParameterType.Float), ("EarL_Angle", AnimatorControllerParameterType.Float), ("EarL_IsGrabbed", AnimatorControllerParameterType.Bool), ("IsLocal", AnimatorControllerParameterType.Bool), ("Viseme", AnimatorControllerParameterType.Int),
                 ("Grounded", AnimatorControllerParameterType.Bool),
-            }) ctrl.AddParameter(n, ty);
-
-            AnimatorControllerLayer Layer(string name, AnimatorLayerBlendingMode mode = AnimatorLayerBlendingMode.Override)
-            {
-                var sm = new AnimatorStateMachine { name = name, hideFlags = HideFlags.HideInHierarchy };
-                AssetDatabase.AddObjectToAsset(sm, ctrl);
-                var l = new AnimatorControllerLayer { name = name, stateMachine = sm, defaultWeight = 1, blendingMode = mode };
-                ctrl.AddLayer(l);
-                return l;
-            }
-
-            AnimatorStateTransition Go(AnimatorState from, AnimatorState to, float duration, bool fixedDuration = true)
-            {
-                var tr = from.AddTransition(to);
-                tr.hasExitTime = false; tr.duration = duration; tr.hasFixedDuration = fixedDuration;
-                return tr;
-            }
-
-            BlendTree Tree(string name, BlendTreeType type, string px, string py = null)
-            {
-                var bt = new BlendTree { name = name, blendType = type, blendParameter = px, blendParameterY = py ?? px, useAutomaticThresholds = false, hideFlags = HideFlags.HideInHierarchy };
-                AssetDatabase.AddObjectToAsset(bt, ctrl);
-                return bt;
-            }
+                ("Swap", AnimatorControllerParameterType.Bool), ("Flip", AnimatorControllerParameterType.Bool), ("Dial", AnimatorControllerParameterType.Float),
+                ("Driven", AnimatorControllerParameterType.Float), ("Fire", AnimatorControllerParameterType.Trigger),
+            });
+            var ctrl = fx.C;
 
             var empty = k.Make("Empty", c => Const(c, "_aw_none", typeof(GameObject), "m_IsActive", 0));
 
-            var hatL = Layer("Hat");
+            var hatL = fx.Layer("Hat");
             var hatOff = hatL.stateMachine.AddState("Off"); hatOff.motion = k.Make("HatOff", c => Const(c, "Hat", typeof(GameObject), "m_IsActive", 0)); hatOff.writeDefaultValues = false;
             var hatOn = hatL.stateMachine.AddState("On"); hatOn.motion = k.Make("HatOn", c => Const(c, "Hat", typeof(GameObject), "m_IsActive", 1)); hatOn.writeDefaultValues = false;
             hatL.stateMachine.defaultState = hatOff;
             Go(hatOff, hatOn, 0.25f).AddCondition(AnimatorConditionMode.If, 0, "Hat");
             Go(hatOn, hatOff, 0.25f).AddCondition(AnimatorConditionMode.IfNot, 0, "Hat");
 
-            var outL = Layer("Outfit");
+            var outL = fx.Layer("Outfit");
             var o0 = outL.stateMachine.AddState("Plain"); o0.motion = empty; o0.writeDefaultValues = true;
             var o1 = outL.stateMachine.AddState("Red"); o1.writeDefaultValues = true;
             o1.motion = k.Make("OutfitRed", c => AnimationUtility.SetObjectReferenceCurve(c, EditorCurveBinding.PPtrCurve("Body", typeof(SkinnedMeshRenderer), "m_Materials.Array.data[1]"),
@@ -764,14 +799,14 @@ namespace AvatarWorkshop.Reference
                 tr.AddCondition(AnimatorConditionMode.Equals, v, "Outfit");
             }
 
-            var smileL = Layer("Smile");
-            var smileTree = Tree("Smile", BlendTreeType.Simple1D, "Smile");
+            var smileL = fx.Layer("Smile");
+            var smileTree = fx.Tree("Smile", BlendTreeType.Simple1D, "Smile");
             smileTree.AddChild(k.Make("Smile0", c => Shape(c, "Smile", 0)), 0);
             smileTree.AddChild(k.Make("Smile100", c => Shape(c, "Smile", 100)), 1);
             var smileS = smileL.stateMachine.AddState("Smile"); smileS.motion = smileTree; smileS.writeDefaultValues = false;
 
-            var hueL = Layer("Hue");
-            var hueTree = Tree("Hue", BlendTreeType.Simple1D, "Hue");
+            var hueL = fx.Layer("Hue");
+            var hueTree = fx.Tree("Hue", BlendTreeType.Simple1D, "Hue");
             for (int i = 0; i <= 4; i++)
             {
                 var col = UnityEngine.Color.HSVToRGB(i / 4f % 1f, 0.6f, 0.9f);
@@ -779,8 +814,8 @@ namespace AvatarWorkshop.Reference
             }
             var hueS = hueL.stateMachine.AddState("Hue"); hueS.motion = hueTree; hueS.writeDefaultValues = false;
 
-            var leanL = Layer("Lean");
-            var lean = Tree("Lean", BlendTreeType.SimpleDirectional2D, "PuppetX", "PuppetY");
+            var leanL = fx.Layer("Lean");
+            var lean = fx.Tree("Lean", BlendTreeType.SimpleDirectional2D, "PuppetX", "PuppetY");
             lean.AddChild(k.Make("LeanCenter", c => Pos(c, "Orbs/Puppet", new Vector3(0, 2.0f, 0))), Vector2.zero);
             lean.AddChild(k.Make("LeanUp", c => { Pos(c, "Orbs/Puppet", new Vector3(0, 2.15f, 0)); Shape(c, "LeanUp", 100); }), new Vector2(0, 1));
             lean.AddChild(k.Make("LeanRight", c => { Pos(c, "Orbs/Puppet", new Vector3(0.15f, 2.0f, 0)); Shape(c, "LeanRight", 100); }), new Vector2(1, 0));
@@ -788,31 +823,31 @@ namespace AvatarWorkshop.Reference
             lean.AddChild(k.Make("LeanLeft", c => { Pos(c, "Orbs/Puppet", new Vector3(-0.15f, 2.0f, 0)); Shape(c, "LeanLeft", 100); }), new Vector2(-1, 0));
             var leanS = leanL.stateMachine.AddState("Lean"); leanS.motion = lean; leanS.writeDefaultValues = true;
 
-            var freeL = Layer("Freeform");
-            var freeDir = Tree("FreeDirectional", BlendTreeType.FreeformDirectional2D, "PuppetX", "PuppetY");
+            var freeL = fx.Layer("Freeform");
+            var freeDir = fx.Tree("FreeDirectional", BlendTreeType.FreeformDirectional2D, "PuppetX", "PuppetY");
             freeDir.AddChild(k.Make("FreeCenter", c => Pos(c, "Orbs/Free", new Vector3(0, 2.15f, 0))), Vector2.zero);
             freeDir.AddChild(k.Make("FreeA", c => Pos(c, "Orbs/Free", new Vector3(0.1f, 2.25f, 0))), new Vector2(0.7f, 0.7f));
             freeDir.AddChild(k.Make("FreeB", c => Pos(c, "Orbs/Free", new Vector3(-0.1f, 2.25f, 0))), new Vector2(-0.7f, 0.7f));
             freeDir.AddChild(k.Make("FreeC", c => Pos(c, "Orbs/Free", new Vector3(0, 2.05f, 0.1f))), new Vector2(0, -1));
             var freeS = freeL.stateMachine.AddState("Directional"); freeS.motion = freeDir; freeS.writeDefaultValues = false;
 
-            var cartL = Layer("Cartesian");
-            var cart = Tree("Cartesian", BlendTreeType.FreeformCartesian2D, "Up", "Right");
+            var cartL = fx.Layer("Cartesian");
+            var cart = fx.Tree("Cartesian", BlendTreeType.FreeformCartesian2D, "Up", "Right");
             cart.AddChild(k.Make("Cart00", c => Const(c, "Orbs/Free", typeof(Transform), "m_LocalScale.x", 0.05f)), new Vector2(0, 0));
             cart.AddChild(k.Make("Cart10", c => Const(c, "Orbs/Free", typeof(Transform), "m_LocalScale.x", 0.1f)), new Vector2(1, 0));
             cart.AddChild(k.Make("Cart01", c => Const(c, "Orbs/Free", typeof(Transform), "m_LocalScale.x", 0.02f)), new Vector2(0, 1));
             cart.AddChild(k.Make("Cart11", c => Const(c, "Orbs/Free", typeof(Transform), "m_LocalScale.x", 0.15f)), new Vector2(1, 1));
             var cartS = cartL.stateMachine.AddState("Cartesian"); cartS.motion = cart; cartS.writeDefaultValues = false;
 
-            var directL = Layer("Direct");
-            var direct = Tree("Direct", BlendTreeType.Direct, "Up");
+            var directL = fx.Layer("Direct");
+            var direct = fx.Tree("Direct", BlendTreeType.Direct, "Up");
             var dirKids = new List<ChildMotion>();
             foreach (var (pname, shape) in new[] { ("Up", "Fist"), ("Right", "Open"), ("Down", "Point"), ("Left", "Victory") })
                 dirKids.Add(new ChildMotion { motion = k.Make("Direct" + pname, c => Shape(c, shape, 100)), directBlendParameter = pname, timeScale = 1 });
             direct.children = dirKids.ToArray();
             var directS = directL.stateMachine.AddState("Direct"); directS.motion = direct; directS.writeDefaultValues = true;
 
-            var waveL = Layer("Wave");
+            var waveL = fx.Layer("Wave");
             var idle = waveL.stateMachine.AddState("Idle"); idle.motion = empty; idle.writeDefaultValues = false;
             var waving = waveL.stateMachine.AddState("Waving"); waving.writeDefaultValues = false;
             waving.motion = k.Make("Waving", c => Curve(c, "Body", typeof(SkinnedMeshRenderer), "blendShape.Wave", (0, 0), (0.25f, 100), (0.5f, 0)), loop: true);
@@ -834,7 +869,7 @@ namespace AvatarWorkshop.Reference
             var back = waving.AddTransition(idle); back.hasExitTime = true; back.exitTime = 0.9f; back.duration = 0.15f; back.hasFixedDuration = true;
             back.AddCondition(AnimatorConditionMode.IfNot, 0, "Wave");
 
-            var gestL = Layer("Gestures");
+            var gestL = fx.Layer("Gestures");
             var faces = gestL.stateMachine.AddStateMachine("Faces");
             var gStates = new AnimatorState[8];
             string[] gShapes = { null, "Fist", "Open", "Point", "Victory", "Rock", "Gun", "Thumbs" };
@@ -858,14 +893,14 @@ namespace AvatarWorkshop.Reference
                 tr.AddCondition(AnimatorConditionMode.Equals, g, "GestureLeft");
             }
 
-            var contactL = Layer("Contact");
-            var prox = Tree("Proximity", BlendTreeType.Simple1D, "Proximity");
+            var contactL = fx.Layer("Contact");
+            var prox = fx.Tree("Proximity", BlendTreeType.Simple1D, "Proximity");
             prox.AddChild(k.Make("Pout0", c => Shape(c, "Pout", 0)), 0);
             prox.AddChild(k.Make("Pout100", c => Shape(c, "Pout", 100)), 1);
             var proxS = contactL.stateMachine.AddState("Proximity"); proxS.motion = prox; proxS.writeDefaultValues = false;
 
-            var tailL = Layer("TailParam");
-            var tailTree = Tree("TailAngle", BlendTreeType.Simple1D, "Tail_Angle");
+            var tailL = fx.Layer("TailParam");
+            var tailTree = fx.Tree("TailAngle", BlendTreeType.Simple1D, "Tail_Angle");
             tailTree.AddChild(k.Make("TailAngle0", c => Shape(c, "TailAngle", 0)), 0);
             tailTree.AddChild(k.Make("TailAngle100", c => Shape(c, "TailAngle", 100)), 1);
             var tailS = tailL.stateMachine.AddState("Angle"); tailS.motion = tailTree; tailS.writeDefaultValues = true;
@@ -873,19 +908,309 @@ namespace AvatarWorkshop.Reference
             Go(tailS, grabbed, 0).AddCondition(AnimatorConditionMode.If, 0, "Tail_IsGrabbed");
             Go(grabbed, tailS, 0).AddCondition(AnimatorConditionMode.IfNot, 0, "Tail_IsGrabbed");
 
-            var addL = Layer("Additive", AnimatorLayerBlendingMode.Additive);
+            var addL = fx.Layer("Additive", AnimatorLayerBlendingMode.Additive);
             var addS = addL.stateMachine.AddState("Add"); addS.writeDefaultValues = false;
             addS.motion = k.Make("Additive", c => Curve(c, "Orbs/Puppet", typeof(Transform), "m_LocalPosition.z", (0, 0), (1, 0.1f), (2, 0)), loop: true);
 
-            var visL = Layer("Viseme");
+            var visL = fx.Layer("Viseme");
             var visIdle = visL.stateMachine.AddState("Quiet"); visIdle.motion = empty; visIdle.writeDefaultValues = false;
             var visTalk = visL.stateMachine.AddState("Talking"); visTalk.motion = k.Make("Talking", c => Const(c, "Orbs/Rotation", typeof(MeshRenderer), "m_Enabled", 0)); visTalk.writeDefaultValues = false;
             visL.stateMachine.defaultState = visIdle;
             Go(visIdle, visTalk, 0.05f).AddCondition(AnimatorConditionMode.Greater, 0, "Viseme");
             Go(visTalk, visIdle, 0.05f).AddCondition(AnimatorConditionMode.Equals, 0, "Viseme");
 
+            var syncMachine = new AnimatorStateMachine { name = "HatSync", hideFlags = HideFlags.HideInHierarchy };
+            AssetDatabase.AddObjectToAsset(syncMachine, ctrl);
+            var syncL = new AnimatorControllerLayer { name = "HatSync", stateMachine = syncMachine, defaultWeight = 1, syncedLayerIndex = ctrl.layers.ToList().FindIndex(l => l.name == "Hat"), syncedLayerAffectsTiming = false };
+            syncL.SetOverrideMotion(hatOff, k.Make("SyncOff", c => Scale(c, "Orbs/Sync", new Vector3(0.05f, 0.03f, 0.05f))));
+            syncL.SetOverrideMotion(hatOn, k.Make("SyncOn", c => Scale(c, "Orbs/Sync", new Vector3(0.05f, 0.12f, 0.05f))));
+            ctrl.AddLayer(syncL);
+
+            var drivenL = fx.Layer("ParameterCurve");
+            var drive = drivenL.stateMachine.AddState("Drive"); drive.writeDefaultValues = false;
+            drive.motion = k.Make("Drive", c => Curve(c, "", typeof(Animator), "Driven", (0, 0), (1, 1), (2, 0)), loop: true);
+
+            var bobL = fx.Layer("Bob");
+            var bobTree = fx.Tree("Bob", BlendTreeType.Simple1D, "Driven");
+            bobTree.AddChild(k.Make("Bob0", c => Pos(c, "Orbs/Bob", new Vector3(0, 2.3f, 0))), 0);
+            bobTree.AddChild(k.Make("Bob1", c => Pos(c, "Orbs/Bob", new Vector3(0, 2.45f, 0))), 1);
+            var bobS = bobL.stateMachine.AddState("Bob"); bobS.motion = bobTree; bobS.writeDefaultValues = false;
+
+            var layerCtlL = fx.Layer("LayerControl");
+            var full = layerCtlL.stateMachine.AddState("Full"); full.motion = empty; full.writeDefaultValues = false;
+            var dim = layerCtlL.stateMachine.AddState("Dim"); dim.motion = empty; dim.writeDefaultValues = false;
+            layerCtlL.stateMachine.defaultState = full;
+            var bobIndex = ctrl.layers.ToList().FindIndex(l => l.name == "Bob");
+            LayerControl(dim, VRCAnimatorLayerControl.BlendableLayer.FX, bobIndex, 0.3f, 0.5f);
+            LayerControl(full, VRCAnimatorLayerControl.BlendableLayer.FX, bobIndex, 1, 0.25f);
+            Go(full, dim, 0.1f).AddCondition(AnimatorConditionMode.If, 0, "Flip");
+            Go(dim, full, 0.1f).AddCondition(AnimatorConditionMode.IfNot, 0, "Flip");
+
+            var spinL = fx.Layer("Spin");
+            var spin = spinL.stateMachine.AddState("Spin"); spin.writeDefaultValues = false;
+            spin.cycleOffsetParameterActive = true; spin.cycleOffsetParameter = "Dial";
+            spin.motion = k.Make("Spin", c =>
+            {
+                Curve(c, "Orbs/Spin", typeof(Transform), "localEulerAnglesRaw.y", (0, 0), (2, 360));
+                Curve(c, "Orbs/Spin", typeof(Transform), "localEulerAnglesRaw.x", (0, 0), (1, 30), (2, 0));
+                Curve(c, "Orbs/Spin", typeof(Transform), "localEulerAnglesRaw.z", (0, 0), (2, 0));
+                Stepped(c, "Orbs/Spin", typeof(Transform), "m_LocalScale.x", (0, 0.05f), (0.5f, 0.09f), (1.2f, 0.06f), (2, 0.05f));
+                Weighted(c, "Orbs/Spin", typeof(Transform), "m_LocalPosition.z", (0, 0), (1, 0.12f), (2, 0));
+                Const(c, "Orbs/Spin", typeof(Transform), "m_LocalPosition.x", -0.3f);
+                Const(c, "Orbs/Spin", typeof(Transform), "m_LocalPosition.y", 2.3f);
+                Const(c, "Orbs/Spin", typeof(Transform), "m_LocalScale.y", 0.05f);
+                Const(c, "Orbs/Spin", typeof(Transform), "m_LocalScale.z", 0.05f);
+            }, loop: true);
+
+            var scrubL = fx.Layer("Scrub");
+            var scrub = scrubL.stateMachine.AddState("Scrub"); scrub.writeDefaultValues = false;
+            scrub.timeParameterActive = true; scrub.timeParameter = "Dial";
+            scrub.motion = k.Make("Scrub", c =>
+            {
+                Curve(c, "Orbs/Scrub", typeof(Transform), "m_LocalPosition.x", (0, -0.5f), (1, -0.1f));
+                Const(c, "Orbs/Scrub", typeof(Transform), "m_LocalPosition.y", 2.45f);
+                Const(c, "Orbs/Scrub", typeof(Transform), "m_LocalPosition.z", 0);
+            });
+
+            var pulseL = fx.Layer("Pulse");
+            var pulse = pulseL.stateMachine.AddState("Pulse"); pulse.writeDefaultValues = false;
+            pulse.speedParameterActive = true; pulse.speedParameter = "Dial";
+            pulse.motion = k.Make("Pulse", c =>
+            {
+                Const(c, "Orbs/Pulse", typeof(Transform), "m_LocalPosition.x", 0.3f);
+                Curve(c, "Orbs/Pulse", typeof(Transform), "m_LocalPosition.y", (0, 2.45f), (0.5f, 2.6f), (1, 2.45f));
+                Const(c, "Orbs/Pulse", typeof(Transform), "m_LocalPosition.z", 0);
+            }, loop: true);
+
+            var held = fx.Layer("Held");
+            var hold = held.stateMachine.AddState("Hold"); hold.writeDefaultValues = false;
+            hold.motion = k.Make("Hold", c => { Pos(c, "Orbs/Masked", new Vector3(0.5f, 2.3f, 0)); Pos(c, "Orbs/Unmasked", new Vector3(-0.5f, 2.3f, 0)); });
+            var masked = fx.Layer("Masked", mask: Mask("Masked", new AvatarMaskBodyPart[0], ("Orbs", true), ("Orbs/Unmasked", true), ("Orbs/Masked", false))).stateMachine;
+            var rest = masked.AddState("Rest"); rest.writeDefaultValues = false;
+            rest.motion = hold.motion;
+            var raised = masked.AddState("Raised"); raised.writeDefaultValues = false;
+            raised.motion = k.Make("Raised", c => { Pos(c, "Orbs/Masked", new Vector3(0.5f, 2.5f, 0)); Pos(c, "Orbs/Unmasked", new Vector3(-0.5f, 2.5f, 0)); });
+            masked.defaultState = rest;
+            Go(rest, raised, 0.2f).AddCondition(AnimatorConditionMode.Equals, 2, "GestureRight");
+            Go(raised, rest, 0.2f).AddCondition(AnimatorConditionMode.NotEqual, 2, "GestureRight");
+
+            var trigL = fx.Layer("Trigger");
+            var wait = trigL.stateMachine.AddState("Wait"); wait.writeDefaultValues = false;
+            wait.motion = k.Make("Bounce", c =>
+            {
+                Const(c, "Orbs/Sync", typeof(Transform), "m_LocalPosition.x", 0.3f);
+                Curve(c, "Orbs/Sync", typeof(Transform), "m_LocalPosition.y", (0, 2.3f), (0.5f, 2.4f), (1, 2.3f));
+                Const(c, "Orbs/Sync", typeof(Transform), "m_LocalPosition.z", 0);
+            }, loop: true);
+            var arm = trigL.stateMachine.AddState("Arm"); arm.motion = empty; arm.writeDefaultValues = false;
+            var fired = trigL.stateMachine.AddState("Fired"); fired.writeDefaultValues = false;
+            fired.motion = k.Make("Fired", c => Const(c, "Orbs/Sync", typeof(MeshRenderer), "m_Enabled", 0));
+            trigL.stateMachine.defaultState = wait;
+            var fire = arm.AddStateMachineBehaviour<VRCAvatarParameterDriver>();
+            fire.parameters = new List<VRC_AvatarParameterDriver.Parameter> { new VRC_AvatarParameterDriver.Parameter { type = VRC_AvatarParameterDriver.ChangeType.Set, name = "Fire", value = 1 } };
+            Go(wait, arm, 0).AddCondition(AnimatorConditionMode.If, 0, "Wave");
+            Go(arm, fired, 0).AddCondition(AnimatorConditionMode.If, 0, "Fire");
+            var rearm = fired.AddTransition(wait); rearm.hasExitTime = true; rearm.exitTime = 0.5f; rearm.duration = 0; rearm.offset = 0.3f;
+            rearm.AddCondition(AnimatorConditionMode.IfNot, 0, "Wave");
+
+            var swapL = fx.Layer("Swap");
+            var kept = swapL.stateMachine.AddState("Kept"); kept.motion = empty; kept.writeDefaultValues = false;
+            var swapped = swapL.stateMachine.AddState("Swapped"); swapped.writeDefaultValues = false;
+            swapped.motion = k.Make("Swapped", c => AnimationUtility.SetObjectReferenceCurve(c, EditorCurveBinding.PPtrCurve("Body", typeof(SkinnedMeshRenderer), "m_Materials.Array.data[0]"),
+                new[] { new ObjectReferenceKeyframe { time = 0, value = AssetDatabase.LoadAssetAtPath<Material>($"{Dir}/ClothAlt.mat") } }));
+            swapL.stateMachine.defaultState = kept;
+            Go(kept, swapped, 0).AddCondition(AnimatorConditionMode.If, 0, "Swap");
+            Go(swapped, kept, 0).AddCondition(AnimatorConditionMode.IfNot, 0, "Swap");
+
             EditorUtility.SetDirty(ctrl);
             return ctrl;
+        }
+
+        static void LayerControl(AnimatorState s, VRCAnimatorLayerControl.BlendableLayer playable, int layer, float goal, float duration)
+        {
+            var b = s.AddStateMachineBehaviour<VRCAnimatorLayerControl>();
+            b.playable = playable; b.layer = layer; b.goalWeight = goal; b.blendDuration = duration;
+        }
+
+        static void PlayableControl(AnimatorState s, VRCPlayableLayerControl.BlendableLayer layer, float goal, float duration)
+        {
+            var b = s.AddStateMachineBehaviour<VRCPlayableLayerControl>();
+            b.layer = layer; b.goalWeight = goal; b.blendDuration = duration;
+        }
+
+        static void Tracking(AnimatorState s, VRC_AnimatorTrackingControl.TrackingType head, VRC_AnimatorTrackingControl.TrackingType hands, VRC_AnimatorTrackingControl.TrackingType hip)
+        {
+            var b = s.AddStateMachineBehaviour<VRCAnimatorTrackingControl>();
+            b.trackingHead = head; b.trackingLeftHand = hands; b.trackingRightHand = hands; b.trackingHip = hip;
+        }
+
+        static float[] RestMuscles;
+
+        // A humanoid clip sets every muscle, so each starts from the avatar's rest pose and only the named ones move.
+        static void Muscles(AnimationClip c, params (string muscle, float v)[] values)
+        {
+            Body(c);
+            var set = values.Select(x => Regex.Replace(x.muscle, @"^(Left|Right)Hand\.(\w+)\.(\d) ", "$1 $2 $3 ")).ToList();
+            foreach (var m in set) if (Array.IndexOf(HumanTrait.MuscleName, m) < 0) throw new Exception("no humanoid muscle " + m);
+            for (int i = 0; i < HumanTrait.MuscleCount; i++)
+            {
+                int k = set.IndexOf(HumanTrait.MuscleName[i]);
+                if (k < 0) Const(c, "", typeof(Animator), Binding(HumanTrait.MuscleName[i]), RestMuscles[i]);
+            }
+            foreach (var (m, v) in values) Const(c, "", typeof(Animator), m, v);
+        }
+
+        static string Binding(string muscle) => Regex.Replace(muscle, @"^(Left|Right) (Thumb|Index|Middle|Ring|Little) (\d) ", "$1Hand.$2.$3 ");
+
+        static void Body(AnimationClip c)
+        {
+            foreach (var (p, v) in new[] { ("RootT.x", 0f), ("RootT.y", 1f), ("RootT.z", 0f), ("RootQ.x", 0f), ("RootQ.y", 0f), ("RootQ.z", 0f), ("RootQ.w", 1f) })
+                Const(c, "", typeof(Animator), p, v);
+        }
+
+        static void Stepped(AnimationClip c, string path, Type type, string prop, params (float t, float v)[] keys)
+        {
+            var curve = new AnimationCurve(keys.Select(k => new Keyframe(k.t, k.v)).ToArray());
+            for (int i = 0; i < curve.length; i++)
+            {
+                AnimationUtility.SetKeyLeftTangentMode(curve, i, AnimationUtility.TangentMode.Constant);
+                AnimationUtility.SetKeyRightTangentMode(curve, i, AnimationUtility.TangentMode.Constant);
+            }
+            AnimationUtility.SetEditorCurve(c, EditorCurveBinding.FloatCurve(path, type, prop), curve);
+        }
+
+        static void Weighted(AnimationClip c, string path, Type type, string prop, params (float t, float v)[] keys)
+        {
+            var curve = new AnimationCurve(keys.Select((k, i) => new Keyframe(k.t, k.v, 0.3f, -0.2f, i % 2 == 0 ? 0.1f : 0.6f, i % 2 == 0 ? 0.7f : 0.15f) { weightedMode = WeightedMode.Both }).ToArray());
+            AnimationUtility.SetEditorCurve(c, EditorCurveBinding.FloatCurve(path, type, prop), curve);
+        }
+
+        static AnimatorController BaseController(Clips k)
+        {
+            var b = new Ctl("Base", ("VelocityZ", AnimatorControllerParameterType.Float), ("Seated", AnimatorControllerParameterType.Bool), ("Grounded", AnimatorControllerParameterType.Bool), ("Flip", AnimatorControllerParameterType.Bool));
+            var sm = b.Layer("Locomotion").stateMachine;
+            var standing = sm.AddState("Standing"); standing.writeDefaultValues = true;
+            standing.motion = k.Make("Stand", c => Muscles(c, ("Left Arm Down-Up", 0.3f), ("Right Arm Down-Up", -0.1f), ("Spine Twist Left-Right", 0.2f)));
+            standing.mirrorParameterActive = true; standing.mirrorParameter = "Flip";
+            standing.AddStateMachineBehaviour<VRCAnimatorLocomotionControl>().disableLocomotion = false;
+            var moving = sm.AddState("Moving"); moving.writeDefaultValues = true;
+            moving.motion = k.Make("Walk", c =>
+            {
+                Muscles(c);
+                Curve(c, "", typeof(Animator), "Left Upper Leg Front-Back", (0, 0.3f), (0.5f, -0.3f), (1, 0.3f));
+                Curve(c, "", typeof(Animator), "Right Upper Leg Front-Back", (0, -0.3f), (0.5f, 0.3f), (1, -0.3f));
+            }, loop: true);
+            sm.defaultState = standing;
+            var toMove = Go(standing, moving, 0.2f); toMove.offset = 0.2f; toMove.AddCondition(AnimatorConditionMode.Greater, 1, "VelocityZ");
+            var toStand = moving.AddTransition(standing); toStand.hasExitTime = true; toStand.exitTime = 0.5f; toStand.offset = 0.3f; toStand.duration = 0.25f; toStand.hasFixedDuration = true;
+            toStand.AddCondition(AnimatorConditionMode.Less, 0.5f, "VelocityZ");
+
+            var seated = sm.AddStateMachine("Seated");
+            var sit = seated.AddState("Sit"); sit.writeDefaultValues = true;
+            sit.motion = k.Make("Sit", c => Muscles(c, ("Left Upper Leg Front-Back", 0.8f), ("Right Upper Leg Front-Back", 0.8f), ("Left Lower Leg Stretch", -0.6f), ("Right Lower Leg Stretch", -0.6f)));
+            sit.AddStateMachineBehaviour<VRCAnimatorLocomotionControl>().disableLocomotion = true;
+            var slump = seated.AddState("Slump"); slump.writeDefaultValues = true;
+            slump.motion = k.Make("Slump", c => Muscles(c, ("Spine Front-Back", 0.5f), ("Left Upper Leg Front-Back", 0.8f), ("Right Upper Leg Front-Back", 0.8f)));
+            seated.defaultState = slump;
+            seated.AddEntryTransition(sit).AddCondition(AnimatorConditionMode.If, 0, "Grounded");
+            foreach (var s in new[] { sit, slump })
+            {
+                var leave = s.AddExitTransition(); leave.hasExitTime = false; leave.duration = 0.2f; leave.hasFixedDuration = true;
+                leave.AddCondition(AnimatorConditionMode.IfNot, 0, "Seated");
+            }
+            var enter = standing.AddTransition(seated); enter.hasExitTime = false; enter.duration = 0.2f; enter.hasFixedDuration = true;
+            enter.AddCondition(AnimatorConditionMode.If, 0, "Seated");
+            sm.AddStateMachineTransition(seated, standing);
+            return b.C;
+        }
+
+        static AvatarMask Mask(string name, AvatarMaskBodyPart[] parts, params (string path, bool active)[] transforms)
+        {
+            var m = new AvatarMask();
+            for (var p = AvatarMaskBodyPart.Root; p < AvatarMaskBodyPart.LastBodyPart; p++) m.SetHumanoidBodyPartActive(p, parts.Contains(p));
+            m.transformCount = transforms.Length;
+            for (int i = 0; i < transforms.Length; i++) { m.SetTransformPath(i, transforms[i].path); m.SetTransformActive(i, transforms[i].active); }
+            AssetDatabase.CreateAsset(m, $"{Dir}/{name}.mask");
+            return m;
+        }
+
+        static AnimatorController AdditiveController(Clips k)
+        {
+            var a = new Ctl("Additive", ("Upright", AnimatorControllerParameterType.Float));
+            var sm = a.Layer("Breathe", AnimatorLayerBlendingMode.Additive, Mask("Torso", new[] { AvatarMaskBodyPart.Body, AvatarMaskBodyPart.Head })).stateMachine;
+            var breathe = sm.AddState("Breathe"); breathe.writeDefaultValues = false;
+            breathe.motion = k.Make("Breathe", c =>
+            {
+                Curve(c, "", typeof(Animator), "Chest Front-Back", (0, 0), (1.5f, 0.15f), (3, 0));
+                Curve(c, "", typeof(Animator), "Left Upper Leg Front-Back", (0, 0), (1.5f, 0.4f), (3, 0));
+            }, loop: true);
+            return a.C;
+        }
+
+        static AnimatorController GestureController(Clips k)
+        {
+            var g = new Ctl("Gesture", ("GestureLeft", AnimatorControllerParameterType.Int), ("GestureRight", AnimatorControllerParameterType.Int));
+            foreach (var (side, part) in new[] { ("Left", AvatarMaskBodyPart.LeftFingers), ("Right", AvatarMaskBodyPart.RightFingers) })
+            {
+                var sm = g.Layer(side + "Hand", mask: Mask(side + "Fingers", new[] { part })).stateMachine;
+                var open = sm.AddState("Open"); open.writeDefaultValues = false;
+                open.motion = k.Make(side + "Open", c => Muscles(c, ($"{side}Hand.Index.1 Stretched", 1), ($"{side}Hand.Middle.1 Stretched", 1)));
+                var fist = sm.AddState("Fist"); fist.writeDefaultValues = false;
+                fist.motion = k.Make(side + "Fist", c => Muscles(c, ($"{side}Hand.Index.1 Stretched", -1), ($"{side}Hand.Middle.1 Stretched", -1), ("Left Arm Down-Up", 0.6f)));
+                sm.defaultState = open;
+                Go(open, fist, 0.1f).AddCondition(AnimatorConditionMode.Equals, 1, "Gesture" + side);
+                Go(fist, open, 0.1f).AddCondition(AnimatorConditionMode.NotEqual, 1, "Gesture" + side);
+            }
+            return g.C;
+        }
+
+        static AnimatorController ActionController(Clips k)
+        {
+            var a = new Ctl("Action", ("Pose", AnimatorControllerParameterType.Bool));
+            var sm = a.Layer("Action").stateMachine;
+            var idle = sm.AddState("Wait"); idle.writeDefaultValues = false;
+            idle.motion = k.Make("ActionWait", c => Muscles(c, ("Spine Front-Back", 0)));
+            var pose = sm.AddState("Posing"); pose.writeDefaultValues = false;
+            pose.motion = k.Make("Posing", c => Muscles(c, ("Spine Front-Back", 0.4f), ("Left Arm Down-Up", 0.9f), ("Right Arm Down-Up", 0.9f)));
+            PlayableControl(pose, VRCPlayableLayerControl.BlendableLayer.Action, 1, 0.3f);
+            Tracking(pose, VRC_AnimatorTrackingControl.TrackingType.Animation, VRC_AnimatorTrackingControl.TrackingType.Animation, VRC_AnimatorTrackingControl.TrackingType.NoChange);
+            var release = sm.AddState("Release"); release.writeDefaultValues = false;
+            release.motion = idle.motion;
+            PlayableControl(release, VRCPlayableLayerControl.BlendableLayer.Action, 0, 0.3f);
+            Tracking(release, VRC_AnimatorTrackingControl.TrackingType.Tracking, VRC_AnimatorTrackingControl.TrackingType.Tracking, VRC_AnimatorTrackingControl.TrackingType.NoChange);
+            sm.defaultState = idle;
+            Go(idle, pose, 0.3f).AddCondition(AnimatorConditionMode.If, 0, "Pose");
+            Go(pose, release, 0.3f).AddCondition(AnimatorConditionMode.IfNot, 0, "Pose");
+            var back = release.AddTransition(idle); back.hasExitTime = true; back.exitTime = 1; back.duration = 0; back.offset = 0;
+            return a.C;
+        }
+
+        static AnimatorController SittingController(Clips k)
+        {
+            var s = new Ctl("Sitting", ("Seated", AnimatorControllerParameterType.Bool));
+            var sm = s.Layer("Sit").stateMachine;
+            var standing = sm.AddState("Upright"); standing.writeDefaultValues = false;
+            standing.motion = k.Make("Upright", c => Muscles(c, ("Left Upper Leg Front-Back", 0)));
+            var sit = sm.AddState("Seated"); sit.writeDefaultValues = false;
+            sit.motion = k.Make("Seated", c => Muscles(c, ("Left Upper Leg Front-Back", 0.9f), ("Right Upper Leg Front-Back", 0.9f)));
+            var space = sit.AddStateMachineBehaviour<VRCAnimatorTemporaryPoseSpace>();
+            space.enterPoseSpace = true; space.fixedDelay = true; space.delayTime = 0.2f;
+            Tracking(sit, VRC_AnimatorTrackingControl.TrackingType.NoChange, VRC_AnimatorTrackingControl.TrackingType.NoChange, VRC_AnimatorTrackingControl.TrackingType.Animation);
+            Tracking(standing, VRC_AnimatorTrackingControl.TrackingType.NoChange, VRC_AnimatorTrackingControl.TrackingType.NoChange, VRC_AnimatorTrackingControl.TrackingType.Tracking);
+            var leave = standing.AddStateMachineBehaviour<VRCAnimatorTemporaryPoseSpace>();
+            leave.enterPoseSpace = false; leave.fixedDelay = false; leave.delayTime = 0.1f;
+            sm.defaultState = standing;
+            Go(standing, sit, 0.2f).AddCondition(AnimatorConditionMode.If, 0, "Seated");
+            Go(sit, standing, 0.2f).AddCondition(AnimatorConditionMode.IfNot, 0, "Seated");
+            return s.C;
+        }
+
+        static AnimatorController PoseController(Clips k, string name, float arms)
+        {
+            var p = new Ctl(name);
+            var s = p.Layer(name).stateMachine.AddState(name); s.writeDefaultValues = false;
+            s.motion = k.Make(name, c => Muscles(c, ("Left Arm Down-Up", arms), ("Right Arm Down-Up", arms)));
+            return p.C;
         }
     }
 }

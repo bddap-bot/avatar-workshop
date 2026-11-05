@@ -675,7 +675,7 @@ impl Check<'_> {
         }
         for k in model.keys() {
             if !unity.keys().any(|u| key(u) == *k) {
-                faults.push(format!("model playable layer {k} is not a custom layer in Unity"));
+                faults.push(format!("model playable layer {k} has no controller in Unity"));
             }
         }
         let (u, m) = totals;

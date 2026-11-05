@@ -36,21 +36,16 @@ namespace AvatarWorkshop.Exporter
 
         static readonly string[] LayerOrder = { "base", "additive", "gesture", "action", "fx", "sitting", "tPose", "ikPose" };
 
-        IEnumerable<VRCAvatarDescriptor.CustomAnimLayer> PlayableLayers() =>
-            (descriptor.baseAnimationLayers ?? new VRCAvatarDescriptor.CustomAnimLayer[0]).Concat(descriptor.specialAnimationLayers ?? new VRCAvatarDescriptor.CustomAnimLayer[0]);
-
-        static bool Custom(VRCAvatarDescriptor d, VRCAvatarDescriptor.CustomAnimLayer l) => d.customizeAnimationLayers && !l.isDefault && l.animatorController != null;
-
         Obj Layers()
         {
             var layers = new SortedDictionary<int, KeyValuePair<string, Obj>>();
-            foreach (var l in PlayableLayers())
+            foreach (var l in Playable.Layers(descriptor))
             {
                 var key = LayerKey(l.type);
                 if (key == null) continue;
                 var record = new Obj();
-                if (Custom(descriptor, l)) record.Add("controller", Controller(l.animatorController));
-                if (l.mask != null) record.Add("mask", Mask(l.mask));
+                if (Playable.Controller(l) is RuntimeAnimatorController c) record.Add("controller", Controller(c));
+                if (Playable.Mask(l) is AvatarMask mask) record.Add("mask", Mask(mask));
                 layers[Array.IndexOf(LayerOrder, key)] = new KeyValuePair<string, Obj>(key, record);
             }
             foreach (var p in pendingClips) p();

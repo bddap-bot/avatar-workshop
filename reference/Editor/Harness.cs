@@ -208,6 +208,7 @@ namespace AvatarWorkshop.Reference
         readonly List<(Renderer r, string path, string prop, ShaderPropertyType type)> materialProps = new List<(Renderer, string, string, ShaderPropertyType)>();
         readonly List<(Transform t, string path)> animatedTransforms = new List<(Transform, string)>();
         List<AnimatorControllerPlayable> playables;
+        AnimationLayerMixerPlayable mixer;
         (Transform t, string path)[] drivers = new (Transform, string)[0];
         (Transform t, string path)[] bones = new (Transform, string)[0];
         readonly Dictionary<string, string> lastPoses = new Dictionary<string, string>();
@@ -351,6 +352,7 @@ namespace AvatarWorkshop.Reference
                 tracked = new[] { HumanBodyBones.Head, HumanBodyBones.LeftHand, HumanBodyBones.RightHand, HumanBodyBones.Hips }.Select(animator.GetBoneTransform).ToArray();
             }
             playables = (List<AnimatorControllerPlayable>)typeof(LyumaAv3Runtime).GetField("playables", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(runtime);
+            mixer = (AnimationLayerMixerPlayable)typeof(LyumaAv3Runtime).GetField("playableMixer", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(runtime);
             var descriptor = runtime.GetComponent<VRCAvatarDescriptor>();
             if (descriptor.expressionParameters != null)
                 foreach (var p in descriptor.expressionParameters.parameters)
@@ -630,6 +632,25 @@ namespace AvatarWorkshop.Reference
                 }
                 v[$"mat:{path}:{prop}"] = value;
             }
+            for (int i = 0; i < playables.Count; i++)
+            {
+                var pl = playables[i];
+                if (!pl.IsValid()) continue;
+                v[$"playable:{i}"] = F(mixer.GetInputWeight(i + 1));
+                for (int l = 0; l < pl.GetLayerCount(); l++) v[$"weight:{i}:{l}:{pl.GetLayerName(l)}"] = F(pl.GetLayerWeight(l));
+                for (int k = 0; k < pl.GetParameterCount(); k++)
+                {
+                    var p = pl.GetParameter(k);
+                    if (p.type == AnimatorControllerParameterType.Float && pl.IsParameterControlledByCurve(p.nameHash)) v[$"curve:{i}:{p.name}"] = F(pl.GetFloat(p.nameHash));
+                }
+            }
+            var ik = runtime.IKTrackingOutputData;
+            foreach (var (part, type) in new[] { ("head", ik.trackingHead), ("leftHand", ik.trackingLeftHand), ("rightHand", ik.trackingRightHand), ("hip", ik.trackingHip),
+                ("leftFoot", ik.trackingLeftFoot), ("rightFoot", ik.trackingRightFoot), ("leftFingers", ik.trackingLeftFingers), ("rightFingers", ik.trackingRightFingers),
+                ("eyes", ik.trackingEyesAndEyelids), ("mouth", ik.trackingMouthAndJaw) })
+                v["tracking:" + part] = type.ToString();
+            v["locomotion:disabled"] = runtime.LocomotionIsDisabled ? "1" : "0";
+            v["view"] = $"{F(ik.ViewPosition.x)},{F(ik.ViewPosition.y)},{F(ik.ViewPosition.z)}";
             foreach (var (t, path) in animatedTransforms)
             {
                 var p = t.localPosition; var e = t.localRotation; var s = t.localScale;
