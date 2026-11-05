@@ -3,8 +3,9 @@ extends RefCounted
 const Definition = preload("spring_definition.gd")
 const EVERYONE := Definition.WEARER | Definition.OTHERS
 const SkeletonBone = preload("skeleton_bone.gd")
+const PhysBone = preload("physbone.gd")
 
-const STEP := 1.0 / 60.0
+const STEP := PhysBone.STEP
 ## The most a hand carries a point in one step, so a snap of the hand or its tracking does not fling what it holds.
 const CARRY := 0.05
 ## How near a hand's surface a point it carried stays held, against the float error of a point just pushed onto it.
@@ -17,10 +18,12 @@ var targets := {}
 ## before advance; "key" tells a hand from the others across frames.
 var hands: Array = []
 var point_count := 0
-var _time := 0.0
+var _owed := 0.0
 var _native: Array[SpringBoneSimulator3D] = []
 var _hands_before := {}
 var _share := 1.0
+## The PhysBone chains, parents' before their children's, so each sets off from where its parent's step left it.
+var _physbones: Array = []
 
 
 func _init(definition: Dictionary, nodes: Dictionary) -> void:
@@ -60,9 +63,66 @@ func _init(definition: Dictionary, nodes: Dictionary) -> void:
 			chain.joints.append(joint)
 		for joint: Dictionary in chain.joints:
 			chain.reach += (joint.node.global_basis * joint.tail).length()
+		chain.physbone = _physbone(chain)
 		chains.append(chain)
+	_physbones.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return _depth(a.joints[0].node) < _depth(b.joints[0].node))
 	reset()
 	_bind_native()
+
+
+## `chain` for the PhysBone step when every joint of it carries the converter's "physbone" settings and hangs from the
+## one before, or null; the step's anchor is the parent of the PhysBone's root, "depth" transforms above.
+func _physbone(chain: Dictionary) -> PhysBone.Chain:
+	var joints: Array = chain.joints
+	if not joints.all(func(j: Dictionary) -> bool: return j.has("physbone")):
+		return null
+	var links: Array = joints.map(func(j: Dictionary): return j.node)
+	if chain.endpoint != null:
+		links.append(chain.endpoint)
+	for i in range(1, links.size()):
+		if not _same(_parent(links[i]), links[i - 1]):
+			return null
+	var root: Variant = joints[0].node
+	for i in joints[0].physbone.depth:
+		var above: Variant = _parent(root)
+		if above is SkeletonBone or root is Node3D and above is Node3D:
+			root = above
+	var physbone := PhysBone.Chain.new()
+	physbone.anchor = _parent(root)
+	if physbone.anchor == null:
+		return null
+	for joint: Dictionary in joints:
+		var model: Basis = joint.node.skeleton.get_bone_global_rest(joint.node.bone).basis if joint.node is SkeletonBone else joint.node.global_basis
+		physbone.bones.append(PhysBone.Bone.new(joint.node, joint.rest, joint.tail, joint.physbone, joint.get("limit", {}), model))
+	physbone.parent = _parent(joints[0].node)
+	physbone.travel = joints[0].physbone.travel
+	physbone.end = chain.endpoint
+	physbone.end_rest = chain.endpoint.transform if chain.endpoint != null else Transform3D.IDENTITY
+	_physbones.append(chain)
+	return physbone
+
+
+## The node `node` hangs from: a bone's parent bone, or its skeleton for a root bone.
+static func _parent(node: Variant) -> Variant:
+	if node is SkeletonBone:
+		var bone: int = node.skeleton.get_bone_parent(node.bone)
+		return SkeletonBone.new(node.skeleton, bone) if bone >= 0 else node.skeleton
+	return node.get_parent() if node is Node else null
+
+
+static func _same(a: Variant, b: Variant) -> bool:
+	if a is SkeletonBone and b is SkeletonBone:
+		return a.skeleton == b.skeleton and a.bone == b.bone
+	return a == b
+
+
+static func _depth(node: Variant) -> int:
+	var depth := 0
+	node = _parent(node)
+	while node != null:
+		depth += 1
+		node = _parent(node)
+	return depth
 
 
 func reset() -> void:
@@ -77,7 +137,9 @@ func reset() -> void:
 		chain.gripped = {}
 		chain.stepped_center = center
 	_hands_before.clear()
-	_time = 0.0
+	for chain: Dictionary in _physbones:
+		chain.physbone.unseed()
+	_owed = 0.0
 	for simulator in _native:
 		simulator.reset()
 
@@ -100,11 +162,17 @@ func advance(delta: float) -> void:
 	if delta > 0.25:
 		reset()
 		return
-	_time += maxf(delta, 0.0)
-	var steps := floori(_time / STEP)
+	_owed += maxf(delta, 0.0)
+	# Divided, not multiplied, as VRChat does: a frame of exactly STEP makes exactly one step, not one and a sliver.
+	var owed := _owed / STEP
+	var executions := minf(owed, PhysBone.MOST_STEPS)
+	var steps := floori(owed)
+	if owed >= 1.0:
+		_owed = (executions - floorf(executions)) * STEP
 	_share = 1.0 / maxi(steps, 1)
+	if not _physbones.is_empty():
+		_advance_physbones(executions)
 	for i in steps:
-		_time -= STEP
 		_step()
 	if steps > 0:
 		_hands_before.clear()
@@ -112,9 +180,57 @@ func advance(delta: float) -> void:
 			_hands_before[hand.key] = [hand.from, hand.to]
 
 
+func _advance_physbones(executions: float) -> void:
+	var placed := {}
+	for chain: Dictionary in _physbones:
+		var physbone: PhysBone.Chain = chain.physbone
+		if targets.has(chain.index):
+			if physbone.seeded:
+				physbone.unseed()
+			continue
+		var touching := []
+		for index: int in chain.colliders:
+			if not placed.has(index):
+				placed[index] = _placed(colliders[index])
+			if not placed[index].is_empty():
+				touching.append(placed[index])
+		for hand: Dictionary in hands:
+			if chain.collide & hand.who:
+				touching.append(PhysBone.sphere(hand.from, hand.to, hand.radius, false))
+		physbone.advance(executions, _place(chain), touching)
+		var inverse := _center(chain).affine_inverse()
+		chain.previous = chain.current
+		chain.current = PackedVector3Array()
+		for tail in physbone.tails:
+			chain.current.append(inverse * tail)
+
+
+## `collider` placed in the world as PhysBone.advance meets it, its extended shape where it has one, or empty for a
+## collider that names no node.
+static func _placed(collider: Dictionary) -> Array:
+	if collider.is_empty():
+		return []
+	var world: Transform3D = collider.node.global_transform
+	var shape: Dictionary = collider.get("extended", collider)
+	var at: Vector3 = world * shape.offset
+	if shape.has("normal"):
+		return PhysBone.plane(at, (world.basis * shape.normal).normalized())
+	return PhysBone.sphere(at, world * shape.tail, shape.radius * world.basis.x.length(), shape.get("inside", false))
+
+
+## The figure's origin, which a PhysBone that is immobile in the world holds its tails to.
+static func _place(chain: Dictionary) -> Vector3:
+	var node: Variant = chain.joints[0].node
+	if node is SkeletonBone:
+		return node.skeleton.global_position
+	while node.get_parent() is Node3D:
+		node = node.get_parent()
+	return node.global_position
+
+
 func _step() -> void:
 	for c in chains.size():
-		if chains[c].native_active:
+		if chains[c].native_active or chains[c].physbone and not targets.has(c):
 			continue
 		var chain: Dictionary = chains[c]
 		var center := _center(chain)
@@ -283,10 +399,7 @@ func grabs(chain: int, who: int) -> bool:
 
 
 func tip(chain: int) -> Vector3:
-	if chains[chain].native_active:
-		return _center(chains[chain]) * chains[chain].current[-1]
-	var joint: Dictionary = chains[chain].joints[-1]
-	return joint.node.global_transform * joint.tail
+	return _center(chains[chain]) * chains[chain].current[-1]
 
 
 ## Whether a point of the chain rests on one of its declared colliders, whichever solver placed it.
@@ -340,6 +453,8 @@ func apply_state(points: PackedVector3Array) -> bool:
 			chain.current[i] = inverse * points[at]
 			at += 1
 		_apply(chain, placed)
+		if chain.physbone:
+			chain.physbone.unseed()
 	return true
 
 
@@ -415,6 +530,8 @@ func _native_supported(bound: Array, skeleton: Skeleton3D) -> bool:
 		for joint: Dictionary in chain.joints:
 			driven[joint.node.bone] = chain.index
 	for chain: Dictionary in bound:
+		if chain.joints.any(func(j: Dictionary) -> bool: return j.has("physbone")):
+			return false
 		if not _unit_basis(skeleton.get_bone_global_rest(chain.joints[0].node.bone).basis):
 			return false
 		if not chain.joints.all(func(j: Dictionary) -> bool: return _unit_basis(j.rest.basis)):

@@ -12,10 +12,12 @@ static func read(document: Dictionary) -> Dictionary:
 		var source := object(extensions.VRMC_springBone)
 		for item in array(source.get("colliders")):
 			var collider := object(item)
-			var shape := object(collider.get("shape"))
-			var capsule := shape.has("capsule")
-			var geometry := object(shape.get("capsule" if capsule else "sphere"))
-			result.colliders.append({"node": index(collider.get("node"), nodes.size()), "offset": vector(geometry.get("offset")), "tail": vector(geometry.get("tail" if capsule else "offset")), "radius": number(geometry.get("radius"), 0.0)})
+			var placed := shape(object(collider.get("shape")))
+			placed["node"] = index(collider.get("node"), nodes.size())
+			var extended := object(object(object(collider.get("extensions")).get("VRMC_springBone_extended_collider")).get("shape"))
+			if not extended.is_empty():
+				placed["extended"] = shape(extended)
+			result.colliders.append(placed)
 		var groups := array(source.get("colliderGroups"))
 		for item in array(source.get("springs")):
 			var spring := object(item)
@@ -77,7 +79,53 @@ static func hands(source: Dictionary, spring: Dictionary) -> Dictionary:
 
 
 static func joint_data(node: int, source: Dictionary, legacy: bool) -> Dictionary:
-	return {"node": node, "stiffness": number(source.get("stiffiness" if legacy else "stiffness"), 1.0), "drag": clampf(number(source.get("dragForce"), 0.4 if legacy else 0.5), 0.0, 1.0), "radius": number(source.get("hitRadius"), 0.0), "gravity": vector(source.get("gravityDir"), legacy, Vector3.DOWN) * number(source.get("gravityPower"), 0.0)}
+	var joint := {"node": node, "stiffness": number(source.get("stiffiness" if legacy else "stiffness"), 1.0), "drag": clampf(number(source.get("dragForce"), 0.4 if legacy else 0.5), 0.0, 1.0), "radius": number(source.get("hitRadius"), 0.0), "gravity": vector(source.get("gravityDir"), legacy, Vector3.DOWN) * number(source.get("gravityPower"), 0.0)}
+	var extras := object(source.get("extras"))
+	if not legacy and extras.get("physbone") is Dictionary:
+		joint["physbone"] = physbone(extras.physbone)
+		var limit := object(extras.get("limit"))
+		if limit.get("shape") in ["angle", "hinge", "polar"]:
+			var q: Array = array(limit.get("rotation"))
+			var rotation := Quaternion(signed(q[0], 0.0), signed(q[1], 0.0), signed(q[2], 0.0), signed(q[3], 1.0)) if q.size() == 4 else Quaternion.IDENTITY
+			joint["limit"] = {"shape": limit.shape, "x": deg_to_rad(signed(limit.get("x"), 180.0)), "z": deg_to_rad(signed(limit.get("z"), 180.0)), "rotation": rotation.normalized() if rotation.length_squared() > 0.0 else Quaternion.IDENTITY}
+	return joint
+
+
+## A VRChat PhysBone's settings at one bone, as the converter writes them to a joint's extras "physbone"; "squish" and
+## "stretch" are the shortest and longest the bone may grow as fractions of its rest length, and "endpoint" marks a bone
+## whose tail is the PhysBone's endpoint, no transform in VRChat, so its squish and stretch never show.
+static func physbone(source: Dictionary) -> Dictionary:
+	var radius := array(source.get("radius"))
+	return {
+		"first": source.get("version") == "1.0",
+		"advanced": source.get("integration") == "advanced",
+		"pull": signed(source.get("pull"), 0.2),
+		"spring": signed(source.get("spring"), 0.2),
+		"stiffness": signed(source.get("stiffness"), 0.2),
+		"gravity": signed(source.get("gravity"), 0.0),
+		"falloff": signed(source.get("gravityFalloff"), 0.0),
+		"immobile": signed(source.get("immobile"), 0.0),
+		"travel": source.get("immobileType") == "world",
+		"squish": 1.0 - signed(source.get("maxSquish"), 0.0),
+		"stretch": 1.0 + signed(source.get("maxStretch"), 0.0),
+		"stretch_motion": signed(source.get("stretchMotion"), 0.0),
+		"radius": Vector2(signed(radius[0], 0.0), signed(radius[1], 0.0)) if radius.size() == 2 else Vector2.ZERO,
+		"depth": maxi(int(signed(source.get("depth"), 0.0)), 0),
+		"endpoint": source.get("endpoint") == true,
+	}
+
+
+## A collider's sphere or capsule as offset, tail and radius, kept within it when "inside"; or a plane as offset and
+## the unit "normal" it keeps joints on the side of. VRM's own shapes are spheres and capsules; the PhysBone step also
+## meets the inside and plane ones of VRMC_springBone_extended_collider, which other readers see as the plain fallback.
+static func shape(source: Dictionary) -> Dictionary:
+	if source.has("plane"):
+		var plane := object(source.plane)
+		var normal := vector(plane.get("normal"), false, Vector3.BACK)
+		return {"offset": vector(plane.get("offset")), "normal": normal.normalized() if normal != Vector3.ZERO else Vector3.BACK}
+	var capsule := source.has("capsule")
+	var geometry := object(source.get("capsule" if capsule else "sphere"))
+	return {"offset": vector(geometry.get("offset")), "tail": vector(geometry.get("tail" if capsule else "offset")), "radius": number(geometry.get("radius"), 0.0), "inside": geometry.get("inside") == true}
 
 
 static func collider_indices(indices: Variant, groups: Array, count: int) -> Array:
@@ -107,6 +155,10 @@ static func index(value: Variant, count: int) -> int:
 
 static func number(value: Variant, fallback: float) -> float:
 	return maxf(value, 0.0) if (value is float or value is int) and is_finite(value) else fallback
+
+
+static func signed(value: Variant, fallback: float) -> float:
+	return float(value) if (value is float or value is int) and is_finite(value) else fallback
 
 
 static func vector(value: Variant, legacy := false, fallback := Vector3.ZERO) -> Vector3:

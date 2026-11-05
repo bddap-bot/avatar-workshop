@@ -149,6 +149,16 @@ ownership and spatial bounds in the caller. Do not advance a replica while
 applying snapshots. Moving nodes into a scene, loading files, decoding meshes,
 and deciding a rendering budget are also caller responsibilities.
 
+A chain whose joints carry extras "physbone" (and "limit"), as Avatar Workshop's Unity
+converter writes them from a VRChat PhysBone, steps by VRChat's own PhysBone step
+(`physbone.gd`) instead: whole 60 Hz steps with a part step for the time left over,
+versions 1.0 and 1.1, simplified and advanced integration, gravity falloff, immobile,
+squish and stretch, tapered bone radii against sphere, capsule, inside and plane colliders
+(`VRMC_springBone_extended_collider`), and angle, hinge and polar limits. Steady motion of
+its anchor carries it and only a change in that motion swings it, where VRChat lets velocity
+swing it too. Hands push it as capsules. It runs in script, never on the native solver,
+parents' chains before their children's.
+
 The solver adapts the Verlet update and length/collision projection approach
 from [godot-vrm](https://github.com/V-Sekai/godot-vrm), under the retained
 [MIT notice](addons/avatar_workshop/LICENSE-godot-vrm). Held and unsupported chains use this solver without an editor plugin or
@@ -182,6 +192,8 @@ Run `godot4 --headless --path . --script tests/expressions.gd` and
 trace with moving and scaled skeletons, colliding dependent chains, held tips
 and a pause reset. `godot4 --headless --path . --script tests/native_springs.gd`
 checks native motion, grip/release handoff and replicated poses.
+`godot4 --headless --path . --script tests/physbone.gd` checks the PhysBone step on synthetic
+chains: never native, limits, immobile, steady motion, squish without stretch, and release.
 `godot4 --headless --path . --script tests/mtoon.gd` checks the 0.x conversion,
 render modes, optional features, linear colours and malformed input.
 The seven checks cover shared targets, separate meshes, neutral reset, empty
