@@ -29,8 +29,7 @@ namespace AvatarWorkshop.Exporter
                 var avatar = Find(Arg("-awAvatar"));
                 var clock = System.Diagnostics.Stopwatch.StartNew();
                 var report = Exporter.Export(avatar, output, Arg("-awCensus"));
-                Debug.Log($"[aw] exported {avatar.name} to {report.Path}: {report.Nodes} nodes in {clock.Elapsed.TotalSeconds:F1} s" + (report.MigratedDynamicBones ? ", DynamicBones migrated" : ""));
-                foreach (var kv in report.Unsupported) Debug.Log($"[aw] unsupported {kv.Value} × {kv.Key}");
+                foreach (var line in report.Lines(clock.Elapsed)) Debug.Log(line);
                 code = 0;
             }
             catch (Exception e)

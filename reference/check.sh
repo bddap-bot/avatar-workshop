@@ -5,7 +5,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 out=$(realpath -m "$2")
 "$here/run.sh" "$1" "$out/a" "${@:3}"
 "$here/run.sh" "$1" "$out/b" "${@:3}"
-diff -r --exclude=unity.log --exclude=tips.tsv --exclude=poses.tsv "$out/a" "$out/b"
+diff -r --exclude=unity.log --exclude=export.txt --exclude=tips.tsv --exclude=poses.tsv "$out/a" "$out/b"
 if cmp -s "$out/a/tips.tsv" "$out/b/tips.tsv"; then tips=byte-identical; else tips="not byte-identical"; fi
 paste "$out/a/tips.tsv" "$out/b/tips.tsv" | awk -F'\t' -v tips="$tips" '
   $1 != $6 || $2 != $7 { print "tip rows differ at line " NR; bad = 1; exit }

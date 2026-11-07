@@ -65,7 +65,8 @@ dynamics produced (`set_dynamic`), the eyelids' blink and look (`set_eyes`) and 
 `tracking`, `locomotion_disabled` and `view`; `saved()` and `restore` carry saved parameters across loads.
 Its timing and blending rules were fitted to Av3Emulator's traces, the reference the harness records.
 `cargo test --test animator` replays the fixture's recording in
-`avatar-core/fixtures/reference/fixture-animator/` and requires every parameter and state sample to equal it
+`avatar-core/fixtures/reference/fixture-animator/`, stepping the core by the emulator's graph time from
+`time.tsv` (its graph starts at a different frame for each avatar), and requires every parameter and state sample to equal it
 and every recorded node, blendshape and material value, animated or not, to match within 1e-3.
 `cargo run --release --example animator -- RECORDING AVATAR.glb` scores any recording.
 
@@ -85,10 +86,8 @@ Unity -batchmode -projectPath <project> -executeMethod AvatarWorkshop.Exporter.B
 ```
 
 Without `-awAvatar`, the scene must hold exactly one active avatar.
-`avatar-core/fixtures/unity-synthetic.glb` is the export of the [reference harness](#reference-harness)'s
-fixture, and `cargo test` reads it. In a scratch project holding both packages, generate the fixture with
-`-executeMethod AvatarWorkshop.Reference.Fixture.Build -quit`, then export it with
-`-awScene Assets/AWFixture/Fixture.unity`. `cargo run --example read -- <file.glb>...`, run in `avatar-core/`, reads exports and prints
+`avatar-core/fixtures/unity-synthetic.glb` is the `avatar.glb` of a [reference harness](#reference-harness)
+recording of the fixture, and `cargo test` reads it. `cargo run --example read -- <file.glb>...`, run in `avatar-core/`, reads exports and prints
 their sections and their `unsupported` report.
 
 `unity/check.sh <project> <out> [scene] [avatar]` checks an export against Unity itself. With
@@ -222,9 +221,10 @@ Unity 2022.3 with graphics (a display; Xvfb with software GL works), `com.vrchat
 later and [Av3Emulator](https://github.com/lyuma/Av3Emulator) 3.4 (MIT) in the avatar's project;
 the SDK and the emulator are installed there, never copied here.
 
-`reference/run.sh PROJECT OUT [SCENE] [AVATAR]` adds the package to `PROJECT`, opens `SCENE`, enters play
-mode in batch mode (the emulator runs the SDK's build preprocess, so build-tool output is what is
-recorded) and drives the avatar at a fixed 60 Hz step with one scripted input: rest, six seconds of
+`reference/run.sh PROJECT OUT [SCENE] [AVATAR]` adds the package and the exporter to `PROJECT`, opens `SCENE`,
+converts legacy DynamicBones as the exporter does, enters play mode in batch mode (the emulator runs the SDK's
+build preprocess, so build-tool output is what is recorded, and the exporter writes the model from that same
+build) and drives the avatar at a fixed 60 Hz step with one scripted input: rest, six seconds of
 root and arm motion, settling, every expression-menu control swept (each toggle and button to its
 non-default value, each radial at 0, 0.25, 0.5, 0.75 and 1, each puppet axis to its extremes, inside
 its submenus), then the built-in parameters stepped (gestures, visemes, locomotion, tracking and
@@ -247,6 +247,8 @@ them), so each field's effect has a reference trace of its own. The probe rests 
 | `grabs.tsv` | empty but for the fixture, which after the built-in steps has its tail, antenna and left ear grabbed through the SDK's own grab call (a ray at the bone, as its editor grab helper casts), the held point moved and let go, the tail once posed; each row is `frame, event, bone, x,y,z`, the event `grab` (at the point the SDK grabbed), `miss`, `hold` (the held point that frame), `release` or `pose` |
 | `render/`, `renders.tsv`, `camera.json` | a render at the end of every swept step from a fixed camera and light |
 | `menu.tsv` | every menu control: indexed path, name path (control names joined by `/`), type, parameter |
+| `time.tsv` | the time of the emulator's playable graph after each frame's evaluation, every frame from the one the graph is created on, so the first evaluation's delta shows; a recording fails if the graph is gone on a frame |
+| `avatar.glb`, `census.json`, `export.txt` | the exporter's model and census of the build this recording runs, written as the last step of its build preprocess, with the build tools' generated names and ids (and, as the emulator skips the SDK's material locking, unlocked shaders); `cargo run --release --example census -- avatar.glb census.json` in `avatar-core/` checks one; `export.txt` lists what the model does not represent |
 | `coverage.json`, `meta.json` | the avatar's feature counts; versions and totals |
 
 The fixture (`reference/Editor/Fixture.cs`, licensed as this repository) is a synthetic humanoid
@@ -261,7 +263,7 @@ body-part and transform masks, additive and synced layers, sub-machine entry and
 transitions with offsets, speed, time, cycle-offset and mirror parameters, a trigger, an animator-parameter curve,
 stepped and weighted keys, Euler rotation curves and material swaps. A fixture recording fails if any of these is
 missing from `coverage.json`.
-`reference/check.sh PROJECT OUT [SCENE] [AVATAR]` records the avatar (the fixture by default) twice and requires every output but the log,
+`reference/check.sh PROJECT OUT [SCENE] [AVATAR]` records the avatar (the fixture by default) twice and requires every output but the logs (`unity.log`, `export.txt`),
 `tips.tsv` and `poses.tsv` to be byte-identical, and PhysBone tips and every pose value within 1e-5 (`reference/poses.py`, Python 3.10 or later).
 
 A runtime replays the recording from `track.tsv`, `poses.tsv`, `values.tsv`, `grabs.tsv` and `steps.tsv` and writes `tips.tsv` and `render/`

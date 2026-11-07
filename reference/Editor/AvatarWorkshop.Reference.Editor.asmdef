@@ -6,7 +6,9 @@
     "VRC.SDK3A",
     "VRC.SDKBase.Editor",
     "VRC.SDK3A.Editor",
-    "lyuma.av3emulator"
+    "VRC.SDKBase.Editor.BuildPipeline",
+    "lyuma.av3emulator",
+    "AvatarWorkshop.Exporter.Editor"
   ],
   "includePlatforms": ["Editor"],
   "excludePlatforms": [],

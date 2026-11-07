@@ -27,10 +27,7 @@ namespace AvatarWorkshop.Exporter
             {
                 bool migrated = MigrateDynamicBones(clone);
                 if (!VRCBuildPipelineCallbacks.OnPreprocessAvatar(clone)) throw new Exception("the SDK's build preprocess failed for " + avatar.name);
-                if (censusPath != null) Census.Write(clone, censusPath);
-                var export = new Export(clone);
-                export.Run(path);
-                return new ExportReport { Path = path, Nodes = export.NodeCount, Unsupported = export.Unsupported, MigratedDynamicBones = migrated };
+                return Write(clone, path, censusPath, migrated);
             }
             finally
             {
@@ -39,7 +36,18 @@ namespace AvatarWorkshop.Exporter
             }
         }
 
-        static bool MigrateDynamicBones(GameObject avatar)
+        public static ExportReport Write(GameObject preprocessed, string path, string censusPath, bool migratedDynamicBones)
+        {
+            if (censusPath != null) Census.Write(preprocessed, censusPath);
+            var export = new Export(preprocessed);
+            export.Run(path);
+            return new ExportReport { Path = path, Name = preprocessed.name, Nodes = export.NodeCount, Unsupported = export.Unsupported, MigratedDynamicBones = migratedDynamicBones };
+        }
+
+        // Play-mode helpers the SDK's uploader removes without a word.
+        internal static bool StrippedOnUpload(Component c) => c != null && (c.GetType().Name == "PipelineSaver" || c.GetType().Name == "ParentChangeDetector");
+
+        public static bool MigrateDynamicBones(GameObject avatar)
         {
             var db = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("DynamicBone")).FirstOrDefault(t => t != null);
             if (db == null || avatar.GetComponentsInChildren(db, true).Length == 0) return false;
@@ -53,9 +61,14 @@ namespace AvatarWorkshop.Exporter
     public sealed class ExportReport
     {
         public string Path;
+        public string Name;
         public int Nodes;
         public bool MigratedDynamicBones;
         public SortedDictionary<string, int> Unsupported;
+
+        public IEnumerable<string> Lines(TimeSpan took) =>
+            new[] { $"[aw] exported {Name} to {Path}: {Nodes} nodes in {took.TotalSeconds:F1} s" + (MigratedDynamicBones ? ", DynamicBones migrated" : "") }
+                .Concat(Unsupported.Select(kv => $"[aw] unsupported {kv.Value} × {kv.Key}"));
     }
 
     sealed partial class Export
@@ -418,7 +431,7 @@ namespace AvatarWorkshop.Exporter
                 foreach (var c in t.GetComponents<Component>())
                 {
                     if (c == null) { Drop("missing script"); continue; }
-                    if (Represented(c)) continue;
+                    if (Represented(c) || Exporter.StrippedOnUpload(c)) continue;
                     Drop(c.GetType().Name);
                 }
             }

@@ -14,11 +14,16 @@ use avatar_core::Avatar;
 
 use super::{canonical, paths, text};
 
-/// The frame the harness first records.
-pub const FIRST: usize = 5;
-/// The first frame the emulator's playable graph evaluates: it starts playing on its second update, and its first
-/// evaluation advances by the time since the graph was created.
-pub const PLAYS: usize = 2;
+/// The emulator's playable-graph time after each frame's evaluation, from the frame the graph exists.
+fn graph_times(dir: &Path) -> BTreeMap<usize, f64> {
+    text(&dir.join("time.tsv"))
+        .lines()
+        .map(|l| {
+            let (f, t) = l.split_once('\t').unwrap();
+            (f.parse().unwrap(), t.parse().unwrap())
+        })
+        .collect()
+}
 
 /// A change log: key → frame → value as recorded.
 type Log = BTreeMap<String, BTreeMap<usize, String>>;
@@ -240,7 +245,15 @@ impl Run {
         let states = log(&self.dir, "states.tsv");
         let values = log(&self.dir, "values.tsv");
         let last = text(&self.dir.join("done")).trim().parse::<usize>().unwrap_or(0);
-        let end = frames.map_or(last, |f| (FIRST + f).min(last));
+        let first = steps.first().expect("the recording has no steps").frame;
+        let end = frames.map_or(last, |f| (first + f).min(last));
+        let times = graph_times(&self.dir);
+        let created = *times.keys().next().expect("the recording has no graph time");
+        assert!(times.get(&created) == Some(&0.0) || created == 0, "the graph's time is {:?} on the first frame recorded after frame 0", times.get(&created));
+        for f in created.min(first)..end {
+            assert!(times.contains_key(&f), "the recording has no graph time at frame {f}");
+        }
+        let mut clock = 0.0;
         let dynamic = self.dynamic();
         let mut raw: HashMap<String, String> = HashMap::new();
         for p in anim.parameters() {
@@ -294,14 +307,17 @@ impl Run {
             if let Some(h) = f.checked_sub(1).and_then(|g| heads.get(&g)) {
                 anim.set_head(*h);
             }
-            if f >= PLAYS {
-                let frames = if f == PLAYS { PLAYS + 1 } else { 1 };
-                anim.step(frames as f32 / 60.0);
+            if let Some(&t) = times.get(&f) {
+                assert!(t >= clock, "the graph's time went back at frame {f}");
+                if t > clock {
+                    anim.step((t - clock) as f32);
+                    clock = t;
+                }
             }
-            if f < FIRST {
+            if f < first {
                 continue;
             }
-            if f == FIRST {
+            if f == first {
                 let ours: BTreeSet<String> = anim.parameters().iter().map(|p| canonical(&p.name)).collect();
                 for k in params.keys().filter(|k| !ours.contains(*k)) {
                     rep.parameters.compared += 1;
@@ -391,7 +407,7 @@ impl Run {
                 if want == "-" {
                     continue;
                 }
-                if f == FIRST && !matches!(key, Key::Slot(_)) {
+                if f == first && !matches!(key, Key::Slot(_)) {
                     rep.values.skipped += 1;
                     continue;
                 }

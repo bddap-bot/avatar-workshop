@@ -13,10 +13,14 @@ for pkg in com.vrchat.avatars lyuma.av3emulator; do
   [ -d "$project/Packages/$pkg" ] || jq -e --arg p "$pkg" '.dependencies[$p]' "$manifest" >/dev/null ||
     { echo "$project lacks $pkg; install it (e.g. vrc-get install $pkg)" >&2; exit 2; }
 done
+for pkg in com.avatar-workshop.reference com.avatarworkshop.exporter; do
+  [ ! -e "$project/Packages/$pkg" ] || { echo "$project/Packages/$pkg would shadow this checkout's copy; remove it" >&2; exit 2; }
+done
 original=$(mktemp)
 cp -p "$manifest" "$original"
 trap 'cp -p "$original" "$manifest"; rm -f "$original"' EXIT
-jq --arg p "file:$here" '.dependencies["com.avatar-workshop.reference"]=$p | .dependencies["com.unity.test-framework"] //= "1.1.33"' "$original" > "$manifest"
+jq --arg p "file:$here" --arg e "file:$(realpath "$here/../unity/com.avatarworkshop.exporter")" \
+  '.dependencies["com.avatar-workshop.reference"]=$p | .dependencies["com.avatarworkshop.exporter"]=$e | .dependencies["com.unity.test-framework"] //= "1.1.33"' "$original" > "$manifest"
 rm -rf "$out"; mkdir -p "$out"
 env AW_OUT="$out" AW_SCENE="$scene" AW_AVATAR="$avatar" \
   "${UNITY:-Unity}" -batchmode -projectPath "$project" \

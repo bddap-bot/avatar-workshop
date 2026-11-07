@@ -18,6 +18,7 @@ using UnityEngine.Rendering;
 using VRC.Dynamics;
 using VRC.SDK3.Avatars.Components;
 using VRC.SDK3.Avatars.ScriptableObjects;
+using VRC.SDKBase.Editor.BuildPipeline;
 using Control = VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu.Control;
 
 namespace AvatarWorkshop.Reference
@@ -26,7 +27,7 @@ namespace AvatarWorkshop.Reference
     {
         public const int Rate = 60;
 
-        static Recorder recorder;
+        internal static Recorder recorder;
         static (bool enabled, EnterPlayModeOptions options)? playModeSettings;
 
         public static void Run()
@@ -65,6 +66,7 @@ namespace AvatarWorkshop.Reference
             if (chosen.Count != 1) throw new Exception($"scene {scenePath} has {chosen.Count} avatars named '{avatarName}' among {descriptors.Length}");
             var avatar = chosen[0].gameObject;
             avatar.SetActive(true);
+            var migrated = AvatarWorkshop.Exporter.Exporter.MigrateDynamicBones(avatar);
             foreach (var go in avatar.scene.GetRootGameObjects())
                 if (go != avatar && !avatar.transform.IsChildOf(go.transform)) go.SetActive(false);
             for (var p = avatar.transform.parent; p != null; p = p.parent) p.gameObject.SetActive(true);
@@ -79,7 +81,7 @@ namespace AvatarWorkshop.Reference
             playModeSettings = (EditorSettings.enterPlayModeOptionsEnabled, EditorSettings.enterPlayModeOptions);
             EditorSettings.enterPlayModeOptionsEnabled = true;
             EditorSettings.enterPlayModeOptions = EnterPlayModeOptions.DisableDomainReload;
-            recorder = new Recorder(output, avatar.name, fixture, probe);
+            recorder = new Recorder(output, avatar.name, fixture, probe, migrated);
             EditorApplication.playModeStateChanged += OnPlayMode;
             EditorApplication.EnterPlaymode();
         }
@@ -151,13 +153,29 @@ namespace AvatarWorkshop.Reference
             EditorApplication.Exit(code);
         }
 
-        static void Fail(Exception e)
+        internal static void Fail(Exception e)
         {
             Debug.LogError("[aw-reference] FAILED " + e);
             var output = Env("AW_OUT");
             if (output != null) { Directory.CreateDirectory(output); File.WriteAllText(Path.Combine(output, "error.txt"), e.ToString()); }
             if (recorder != null) recorder.Finished = true;
             Finish(1);
+        }
+    }
+
+    // Runs last in the build preprocess the emulator runs on the recorded avatar, so the export is the build the
+    // recording plays, with whatever names and ids build tools generated for it.
+    class SameBuildExport : IVRCSDKPreprocessAvatarCallback
+    {
+        public int callbackOrder => int.MaxValue;
+
+        public bool OnPreprocessAvatar(GameObject avatar)
+        {
+            var recorder = Harness.recorder;
+            if (recorder == null || !EditorApplication.isPlayingOrWillChangePlaymode) return true;
+            try { recorder.WriteBuild(avatar); }
+            catch (Exception e) { Harness.Fail(e); return false; }
+            return true;
         }
     }
 
@@ -186,6 +204,9 @@ namespace AvatarWorkshop.Reference
         readonly string avatarName;
         readonly bool fixture;
         readonly bool probe;
+        readonly bool migratedDynamicBones;
+        bool exported;
+        StreamWriter timeOut;
         readonly CultureInfo inv = CultureInfo.InvariantCulture;
 
         int frame = -1;
@@ -224,12 +245,31 @@ namespace AvatarWorkshop.Reference
         Camera camera;
         RenderTexture target;
 
-        public Recorder(string output, string avatarName, bool fixture, bool probe)
+        public Recorder(string output, string avatarName, bool fixture, bool probe, bool migratedDynamicBones)
         {
             this.output = output;
             this.avatarName = avatarName;
             this.fixture = fixture;
             this.probe = probe;
+            this.migratedDynamicBones = migratedDynamicBones;
+        }
+
+        public void WriteBuild(GameObject avatar)
+        {
+            // The emulator suffixes the avatar's name while the preprocess runs on it.
+            if (avatar.name != avatarName && avatar.name != avatarName + "(Clone)") return;
+            if (exported) throw new Exception($"the build preprocess ran twice on {avatarName}");
+            exported = true;
+            Directory.CreateDirectory(output);
+            var name = avatar.name;
+            avatar.name = avatarName;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                var report = AvatarWorkshop.Exporter.Exporter.Write(avatar, Path.Combine(output, "avatar.glb"), Path.Combine(output, "census.json"), migratedDynamicBones);
+                File.WriteAllText(Path.Combine(output, "export.txt"), string.Join("\n", report.Lines(clock.Elapsed)) + "\n");
+            }
+            finally { avatar.name = name; }
         }
 
         string F(float v) => v.ToString("R", inv);
@@ -245,6 +285,11 @@ namespace AvatarWorkshop.Reference
             {
                 if (frame > 600) throw new Exception("Av3Emulator never attached a runtime to the avatar");
                 runtime = UnityEngine.Object.FindObjectsOfType<LyumaAv3Runtime>().FirstOrDefault(r => !r.IsMirrorClone && !r.IsShadowClone && r.GetComponent<VRCAvatarDescriptor>() != null);
+                if (runtime == null) return;
+                if (!exported) throw new Exception($"no build preprocess of {avatarName} reached the export (an earlier preprocess callback may have failed; see the log)");
+                mixer = (AnimationLayerMixerPlayable)typeof(LyumaAv3Runtime).GetField("playableMixer", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(runtime);
+                Directory.CreateDirectory(output);
+                timeOut = Open("time.tsv");
                 return;
             }
             if (root == null)
@@ -309,8 +354,11 @@ namespace AvatarWorkshop.Reference
 
         public void Record()
         {
-            if (root == null || stepIndex < 0 || Finished) return;
+            if (timeOut == null || Finished) return;
             var f = frame.ToString(inv);
+            if (!mixer.IsValid()) throw new Exception($"the emulator's playable graph is gone at frame {f}");
+            timeOut.Write($"{f}\t{mixer.GetTime().ToString("R", inv)}\n");
+            if (root == null || stepIndex < 0) return;
             if (posedFrame != frame) throw new Exception($"no driver poses were taken before the SDK's dynamics at frame {f}");
             foreach (var (t, path) in bones) simulated[path] = LocalPose(t);
             foreach (var (name, value) in Parameters())
@@ -352,7 +400,6 @@ namespace AvatarWorkshop.Reference
                 tracked = new[] { HumanBodyBones.Head, HumanBodyBones.LeftHand, HumanBodyBones.RightHand, HumanBodyBones.Hips }.Select(animator.GetBoneTransform).ToArray();
             }
             playables = (List<AnimatorControllerPlayable>)typeof(LyumaAv3Runtime).GetField("playables", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(runtime);
-            mixer = (AnimationLayerMixerPlayable)typeof(LyumaAv3Runtime).GetField("playableMixer", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(runtime);
             var descriptor = runtime.GetComponent<VRCAvatarDescriptor>();
             if (descriptor.expressionParameters != null)
                 foreach (var p in descriptor.expressionParameters.parameters)
@@ -411,6 +458,7 @@ namespace AvatarWorkshop.Reference
                 ["fixture"] = fixture,
                 ["root_scale"] = new[] { root.lossyScale.x, root.lossyScale.y, root.lossyScale.z },
                 ["unity"] = Application.unityVersion,
+                ["dynamic_bones_migrated"] = migratedDynamicBones,
                 ["rate"] = Harness.Rate,
                 ["steps"] = steps.Count,
                 ["frames"] = steps.Sum(s => s.Frames),
@@ -945,7 +993,7 @@ namespace AvatarWorkshop.Reference
         void Complete()
         {
             Finished = true;
-            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, grabsOut }) w?.Dispose();
+            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, grabsOut, timeOut }) w?.Dispose();
             File.WriteAllText(Path.Combine(output, "done"), frame.ToString(inv) + "\n");
             Debug.Log($"[aw-reference] recorded {frame} frames, {steps.Count} steps, {tips.Count} tips, {renderCount} renders into {output}");
             Harness.Finish(0);

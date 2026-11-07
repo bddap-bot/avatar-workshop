@@ -49,7 +49,7 @@ namespace AvatarWorkshop.Exporter
             public Obj Run(BinaryWriter b)
             {
                 bin = b;
-                var all = nodes.SelectMany(t => t.GetComponents<Component>()).ToList();
+                var all = nodes.SelectMany(t => t.GetComponents<Component>()).Where(c => !Exporter.StrippedOnUpload(c)).ToList();
                 var o = new Obj
                 {
                     { "nodes", nodes.Select(t => (object)t.name).ToList() },
