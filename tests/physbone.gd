@@ -26,6 +26,7 @@ func _run() -> void:
 	_steady_motion_leaves_the_tail_at_rest()
 	_collider_squishes_but_never_stretches()
 	_release_sets_off_from_the_grip()
+	_swings_about_the_animated_rest()
 	print("physbone: ", "ok" if failures == 0 else str(failures) + " failures")
 	quit(0 if failures == 0 else 1)
 
@@ -153,3 +154,33 @@ func _release_sets_off_from_the_grip() -> void:
 	var released: Vector3 = made[0].tip(0)
 	check(released.distance_to(held) < 0.01, "release sets off from the grip, not from where the grip began: %.4f m" % released.distance_to(held))
 	made[1].free()
+
+
+## An animator that turns a PhysBone's bone moves the pose it swings about: the tail settles where the turn puts it, and
+## still swings off it when its anchor moves.
+func _swings_about_the_animated_rest() -> void:
+	var parts := strand(settings())
+	var runtime = parts[0]
+	var anchor: Node3D = parts[1]
+	var bone: Node3D = parts[2]
+	var tail: Node3D = parts[3]
+	check(runtime.has_method("set_rest"), "the runtime takes an animated rest")
+	if not runtime.has_method("set_rest"):
+		anchor.free()
+		return
+	check(runtime.set_rest(bone, Transform3D(Basis(Vector3.UP, PI / 2), bone.position)), "the bone a chain swings takes a rest")
+	check(not runtime.set_rest(anchor, Transform3D.IDENTITY), "a node no chain swings takes none")
+	for i in 240:
+		runtime.advance(1.0 / 60.0)
+	check(tail.global_position.distance_to(Vector3(0.1, 0, 0)) < 1e-3, "the tail settles where the turned rest puts it: %s" % tail.global_position)
+	anchor.position = Vector3(0, 0.05, 0)
+	runtime.advance(1.0 / 60.0)
+	check(tail.global_position.y < 0.05 - 1e-3, "the tail lags its moved anchor: %s" % tail.global_position)
+	for i in 240:
+		runtime.advance(1.0 / 60.0)
+	check(tail.global_position.distance_to(Vector3(0.1, 0.05, 0)) < 1e-3, "and settles about the turned rest again: %s" % tail.global_position)
+	runtime.set_rest(bone, Transform3D(Basis(Vector3.UP, PI / 2), Vector3(0, 0, 0.02)))
+	for i in 240:
+		runtime.advance(1.0 / 60.0)
+	check(tail.global_position.distance_to(Vector3(0.1, 0.05, 0.02)) < 1e-3, "a rest that moves the root carries the chain with it: %s" % tail.global_position)
+	anchor.free()

@@ -62,12 +62,7 @@ class Bone:
 		node = at
 		tail = to
 		along = to.normalized()
-		resting = rest.basis.get_rotation_quaternion()
-		scale = rest.basis.get_scale()
-		rest_basis = Basis(resting).scaled_local(scale)
-		rest_tail = rest_basis * to
-		rest_inverse = rest_basis.inverse()
-		rest_translation = rest.origin
+		rebase(rest)
 		down = _normalized_or(model.inverse() * Vector3.DOWN, Vector3.DOWN)
 		first = settings.first
 		advanced = settings.advanced
@@ -87,6 +82,17 @@ class Bone:
 			limit_x = bound.x
 			limit_z = bound.z
 			limit_rotation = bound.rotation
+
+	## Sets the pose the bone swings about, its transform in its parent's axes.
+	func rebase(rest: Transform3D) -> void:
+		var turned := rest.basis.get_rotation_quaternion()
+		down = (turned.inverse() * resting) * down
+		resting = turned
+		scale = rest.basis.get_scale()
+		rest_basis = Basis(resting).scaled_local(scale)
+		rest_tail = rest_basis * tail
+		rest_inverse = rest_basis.inverse()
+		rest_translation = rest.origin
 
 	func local(parent: Transform3D, turned: Quaternion) -> Transform3D:
 		return parent * Transform3D(Basis(turned).scaled_local(scale), translation)

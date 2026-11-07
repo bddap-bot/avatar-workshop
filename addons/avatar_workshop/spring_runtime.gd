@@ -144,6 +144,26 @@ func reset() -> void:
 		simulator.reset()
 
 
+## Moves the pose `node`'s joint swings about to `rest`, its transform in its parent's axes, as VRChat swings a PhysBone
+## about the pose the avatar's animator left; false when no chain swings `node`.
+func set_rest(node: Variant, rest: Transform3D) -> bool:
+	var found := false
+	for chain: Dictionary in chains:
+		for i in chain.joints.size():
+			var joint: Dictionary = chain.joints[i]
+			if _same(joint.node, node):
+				joint.rest = rest
+				if chain.physbone != null:
+					chain.physbone.bones[i].rebase(rest)
+				if chain.native_active:
+					joint.node.transform = rest
+				elif i == 0:
+					# The PhysBone step takes its root's place from the node.
+					joint.node.transform = Transform3D(joint.node.transform.basis, rest.origin)
+				found = true
+	return found
+
+
 func advance(delta: float) -> void:
 	for simulator in _native:
 		for component: Array in simulator.components:
