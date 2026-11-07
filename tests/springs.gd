@@ -23,6 +23,10 @@ func _run() -> void:
 	check(parsed.springs.size() == 1 and parsed.springs[0].joints.size() == 2, "VRM 1 chain")
 	check(parsed.colliders[0].tail == Vector3.UP and parsed.springs[0].colliders == [0], "capsule and group")
 	var legacy := {"nodes": nodes, "extensions": {"VRM": {"secondaryAnimation": {"boneGroups": [{"bones": [1], "stiffiness": 2.0, "gravityDir": {"x": 0, "y": 0, "z": 1}, "gravityPower": 0.5}], "colliderGroups": [{"node": 0, "colliders": [{"offset": {"x": 0, "y": 0, "z": 1}, "radius": 0.2}]}]}}}}
+	var made := func(n: Array) -> Dictionary: return {"joints": n.map(func(i: int) -> Dictionary: return {"node": i, "physbone": {}})}
+	var further: Dictionary = made.call([1, 2, 3])
+	var unshadowed: Array = Springs.unshadowed([made.call([1, 2]), made.call([1, 2]), further])
+	check(unshadowed.size() == 2 and unshadowed[1] == further, "a later chain over the same bones is shadowed, one reaching further is not")
 	var old := Definition.read(legacy)
 	check(old.springs[0].joints.size() == 2 and old.springs[0].joints[0].stiffness == 2.0, "legacy descendants and spelling")
 	check(old.springs[0].joints[0].gravity == Vector3(0, 0, -0.5) and old.colliders[0].offset.z == -1.0, "legacy coordinate conversion")

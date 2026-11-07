@@ -34,7 +34,7 @@ func _init(definition: Dictionary, nodes: Dictionary) -> void:
 			colliders.append(collider)
 		else:
 			colliders.append({})
-	for source: Dictionary in definition.springs:
+	for source: Dictionary in unshadowed(definition.springs):
 		var joints: Array = source.joints
 		if joints.is_empty() or not joints.all(func(j: Dictionary) -> bool: return nodes.has(j.node)):
 			continue
@@ -68,6 +68,22 @@ func _init(definition: Dictionary, nodes: Dictionary) -> void:
 	_physbones.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return _depth(a.joints[0].node) < _depth(b.joints[0].node))
 	reset()
 	_bind_native()
+
+
+## `springs` without a PhysBone chain every joint of which an earlier PhysBone chain already moves: in VRChat the first
+## PhysBone on a bone poses it, and a later one over the same bones changes nothing.
+static func unshadowed(springs: Array) -> Array:
+	var moved := {}
+	var out := []
+	for chain: Dictionary in springs:
+		var physbone: bool = not chain.joints.is_empty() and chain.joints.all(func(j: Dictionary) -> bool: return j.has("physbone"))
+		if physbone and chain.joints.all(func(j: Dictionary) -> bool: return moved.has(j.node)):
+			continue
+		if physbone:
+			for joint: Dictionary in chain.joints:
+				moved[joint.node] = true
+		out.append(chain)
+	return out
 
 
 ## `chain` for the PhysBone step when every joint of it carries the converter's "physbone" settings and hangs from the
