@@ -74,7 +74,7 @@ func _native_never_takes_a_physbone() -> void:
 
 
 func _limit_holds_the_swing() -> void:
-	var made := strand(settings({"gravity": 1.0}), {"limit": {"shape": "angle", "x": 30.0, "z": 0.0, "rotation": [0, 0, 0, 1]}})
+	var made := strand(settings({"gravity": 1.0}), {"limit": {"shape": "angle", "x": 30.0, "z": 0.0, "rotation": [0.70710678, 0, 0, 0.70710678]}})
 	for i in 120:
 		made[0].advance(1.0 / 60.0)
 	var angle := rad_to_deg(Vector3.BACK.angle_to(made[3].global_position - made[2].global_position))

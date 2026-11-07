@@ -263,11 +263,8 @@ class Bone:
 	## round (angle), in the plane across the limit's own X (hinge), or limit_x round toward its Z and limit_z over toward
 	## its X, each on its own as VRChat clamps them (polar).
 	static func keep(bone: Bone, toward: Vector3) -> Vector3:
-		var up := bone.limit_rotation * bone.along
-		var turned := bone.limit_rotation * Vector3.RIGHT
-		var side := (turned - up * turned.dot(up)).normalized()
-		if side == Vector3.ZERO:
-			side = _orthogonal(up)
+		var up := bone.limit_rotation * Vector3.UP
+		var side := bone.limit_rotation * Vector3.RIGHT
 		var front := side.cross(up)
 		var x := toward.dot(side)
 		var y := toward.dot(up)

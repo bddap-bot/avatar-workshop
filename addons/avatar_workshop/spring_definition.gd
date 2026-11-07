@@ -81,6 +81,11 @@ static func hands(source: Dictionary, spring: Dictionary) -> Dictionary:
 static func joint_data(node: int, source: Dictionary, legacy: bool) -> Dictionary:
 	var joint := {"node": node, "stiffness": number(source.get("stiffiness" if legacy else "stiffness"), 1.0), "drag": clampf(number(source.get("dragForce"), 0.4 if legacy else 0.5), 0.0, 1.0), "radius": number(source.get("hitRadius"), 0.0), "gravity": vector(source.get("gravityDir"), legacy, Vector3.DOWN) * number(source.get("gravityPower"), 0.0)}
 	var extras := object(source.get("extras"))
+	var settled := array(extras.get("settled"))
+	if not legacy and settled.size() == 4 and settled.all(func(x: Variant) -> bool: return (x is float or x is int) and absf(x) <= 1.0):
+		var rotation := Quaternion(settled[0], settled[1], settled[2], settled[3])
+		if rotation.length_squared() > 0.5:
+			joint["settled"] = rotation.normalized()
 	if not legacy and extras.get("physbone") is Dictionary:
 		joint["physbone"] = physbone(extras.physbone)
 		var limit := object(extras.get("limit"))
