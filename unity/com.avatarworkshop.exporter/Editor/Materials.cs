@@ -26,7 +26,7 @@ namespace AvatarWorkshop.Exporter
                     Drop("empty material slot");
                     missingMaterial = AddMaterial(new Obj { { "name", "missing" } }, new Obj
                     {
-                        { "shader", "unknown" }, { "shaderName", "" }, { "properties", new Obj() }, { "keywords", new object[0] },
+                        { "shader", "unknown" }, { "shaderName", "" }, { "properties", new Obj() }, { "declared", new Obj() }, { "keywords", new object[0] },
                         { "renderQueue", 2000 }, { "cull", "back" }, { "depthWrite", true }, { "depthTest", "lessEqual" },
                     });
                 }
@@ -113,6 +113,18 @@ namespace AvatarWorkshop.Exporter
             var record = new Obj { { "shader", family }, { "shaderName", shaderName } };
             if (ShaderVersion(shader, m) is string version) record.Add("version", version);
             record.Add("properties", properties);
+            var resolved = new SortedDictionary<string, object>(StringComparer.Ordinal);
+            for (int i = 0; shader != null && i < shader.GetPropertyCount(); i++)
+            {
+                var n = shader.GetPropertyName(i);
+                if (resolved.ContainsKey(n)) continue;
+                var type = shader.GetPropertyType(i);
+                bool savedAsDeclared = found.TryGetValue(n, out var savedAs) && savedAs.Any(entry => Array.IndexOf(entry.types, type) >= 0);
+                resolved.Add(n, savedAsDeclared ? props[n] : Resolved(m, shader, i));
+            }
+            var declaredValues = new Obj();
+            foreach (var kv in resolved) declaredValues.Add(kv.Key, kv.Value);
+            record.Add("declared", declaredValues);
             record.Add("keywords", m.shaderKeywords.OrderBy(k => k, StringComparer.Ordinal).ToArray());
             record.Add("renderQueue", m.renderQueue);
             record.Add("cull", state.cull);
@@ -133,6 +145,28 @@ namespace AvatarWorkshop.Exporter
             if (state.cull == "off") fallback.Add("doubleSided", true);
             if (state.blend != null) fallback.Add("alphaMode", "BLEND");
             return (record, fallback);
+        }
+
+        Obj Resolved(Material m, Shader shader, int i)
+        {
+            var n = shader.GetPropertyName(i);
+            switch (shader.GetPropertyType(i))
+            {
+                case ShaderPropertyType.Int: return new Obj { { "int", m.GetInteger(n) } };
+                case ShaderPropertyType.Color: var c = m.GetColor(n); return new Obj { { "color", new[] { c.r, c.g, c.b, c.a } } };
+                case ShaderPropertyType.Vector: var v = m.GetVector(n); return new Obj { { "vector", new[] { v.x, v.y, v.z, v.w } } };
+                case ShaderPropertyType.Texture:
+                    var tp = new Obj();
+                    var tex = m.GetTexture(n);
+                    if (tex is Texture2D t2) tp.Add("texture", Texture(t2));
+                    else if (tex != null) Drop(tex.GetType().Name + " material texture");
+                    var scale = m.GetTextureScale(n);
+                    var offset = m.GetTextureOffset(n);
+                    tp.Add("tiling", new[] { scale.x, scale.y });
+                    tp.Add("offset", new[] { offset.x, offset.y });
+                    return new Obj { { "texture", tp } };
+                default: return new Obj { { "float", m.GetFloat(n) } };
+            }
         }
 
         static IEnumerable<(string, SerializedProperty)> Pairs(SerializedProperty saved, string list)

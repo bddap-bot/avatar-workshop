@@ -386,6 +386,9 @@ pub struct Material {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
     pub properties: BTreeMap<String, MaterialProperty>,
+    /// Each property the shader declares, at the value the material resolves for it: the saved value, else
+    /// what Unity supplies. A locked shader declares fewer than the material saved.
+    pub declared: BTreeMap<String, MaterialProperty>,
     pub keywords: Vec<String>,
     /// The render state the shader pass resolves from its properties.
     pub render_queue: i32,

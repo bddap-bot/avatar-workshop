@@ -424,10 +424,12 @@ namespace AvatarWorkshop.Exporter
                     for (int i = 0; i < a.arraySize; i++) names.Add(a.GetArrayElementAtIndex(i).FindPropertyRelative("first").stringValue);
                 }
                 var values = new Obj();
+                var seen = new HashSet<string>();
                 var shader = m.shader;
                 for (int i = 0; shader != null && i < shader.GetPropertyCount(); i++)
                 {
                     var n = shader.GetPropertyName(i);
+                    if (!seen.Add(n)) continue;
                     switch (shader.GetPropertyType(i))
                     {
                         case UnityEngine.Rendering.ShaderPropertyType.Float:

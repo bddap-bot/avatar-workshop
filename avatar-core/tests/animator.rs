@@ -51,3 +51,27 @@ fn saved_parameters_survive_a_reload() {
     b.restore(&[("Hue".to_string(), 0.9)]);
     assert_eq!((b.get("Hat"), b.get("Hue")), (Some(1.0), Some(0.25)));
 }
+
+#[test]
+fn an_animated_material_property_defaults_from_the_first_material_declaring_it() {
+    use avatar_core::animator::{authored, motion::Target};
+    use avatar_core::model::{MaterialIndex, MaterialProperty};
+    let mut avatar = fixture();
+    let m = &mut avatar.model;
+    let mut locked = m.materials[0].clone();
+    locked.properties.insert("_Probe".into(), MaterialProperty::Float(1.0));
+    locked.declared.remove("_Probe");
+    locked.declared.insert("_Tint".into(), MaterialProperty::Color([0.1, 0.2, 0.3, 0.4]));
+    let mut open = locked.clone();
+    open.declared.insert("_Probe".into(), MaterialProperty::Float(2.0));
+    m.materials.extend([locked, open]);
+    let n = m.materials.len();
+    m.renderers[0].materials = vec![MaterialIndex(n as u32 - 2), MaterialIndex(n as u32 - 1)];
+    let node = m.renderers[0].node.0;
+    let value = |avatar: &avatar_core::Avatar, prop: &str| authored(avatar, &Target::MaterialProperty(node, prop.into()));
+    assert_eq!(value(&avatar, "_Probe"), 2.0);
+    assert_eq!(value(&avatar, "_Tint.b"), 0.3);
+    assert_eq!(value(&avatar, "_Unknown"), 0.0);
+    avatar.model.materials[n - 2].declared.insert("_Probe".into(), MaterialProperty::Float(1.0));
+    assert_eq!(value(&avatar, "_Probe"), 1.0);
+}

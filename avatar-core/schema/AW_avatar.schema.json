@@ -1041,6 +1041,13 @@
             "$ref": "#/$defs/MaterialProperty"
           }
         },
+        "declared": {
+          "description": "Each property the shader declares, at the value the material resolves for it: the saved value, else\nwhat Unity supplies. A locked shader declares fewer than the material saved.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/MaterialProperty"
+          }
+        },
         "keywords": {
           "type": "array",
           "items": {
@@ -1078,6 +1085,7 @@
         "shader",
         "shaderName",
         "properties",
+        "declared",
         "keywords",
         "renderQueue",
         "cull",

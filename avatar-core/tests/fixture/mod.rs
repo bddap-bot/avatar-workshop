@@ -147,6 +147,7 @@ fn material(shader: ShaderFamily, shader_name: &str) -> Material {
         shader_name: shader_name.into(),
         version: None,
         properties: BTreeMap::new(),
+        declared: BTreeMap::new(),
         keywords: vec![],
         render_queue: 2000,
         cull: Cull::Back,
@@ -247,6 +248,11 @@ fn model() -> AwAvatar {
             }),
         ),
     ]);
+    fur.declared = ["_Color", "_EnableEmission", "_MainTex", "_DecalTexture"]
+        .into_iter()
+        .map(|k| (k.to_string(), fur.properties[k].clone()))
+        .chain([("_Cutoff".to_string(), MaterialProperty::Float(0.5))])
+        .collect();
     fur.keywords = vec!["_EMISSION".into(), "VIGNETTE_MASKED".into()];
     fur.cull = Cull::Off;
 

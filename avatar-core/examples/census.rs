@@ -755,7 +755,7 @@ impl Check<'_> {
         let gltf = &self.avatar.gltf["materials"];
         let non_finite = self.unsupported("non-finite value in materials, written as 0 or the largest finite value") > 0;
         let mut faults = vec![];
-        let (mut up, mut mp, mut values) = (0, 0, 0);
+        let (mut up, mut mp, mut dp, mut values) = (0, 0, 0, 0);
         let mut matched = vec![false; model.len()];
         let mut duplicated = 0;
         for u in unity {
@@ -778,26 +778,39 @@ impl Check<'_> {
             if model[i].keywords.iter().map(String::as_str).collect::<Vec<_>>() != keywords {
                 faults.push(format!("material {name}: keywords {:?} in Unity (serialized {}), {:?} in the model", keywords, u["serializedKeywords"], model[i].keywords));
             }
+            let declared: BTreeSet<&str> = u["values"].as_object().into_iter().flatten().map(|(k, _)| k.as_str()).collect();
+            let modelled: BTreeSet<&str> = model[i].declared.keys().map(String::as_str).collect();
+            if modelled != declared {
+                faults.push(format!(
+                    "material {name}: shader declares {:?} only in Unity, {:?} only in the model",
+                    declared.difference(&modelled).collect::<Vec<_>>(),
+                    modelled.difference(&declared).collect::<Vec<_>>()
+                ));
+            }
+            dp += declared.len();
             let record = serde_json::to_value(&model[i].properties).unwrap();
+            let resolved = serde_json::to_value(&model[i].declared).unwrap();
             for (prop, v) in u["values"].as_object().into_iter().flatten() {
                 let v = arr(v);
-                let Some(saved) = record.get(prop) else { continue };
-                values += 1;
-                let kind = v[0].as_str().unwrap_or("");
-                let expected = match kind {
-                    "float" => json!({"float": jf(num(&v[1]))}),
-                    "int" => json!({"int": v[1]}),
-                    "color" | "vector" => json!({kind: [jf(num(&v[1])), jf(num(&v[2])), jf(num(&v[3])), jf(num(&v[4]))]}),
-                    _ => {
-                        let mut t = json!({"tiling": [jf(num(&v[2])), jf(num(&v[3]))], "offset": [jf(num(&v[4])), jf(num(&v[5]))]});
-                        if v[1] == "Texture2D" {
-                            t["texture"] = saved["texture"].get("texture").cloned().unwrap_or(json!("<missing Texture2D>"));
+                for (which, model) in [("saved", record.get(prop)), ("declared", resolved.get(prop))] {
+                    let Some(model) = model else { continue };
+                    values += 1;
+                    let kind = v[0].as_str().unwrap_or("");
+                    let expected = match kind {
+                        "float" => json!({"float": jf(num(&v[1]))}),
+                        "int" => json!({"int": v[1]}),
+                        "color" | "vector" => json!({kind: [jf(num(&v[1])), jf(num(&v[2])), jf(num(&v[3])), jf(num(&v[4]))]}),
+                        _ => {
+                            let mut t = json!({"tiling": [jf(num(&v[2])), jf(num(&v[3]))], "offset": [jf(num(&v[4])), jf(num(&v[5]))]});
+                            if v[1] == "Texture2D" {
+                                t["texture"] = model["texture"].get("texture").cloned().unwrap_or(json!("<missing Texture2D>"));
+                            }
+                            json!({"texture": t})
                         }
-                        json!({"texture": t})
+                    };
+                    if !values_equal(&expected, model, non_finite) {
+                        faults.push(format!("material {name}.{prop} ({which}): Unity {expected}, model {model}"));
                     }
-                };
-                if !values_equal(&expected, saved, non_finite) {
-                    faults.push(format!("material {name}.{prop}: Unity {expected}, model {saved}"));
                 }
             }
         }
@@ -810,7 +823,7 @@ impl Check<'_> {
         if named + missing != model.len() {
             faults.push(format!("Unity {} materials, model {}", named + missing, model.len()));
         }
-        self.report.line(&format!("materials ({up} Unity properties, {mp} model, {values} shader-declared values compared)"), named + missing, model.len(), faults);
+        self.report.line(&format!("materials ({up} Unity properties, {mp} model, {dp} shader-declared, {values} saved and declared values compared with Unity's)"), named + missing, model.len(), faults);
     }
 
     fn inactive(&mut self) {

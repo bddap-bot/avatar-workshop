@@ -78,7 +78,7 @@ by its mesh's `extras.targetNames` entry.
 | `descriptor` | view position, lip-sync mode and the 15 viseme blendshapes, eyelid mode and shapes, eye bones and their rotation limits |
 | `renderers` | per mesh node: initially enabled, material slots |
 | `nodes` | per node: active as the uploaded avatar holds it; the evaluation core's animator applies the default states |
-| `materials` | per material: shader family (`poiyomi`, `liltoon`, `vrchat-mobile`, `mtoon`, `standard`, `unknown`), version, and its saved properties as a typed map (floats, colours, vectors, texture references with tiling/offset, keywords); render queue, cull, blend and depth state |
+| `materials` | per material: shader family (`poiyomi`, `liltoon`, `vrchat-mobile`, `mtoon`, `standard`, `unknown`), version, its saved properties as a typed map (floats, colours, vectors, texture references with tiling/offset, keywords) and each property its shader declares at the value the material resolves for it; render queue, cull, blend and depth state |
 | `physbones` | per component: root, ignored nodes, whether another PhysBone's root ends the chain, endpoint, multi-child type, integration type and version, pull/spring (momentum)/stiffness/gravity/gravity falloff/immobile and immobile type, each with its curve, limit type and angles and rotation, radius with curve, max stretch, stretch motion, max squish, collider indices, allow collision/grabbing/posing filters, grab movement, snap to hand, parameter name, is-animated, reset-when-disabled, initially enabled |
 | `colliders` | per collider: node, shape (sphere, capsule, plane), position, rotation, radius, height, inside bounds, bones as spheres |
 | `contacts` | senders and receivers: node, shape, radius, height, position, rotation, collision tags, allow self/others, local only, receiver type (constant, on enter, proximity), parameter, min velocity |
@@ -87,7 +87,7 @@ by its mesh's `extras.targetNames` entry.
 | `menu` | controls as authored: name, type, parameter, value, sub-parameters, labels, icon, submenu |
 | `layers` | the playable layers (base, additive, gesture, action, FX, sitting, T-pose, IK pose) each with the controller and mask it runs (the SDK's default controller and imposed mask where the avatar keeps the default): layers with weight, blending (override/additive), avatar mask and sync source; state machines with sub-machines kept; states with speed and its parameter, cycle offset, mirror, motion, write defaults, behaviours; transitions with conditions, exit time, duration (fixed or normalised), offset, interruption source, ordered interruption, can-transition-to-self; blend trees with their algorithm (1D, 2D simple directional, 2D freeform directional, 2D freeform cartesian, direct) and children |
 | `behaviours` | parameter drivers (set, add, random, copy with ranges, local only), tracking control, locomotion control, playable and animator layer control, temporary pose space; play-audio reported unsupported |
-| `clips` | length, loop, and curves with Hermite keys (value, in/out tangents and weights). Each curve binds a typed property: node active, renderer enabled, blendshape weight, material property by name, material slot (a real material swap), node translation/rotation/scale, humanoid muscle, animator parameter, physbone/constraint/contact field |
+| `clips` | length, loop, and curves with Hermite keys (value, in/out tangents and weights). Each curve binds a typed property: node active, renderer enabled, blendshape weight, material property by name (on the first of the renderer's materials whose shader declares it), material slot (a real material swap), node translation/rotation/scale, humanoid muscle, animator parameter, physbone/constraint/contact field |
 | `unsupported` | every source component or property the importer could not represent, by kind and count, e.g. particles, audio sources, unknown shaders |
 
 The JSON schema is generated from the core's types, so the schema, the reader and the writer cannot drift.
@@ -117,7 +117,7 @@ natively, as a Godot extension, or compiled to WebAssembly. A runtime does not r
 - **VRChat avatars: a Unity editor exporter.** Creators already build their avatars in Unity. The exporter runs in
   the avatar's project, interactive or batch mode, after the SDK's build preprocess, and writes the model through
   Unity's own APIs: meshes and their submesh-to-material slots as Unity holds them, every animator controller,
-  clip and curve with tangents, materials' saved properties, and every VRChat component. Legacy DynamicBones are
+  clip and curve with tangents, materials' saved properties and their shaders' declared properties, and every VRChat component. Legacy DynamicBones are
   migrated with the SDK's own conversion first. Nothing is inferred from file names or from re-importing the
   source mesh file.
 - **VRM 0.x and 1.0.** VRM maps into the model: humanoid to HumanBodyBones, spring bones to PhysBones (VRM's

@@ -209,19 +209,15 @@ fn default_of(avatar: &Avatar, t: &Target, rest: &[crate::physbones::Transform])
                 _ => (prop.as_str(), None),
             };
             let Some(r) = m.renderers.iter().find(|r| r.node.0 == *n) else { return 0.0 };
-            for mat in &r.materials {
-                if let Some(p) = m.materials.get(mat.0 as usize).and_then(|x| x.properties.get(base)) {
-                    let i = comp.map(|c| "rgbaxyzw".find(c).unwrap() % 4);
-                    return match (p, i) {
-                        (MaterialProperty::Float(v), _) => *v,
-                        (MaterialProperty::Int(v), _) => *v as f32,
-                        (MaterialProperty::Color(v) | MaterialProperty::Vector(v), Some(i)) => v[i],
-                        (MaterialProperty::Color(v) | MaterialProperty::Vector(v), None) => v[0],
-                        (MaterialProperty::Texture(_), _) => 0.0,
-                    };
-                }
+            let Some(p) = r.materials.iter().filter_map(|i| m.materials.get(i.0 as usize)).find_map(|x| x.declared.get(base)) else { return 0.0 };
+            let i = comp.map(|c| "rgbaxyzw".find(c).unwrap() % 4);
+            match (p, i) {
+                (MaterialProperty::Float(v), _) => *v,
+                (MaterialProperty::Int(v), _) => *v as f32,
+                (MaterialProperty::Color(v) | MaterialProperty::Vector(v), Some(i)) => v[i],
+                (MaterialProperty::Color(v) | MaterialProperty::Vector(v), None) => v[0],
+                (MaterialProperty::Texture(_), _) => 0.0,
             }
-            0.0
         }
         Target::Translation(n, a) => rest.get(*n as usize).map_or(0.0, |r| r.translation[axis_index(*a)]),
         Target::Rotation(n, a) => rest.get(*n as usize).map_or(0.0, |r| {
