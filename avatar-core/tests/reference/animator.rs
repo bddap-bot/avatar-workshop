@@ -1,0 +1,488 @@
+//! Replays a reference recording's inputs through the core's animator and compares its parameters, states and
+//! node, blendshape and material-property values with the recording's, frame by frame.
+#![allow(dead_code)]
+
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::path::Path;
+
+use avatar_core::animator::motion::Target;
+use avatar_core::animator::{Animator, BUILT_INS};
+use avatar_core::model::Axis;
+use avatar_core::physbones::{Nodes, Transform};
+use glam::{Quat, Vec3};
+use avatar_core::Avatar;
+
+use super::{canonical, paths, text};
+
+/// The frame the harness first records.
+pub const FIRST: usize = 5;
+/// The first frame the emulator's playable graph evaluates: it starts playing on its second update, and its first
+/// evaluation advances by the time since the graph was created.
+pub const PLAYS: usize = 2;
+
+/// A change log: key → frame → value as recorded.
+type Log = BTreeMap<String, BTreeMap<usize, String>>;
+
+fn log(dir: &Path, file: &str) -> Log {
+    let mut out: Log = BTreeMap::new();
+    for line in text(&dir.join(file)).lines() {
+        let mut f = line.splitn(3, '\t');
+        let (Some(frame), Some(key), Some(value)) = (f.next(), f.next(), f.next()) else { continue };
+        let Ok(frame) = frame.parse() else { continue };
+        out.entry(canonical(key)).or_default().insert(frame, value.to_string());
+    }
+    out
+}
+
+fn at(log: &BTreeMap<usize, String>, frame: usize) -> Option<&str> {
+    log.range(..=frame).next_back().map(|(_, v)| v.as_str())
+}
+
+/// The head bone's pose each frame from `track.tsv`, in the avatar's space (Unity's mirrored on x).
+fn heads(dir: &Path) -> HashMap<usize, Transform> {
+    let mut out = HashMap::new();
+    for line in text(&dir.join("track.tsv")).lines().skip(1) {
+        let f: Vec<&str> = line.split('\t').collect();
+        let (Some(frame), Some(head)) = (f.first().and_then(|x| x.parse().ok()), f.get(2)) else { continue };
+        let v: Vec<f32> = head.split(',').filter_map(|x| x.parse().ok()).collect();
+        if v.len() != 7 {
+            continue;
+        }
+        out.insert(
+            frame,
+            Transform { translation: Vec3::new(-v[0], v[1], v[2]), rotation: Quat::from_xyzw(v[3], -v[4], -v[5], v[6]), scale: Vec3::ONE },
+        );
+    }
+    out
+}
+
+pub struct Step {
+    pub frame: usize,
+    pub control: String,
+    pub label: String,
+    pub sets: Vec<(String, f32)>,
+}
+
+pub fn steps(dir: &Path) -> Vec<Step> {
+    text(&dir.join("steps.tsv"))
+        .lines()
+        .filter_map(|l| {
+            let f: Vec<&str> = l.split('\t').collect();
+            if f.len() < 5 {
+                return None;
+            }
+            let sets = f.get(5).map_or(vec![], |s| {
+                s.split(',')
+                    .filter(|x| !x.is_empty())
+                    .filter_map(|kv| kv.rsplit_once('=').map(|(k, v)| (canonical(k), v.parse().unwrap())))
+                    .collect()
+            });
+            Some(Step { frame: f[1].parse().unwrap(), control: f[3].to_string(), label: f[4].to_string(), sets })
+        })
+        .collect()
+}
+
+/// A recorded value key and the core's target for it, with the component of a multi-value record.
+#[derive(Clone, Debug)]
+enum Key {
+    Scalar(Target),
+    Slot(Target),
+    Vector(Vec<Option<Target>>),
+    Transform(u32),
+    Playable(usize),
+    Weight(usize, usize),
+    Tracking(usize),
+    Locomotion,
+    View,
+    Curve(usize, String),
+}
+
+#[derive(Default)]
+pub struct Mismatches {
+    pub compared: usize,
+    /// Samples of the first recorded frame, whose animation read PhysBone and contact parameters from a frame
+    /// the recording lacks.
+    pub skipped: usize,
+    pub wrong: usize,
+    pub keys: BTreeMap<String, (usize, usize, String)>,
+}
+
+impl Mismatches {
+    fn note(&mut self, key: &str, frame: usize, detail: String) {
+        if std::env::var("AW_TRACE").is_ok_and(|t| key.contains(&t)) {
+            eprintln!("{frame}\t{key}\t{detail}");
+        }
+        self.wrong += 1;
+        let e = self.keys.entry(key.to_string()).or_insert((0, frame, detail));
+        e.0 += 1;
+    }
+
+    pub fn summary(&self, limit: usize) -> String {
+        let mut s = format!("{} of {} compared samples differ ({} first-frame samples not compared)", self.wrong, self.compared, self.skipped);
+        let mut v: Vec<_> = self.keys.iter().collect();
+        v.sort_by_key(|(_, (_, f, _))| *f);
+        for (k, (n, f, d)) in v.into_iter().take(limit) {
+            s.push_str(&format!("\n  {k}: {n} frames, first at {f}: {d}"));
+        }
+        s
+    }
+}
+
+pub struct Report {
+    pub frames: usize,
+    pub parameters: Mismatches,
+    pub states: Mismatches,
+    pub values: Mismatches,
+    pub worst_value: f32,
+}
+
+pub struct Run {
+    pub dir: std::path::PathBuf,
+    pub avatar: Avatar,
+    pub names: Vec<Option<String>>,
+}
+
+fn axis(i: usize) -> Axis {
+    [Axis::X, Axis::Y, Axis::Z, Axis::W][i]
+}
+
+impl Run {
+    pub fn new(dir: &Path, avatar: Avatar) -> Run {
+        let nodes = Nodes::read(&avatar).unwrap();
+        let names = paths(&avatar, &nodes);
+        Run { dir: dir.to_path_buf(), avatar, names }
+    }
+
+    fn node(&self, path: &str) -> Option<u32> {
+        self.names.iter().position(|n| n.as_deref() == Some(path)).map(|i| i as u32)
+    }
+
+    fn key(&self, k: &str) -> Option<Key> {
+        if k == "view" {
+            return Some(Key::View);
+        }
+        let (kind, rest) = k.split_once(':')?;
+        Some(match kind {
+            "active" => Key::Scalar(Target::NodeActive(self.node(rest)?)),
+            "enabled" => Key::Scalar(Target::RendererEnabled(self.node(rest)?)),
+            "slot" => {
+                let (p, i) = rest.rsplit_once(':')?;
+                Key::Slot(Target::Slot(self.node(p)?, i.parse().ok()?))
+            }
+            "shape" => {
+                let (p, n) = rest.split_once(':').filter(|(p, _)| self.node(p).is_some()).or_else(|| {
+                    let i = rest.rfind(':')?;
+                    Some((&rest[..i], &rest[i + 1..]))
+                })?;
+                Key::Scalar(Target::BlendShape(self.node(p)?, n.to_string()))
+            }
+            "physbone" => {
+                let (p, k) = rest.rsplit_once('#')?;
+                let node = self.node(p)?;
+                let k: usize = k.parse().ok()?;
+                let idx = self.avatar.model.physbones.iter().enumerate().filter(|(_, b)| b.node.0 == node).nth(k)?.0;
+                Key::Scalar(Target::PhysBone(idx as u32, "m_Enabled".into()))
+            }
+            "mat" => {
+                let (p, prop) = rest.rsplit_once(':')?;
+                let n = self.node(p)?;
+                Key::Vector((0..4).map(|i| Some(Target::MaterialProperty(n, format!("{prop}.{}", ["r", "g", "b", "a"][i])))).collect())
+            }
+            "xform" => Key::Transform(self.node(rest)?),
+            "playable" => Key::Playable(rest.parse().ok()?),
+            "weight" => {
+                let mut f = rest.splitn(3, ':');
+                Key::Weight(f.next()?.parse().ok()?, f.next()?.parse().ok()?)
+            }
+            "tracking" => Key::Tracking(avatar_core::animator::TRACKED_PARTS.iter().position(|p| *p == rest)?),
+            "locomotion" => Key::Locomotion,
+            "curve" => {
+                let (p, n) = rest.split_once(':')?;
+                Key::Curve(p.parse().ok()?, n.to_string())
+            }
+            _ => return None,
+        })
+    }
+
+    /// Parameters the host's PhysBones and contacts produce, which the replay takes from the recording.
+    fn dynamic(&self) -> BTreeSet<String> {
+        let m = &self.avatar.model;
+        let mut out = BTreeSet::new();
+        for p in &m.physbones {
+            if let Some(n) = &p.parameter {
+                for s in ["_IsGrabbed", "_IsPosed", "_Angle", "_Stretch", "_Squish"] {
+                    out.insert(format!("{n}{s}"));
+                }
+            }
+        }
+        for r in &m.contacts.receivers {
+            out.insert(r.parameter.clone());
+        }
+        out
+    }
+
+    pub fn run(&self, frames: Option<usize>) -> Report {
+        let mut anim = Animator::new(&self.avatar);
+        let steps = steps(&self.dir);
+        let params = log(&self.dir, "params.tsv");
+        let states = log(&self.dir, "states.tsv");
+        let values = log(&self.dir, "values.tsv");
+        let last = text(&self.dir.join("done")).trim().parse::<usize>().unwrap_or(0);
+        let end = frames.map_or(last, |f| (FIRST + f).min(last));
+        let dynamic = self.dynamic();
+        let authored: std::cell::RefCell<HashMap<Target, f32>> = Default::default();
+        let heads = heads(&self.dir);
+        let builtin: BTreeSet<&str> = BUILT_INS.iter().map(|b| b.0).collect();
+        let kinds = anim.playable_kinds();
+        let order: Vec<usize> = kinds
+            .iter()
+            .map(|k| avatar_core::animator::PLAYABLE_ORDER.iter().position(|o| o == k).unwrap())
+            .collect();
+        let keys: Vec<(String, Key)> = values.keys().filter_map(|k| self.key(k).map(|t| (k.clone(), t))).collect();
+        let materials: Vec<String> = self.avatar.gltf["materials"]
+            .as_array()
+            .map(|a| a.iter().map(|m| m["name"].as_str().unwrap_or("").to_string()).collect())
+            .unwrap_or_default();
+        let index: HashMap<Target, usize> = anim.targets().iter().enumerate().map(|(i, t)| (t.clone(), i)).collect();
+        let mut by_frame: BTreeMap<usize, Vec<&Step>> = BTreeMap::new();
+        for s in &steps {
+            by_frame.entry(s.frame).or_default().push(s);
+        }
+        let mut rep = Report {
+            frames: 0,
+            parameters: Mismatches::default(),
+            states: Mismatches::default(),
+            values: Mismatches::default(),
+            worst_value: 0.0,
+        };
+        for f in 0..end {
+            for s in by_frame.get(&f).into_iter().flatten() {
+                for (n, v) in &s.sets {
+                    if builtin.contains(n.as_str()) {
+                        anim.set_builtin(n, *v);
+                    } else {
+                        anim.set(n, *v);
+                    }
+                }
+            }
+            for n in &dynamic {
+                let Some(v) = params.get(n).and_then(|l| at(l, f).or_else(|| l.values().next().map(String::as_str))) else { continue };
+                if n.ends_with("_IsGrabbed") || n.ends_with("_IsPosed") {
+                    anim.set(n, v.parse().unwrap());
+                } else {
+                    anim.set_dynamic(n, v.parse().unwrap());
+                }
+            }
+            if let Some(h) = f.checked_sub(1).and_then(|g| heads.get(&g)) {
+                anim.set_head(*h);
+            }
+            if f >= PLAYS {
+                let frames = if f == PLAYS { PLAYS + 1 } else { 1 };
+                anim.step(frames as f32 / 60.0);
+            }
+            if f < FIRST {
+                continue;
+            }
+            if f == FIRST {
+                let ours: BTreeSet<String> = anim.parameters().iter().map(|p| canonical(&p.name)).collect();
+                for k in params.keys().filter(|k| !ours.contains(*k)) {
+                    rep.parameters.compared += 1;
+                    rep.parameters.note(k, f, "missing from the core".into());
+                }
+                let ours: BTreeSet<String> =
+                    anim.states().into_iter().map(|(pi, li, name, ..)| canonical(&format!("{}:{li}:{name}", order[pi]))).collect();
+                for k in states.keys().filter(|k| !ours.contains(*k)) {
+                    rep.states.compared += 1;
+                    rep.states.note(k, f, "missing from the core".into());
+                }
+            }
+            rep.frames += 1;
+            for p in anim.parameters() {
+                let Some(l) = params.get(&canonical(&p.name)) else { continue };
+                let Some(want) = at(l, f) else { continue };
+                rep.parameters.compared += 1;
+                let want: f32 = want.parse().unwrap();
+                if want != p.value {
+                    rep.parameters.note(&p.name, f, format!("{} (want {want})", p.value));
+                }
+            }
+            for (pi, li, name, cur, next) in anim.states() {
+                let key = canonical(&format!("{}:{li}:{name}", order[pi]));
+                let Some(l) = states.get(&key) else { continue };
+                let Some(want) = at(l, f) else { continue };
+                rep.states.compared += 1;
+                let got = canonical(&match next {
+                    Some(n) => format!("{cur} -> {n}"),
+                    None => cur,
+                });
+                if got != want {
+                    rep.states.note(&key, f, format!("{got} (want {want})"));
+                }
+            }
+            let weights = anim.weights();
+            let curves = anim.curve_parameters();
+            let slot = |pi: usize| kinds.iter().position(|k| *k == avatar_core::animator::PLAYABLE_ORDER[pi]);
+            let scalar = |rep: &mut Report, k: &str, got: Option<f32>, want: &str| {
+                let Some(v) = got else { return };
+                let w: f32 = want.parse().unwrap();
+                rep.values.compared += 1;
+                let d = (v - w).abs();
+                if d > 1e-3 {
+                    rep.values.note(k, f, format!("{v} (want {w})"));
+                }
+                rep.worst_value = rep.worst_value.max(d);
+            };
+            for (k, key) in &keys {
+                let Some(want) = at(&values[k], f) else { continue };
+                match key {
+                    Key::Playable(i) => scalar(&mut rep, k, slot(*i).map(|s| weights[s].0), want),
+                    Key::Weight(i, l) => scalar(&mut rep, k, slot(*i).and_then(|s| weights[s].1.get(*l).copied()), want),
+                    Key::Curve(i, n) => {
+                        scalar(&mut rep, k, slot(*i).and_then(|s| curves[s].iter().find(|c| c.0 == *n).map(|c| c.1)), want)
+                    }
+                    Key::Locomotion => scalar(&mut rep, k, Some(anim.locomotion_disabled as u8 as f32), want),
+                    Key::Tracking(i) => {
+                        rep.values.compared += 1;
+                        let got = format!("{:?}", anim.tracking[*i]);
+                        if got != want {
+                            rep.values.note(k, f, format!("{got} (want {want})"));
+                        }
+                    }
+                    Key::View => {
+                        let w: Vec<f32> = want.split(',').map(|x| x.parse().unwrap()).collect();
+                        let v = anim.view;
+                        let got = [-v.x, v.y, v.z];
+                        rep.values.compared += 1;
+                        let d = (0..3).map(|i| (got[i] - w[i]).abs()).fold(0.0, f32::max);
+                        if d > 1e-3 {
+                            rep.values.note(k, f, format!("{got:?} (want {w:?})"));
+                        }
+                        rep.worst_value = rep.worst_value.max(d);
+                    }
+                    _ => {}
+                }
+            }
+            let vals = anim.values();
+            let animated = |t: &Target| -> Option<f32> { index.get(t).map(|&i| vals[i]) };
+            let get = |t: &Target| -> Option<f32> {
+                animated(t).or_else(|| Some(*authored.borrow_mut().entry(t.clone()).or_insert_with(|| avatar_core::animator::authored(&self.avatar, t))))
+            };
+            for (k, key) in &keys {
+                let Some(want) = at(&values[k], f) else { continue };
+                if want == "-" {
+                    continue;
+                }
+                if f == FIRST && !matches!(key, Key::Slot(_)) {
+                    rep.values.skipped += 1;
+                    continue;
+                }
+                match key {
+                    Key::Scalar(t) => {
+                        let Some(v) = get(t) else { continue };
+                        let v = match t {
+                            Target::NodeActive(_) | Target::RendererEnabled(_) | Target::PhysBone(..) => (v != 0.0) as u8 as f32,
+                            _ => v,
+                        };
+                        let w: f32 = want.parse().unwrap();
+                        let d = (v - w).abs();
+                        rep.values.compared += 1;
+                        if d > 1e-3 {
+                            rep.values.note(k, f, format!("{v} (want {w})"));
+                        }
+                        rep.worst_value = rep.worst_value.max(d);
+                    }
+                    Key::Slot(t) => {
+                        let Some(v) = get(t) else { continue };
+                        rep.values.compared += 1;
+                        let got = materials.get(v as usize).map(String::as_str).unwrap_or("null");
+                        if got != want {
+                            rep.values.note(k, f, format!("{got} (want {want})"));
+                        }
+                    }
+                    Key::Vector(ts) => {
+                        let w: Vec<f32> = want.split(',').filter_map(|x| x.parse().ok()).collect();
+                        let alt = |i: usize| -> Option<Target> {
+                            let Target::MaterialProperty(n, p) = ts[i].as_ref()? else { return None };
+                            let base = p.rsplit_once('.').unwrap().0;
+                            Some(Target::MaterialProperty(*n, format!("{base}.{}", ["x", "y", "z", "w"][i])))
+                        };
+                        let scalar = ts[0].as_ref().and_then(|t| {
+                            let Target::MaterialProperty(n, p) = t else { return None };
+                            Some(Target::MaterialProperty(*n, p.rsplit_once('.').unwrap().0.to_string()))
+                        });
+                        for (i, wv) in w.iter().enumerate() {
+                            let t = if w.len() == 1 { scalar.clone() } else { ts[i].clone() };
+                            let v = t.as_ref().and_then(animated).or_else(|| alt(i).as_ref().and_then(animated)).or_else(|| t.as_ref().and_then(get));
+                            let Some(v) = v else { continue };
+                            let d = (v - wv).abs();
+                            rep.values.compared += 1;
+                            if d > 1e-3 {
+                                rep.values.note(k, f, format!("[{i}] {v} (want {wv})"));
+                            }
+                            rep.worst_value = rep.worst_value.max(d);
+                        }
+                    }
+                    Key::Playable(_) | Key::Weight(..) | Key::Curve(..) | Key::Locomotion | Key::Tracking(_) | Key::View => {}
+                    Key::Transform(n) => {
+                        let w: Vec<f32> = want.split(',').map(|x| x.parse().unwrap()).collect();
+                        let comp = |t: Target| get(&t);
+                        let mut got = [0.0f32; 10];
+                        let mut any = false;
+                        for i in 0..3 {
+                            if let Some(v) = comp(Target::Translation(*n, axis(i))) {
+                                got[i] = v;
+                                any = true;
+                            } else {
+                                got[i] = f32::NAN;
+                            }
+                            if let Some(v) = comp(Target::Scale(*n, axis(i))) {
+                                got[7 + i] = v;
+                                any = true;
+                            } else {
+                                got[7 + i] = f32::NAN;
+                            }
+                        }
+                        let mut q = [0.0f32; 4];
+                        let mut has_q = true;
+                        for i in 0..4 {
+                            match comp(Target::Rotation(*n, axis(i))) {
+                                Some(v) => {
+                                    q[i] = v;
+                                    any = true;
+                                }
+                                None => has_q = false,
+                            }
+                        }
+                        if !any {
+                            continue;
+                        }
+                        let len = (q.iter().map(|x| x * x).sum::<f32>()).sqrt();
+                        let unity = [-got[0], got[1], got[2]];
+                        let mut uq = [q[0] / len, -q[1] / len, -q[2] / len, q[3] / len];
+                        if uq[3] * w[6] + uq[0] * w[3] + uq[1] * w[4] + uq[2] * w[5] < 0.0 {
+                            uq.iter_mut().for_each(|x| *x = -*x);
+                        }
+                        for i in 0..10 {
+                            let v = match i {
+                                0..=2 => unity[i],
+                                3..=6 if has_q => uq[i - 3],
+                                3..=6 => continue,
+                                _ => got[i],
+                            };
+                            if v.is_nan() {
+                                continue;
+                            }
+                            let d = (v - w[i]).abs();
+                            rep.values.compared += 1;
+                            if d > 1e-3 {
+                                rep.values.note(k, f, format!("[{i}] {v} (want {})", w[i]));
+                            }
+                            rep.worst_value = rep.worst_value.max(d);
+                        }
+                    }
+                }
+            }
+        }
+        rep
+    }
+}

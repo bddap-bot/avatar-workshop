@@ -2,6 +2,8 @@
 //! the result as `reference/compare.py` does. Shared by the `physbones` example and the tests.
 #![allow(dead_code)]
 
+pub mod animator;
+
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::ops::Range;
@@ -62,7 +64,7 @@ pub fn canonical(path: &str) -> String {
 }
 
 /// Each node's path from the avatar root as the harness names it, `#n` marking the n-th same-named sibling.
-fn paths(avatar: &Avatar, nodes: &Nodes) -> Vec<Option<String>> {
+pub fn paths(avatar: &Avatar, nodes: &Nodes) -> Vec<Option<String>> {
     let scene = avatar.gltf.get("scene").and_then(|s| s.as_u64()).unwrap_or(0) as usize;
     let root = avatar.gltf["scenes"][scene]["nodes"][0].as_u64().unwrap() as usize;
     let name = |i: usize| avatar.gltf["nodes"][i]["name"].as_str().unwrap_or("").to_string();

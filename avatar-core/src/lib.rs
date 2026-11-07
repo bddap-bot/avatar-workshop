@@ -1,3 +1,4 @@
+pub mod animator;
 pub mod curve;
 pub mod glb;
 pub mod model;

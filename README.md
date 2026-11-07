@@ -54,6 +54,21 @@ median error, grabs, poses and their filters, the parameters, and that 72, 90 an
 within 1% of chain length. `cargo run --release --example physbones -- RECORDING AVATAR.glb [--chains]` scores
 any recording, and `--example physbones_cost -- AVATAR.glb` times a joint step.
 
+`avatar_core::animator` runs the playable layers as VRChat stacks them: Unity's state machines with crossfades,
+offsets, ordered interruption, sub-machines, synced layers and write defaults, every blend-tree algorithm,
+layer masks and additive layers, the expression parameters with their synced clamps and saved values, VRChat's
+built-in parameters as host inputs, the parameter driver (local-only ones on the wearer's copy alone),
+tracking, locomotion, layer-control and temporary-pose-space behaviours, and the descriptor's lip sync and
+eyelids. A host sets built-ins (`set_builtin`), menu values (`set`), the PhysBone and contact parameters its
+dynamics produced (`set_dynamic`), the eyelids' blink and look (`set_eyes`) and the head's animated pose
+(`set_head`), calls `step(dt)`, and reads `parameters()`, each layer's state, `values()` per target,
+`tracking`, `locomotion_disabled` and `view`; `saved()` and `restore` carry saved parameters across loads.
+Its timing and blending rules were fitted to Av3Emulator's traces, the reference the harness records.
+`cargo test --test animator` replays the fixture's recording in
+`avatar-core/fixtures/reference/fixture-animator/` and requires every parameter and state sample to equal it
+and every recorded node, blendshape and material value, animated or not, to match within 1e-3.
+`cargo run --release --example animator -- RECORDING AVATAR.glb` scores any recording.
+
 ## Unity exporter
 
 [`unity/com.avatarworkshop.exporter`](unity/com.avatarworkshop.exporter) is a Unity 2022.3 editor
