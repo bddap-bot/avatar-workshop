@@ -162,7 +162,7 @@ impl ControllerRt {
                 LayerContent::StateMachine { state_machine } => {
                     let flat = Flat::new(state_machine);
                     for (id, s) in &flat.states {
-                        let mut name = l.name.clone();
+                        let mut name = state_machine.name.clone();
                         for m in &flat.paths[id][1..] {
                             name.push('.');
                             name.push_str(&flat.machines[m].name);

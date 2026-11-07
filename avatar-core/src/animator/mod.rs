@@ -155,8 +155,9 @@ pub struct Animator {
     /// The view position in the avatar's space, moved by temporary pose spaces.
     pub view: glam::Vec3,
     default_view: glam::Vec3,
-    /// The view position in the head bone's rest space.
-    head_view: Option<glam::Vec3>,
+    /// The avatar root's scale, and the view position in metres in the head bone's rest space: the host gives the
+    /// head's pose in metres from the root.
+    head_view: Option<(glam::Vec3, glam::Vec3)>,
     /// The head bone's pose in the avatar's space after this frame's animation, from the host.
     head: Option<crate::physbones::Transform>,
     pose_spaces: Vec<PoseSpace>,
@@ -382,9 +383,11 @@ impl Animator {
             while let Some(p) = nodes.parent[*chain.last().unwrap()] {
                 chain.push(p);
             }
-            chain.pop();
+            let root = nodes.rest[chain.pop()?];
             let rest = chain.iter().rev().fold(crate::physbones::Transform::IDENTITY, |t, &n| t.mul(&nodes.rest[n]));
-            Some(rest.rotation.inverse() * (view - rest.translation))
+            let s = root.scale;
+            let rest_m = crate::physbones::Transform { translation: s * rest.translation, ..rest };
+            Some((s, rest_m.rotation.inverse() * (s * view - rest_m.translation)))
         });
         let mut curved = vec![false; targets.list.len()];
         for c in &clips {
@@ -917,7 +920,7 @@ impl Animator {
                 continue;
             }
             self.view = match (s.enter, self.head, self.head_view) {
-                (true, Some(h), Some(v)) => h.point(v),
+                (true, Some(h), Some((scale, v))) => h.point(v) / scale,
                 (true, _, _) => self.view,
                 (false, _, _) => self.default_view,
             };

@@ -38,6 +38,18 @@ fn at(log: &BTreeMap<usize, String>, frame: usize) -> Option<&str> {
     log.range(..=frame).next_back().map(|(_, v)| v.as_str())
 }
 
+/// Unity's `Animator.StringToHash`, which the harness prints for a state it cannot name.
+fn crc32(s: &str) -> u32 {
+    let mut c = !0u32;
+    for b in s.bytes() {
+        c ^= b as u32;
+        for _ in 0..8 {
+            c = if c & 1 != 0 { (c >> 1) ^ 0xedb8_8320 } else { c >> 1 };
+        }
+    }
+    !c
+}
+
 /// The head bone's pose each frame from `track.tsv`, in the avatar's space (Unity's mirrored on x).
 fn heads(dir: &Path) -> HashMap<usize, Transform> {
     let mut out = HashMap::new();
@@ -230,6 +242,12 @@ impl Run {
         let last = text(&self.dir.join("done")).trim().parse::<usize>().unwrap_or(0);
         let end = frames.map_or(last, |f| (FIRST + f).min(last));
         let dynamic = self.dynamic();
+        let mut raw: HashMap<String, String> = HashMap::new();
+        for p in anim.parameters() {
+            if let Some(other) = raw.insert(canonical(&p.name), p.name.clone()) {
+                panic!("parameters {other} and {} share the name {}", p.name, canonical(&p.name));
+            }
+        }
         let authored: std::cell::RefCell<HashMap<Target, f32>> = Default::default();
         let heads = heads(&self.dir);
         let builtin: BTreeSet<&str> = BUILT_INS.iter().map(|b| b.0).collect();
@@ -259,14 +277,14 @@ impl Run {
             for s in by_frame.get(&f).into_iter().flatten() {
                 for (n, v) in &s.sets {
                     if builtin.contains(n.as_str()) {
-                        anim.set_builtin(n, *v);
+                        anim.set_builtin(raw.get(n).map_or(n.as_str(), String::as_str), *v);
                     } else {
-                        anim.set(n, *v);
+                        anim.set(raw.get(n).map_or(n.as_str(), String::as_str), *v);
                     }
                 }
             }
             for n in &dynamic {
-                let Some(v) = params.get(n).and_then(|l| at(l, f).or_else(|| l.values().next().map(String::as_str))) else { continue };
+                let Some(v) = params.get(&canonical(n)).and_then(|l| at(l, f).or_else(|| l.values().next().map(String::as_str))) else { continue };
                 if n.ends_with("_IsGrabbed") || n.ends_with("_IsPosed") {
                     anim.set(n, v.parse().unwrap());
                 } else {
@@ -311,10 +329,11 @@ impl Run {
                 let Some(l) = states.get(&key) else { continue };
                 let Some(want) = at(l, f) else { continue };
                 rep.states.compared += 1;
-                let got = canonical(&match next {
-                    Some(n) => format!("{cur} -> {n}"),
-                    None => cur,
-                });
+                let ours: Vec<String> = std::iter::once(cur).chain(next).collect();
+                let wants: Vec<&str> = want.split(" -> ").collect();
+                let named = |o: &String, w: &str| if w.starts_with('#') && !o.starts_with('#') { format!("#{:08x}", crc32(o)) } else { canonical(o) };
+                let got = ours.iter().zip(wants.iter().chain(std::iter::repeat(&""))).map(|(o, w)| named(o, w)).collect::<Vec<_>>().join(" -> ");
+                let want = wants.iter().map(|w| canonical(w)).collect::<Vec<_>>().join(" -> ");
                 if got != want {
                     rep.states.note(&key, f, format!("{got} (want {want})"));
                 }
