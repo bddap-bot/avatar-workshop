@@ -68,6 +68,10 @@ impl Targets {
     pub fn len(&self) -> usize {
         self.list.len()
     }
+
+    pub fn index_of(&self, target: &Target) -> Option<usize> {
+        self.index.get(target).map(|&i| i as usize)
+    }
 }
 
 struct EulerGroup {
@@ -91,6 +95,7 @@ pub struct CompiledClip {
     stepped: Vec<Stepped>,
     /// Every target this clip writes, sorted.
     pub writes: Vec<u32>,
+    pub rotations: Vec<[u32; 4]>,
 }
 
 /// The rest value of a node's local rotation as Unity's Euler angles (ZXY order), in degrees, in glTF axes.
@@ -202,7 +207,16 @@ impl CompiledClip {
         writes.extend(stepped.iter().map(|s| s.target));
         writes.sort_unstable();
         writes.dedup();
-        CompiledClip { length: clip.length, looping: clip.looping, curves, fill, euler, stepped, writes }
+        let mut rotations: Vec<[u32; 4]> = euler.iter().map(|g| g.targets).collect();
+        for c in &clip.curves {
+            if let Binding::Transform { node, property: TransformProperty::Rotation, .. } = &c.binding {
+                let ids = AXES.map(|a| targets.id(Target::Rotation(node.0, a)));
+                if !rotations.contains(&ids) {
+                    rotations.push(ids);
+                }
+            }
+        }
+        CompiledClip { length: clip.length, looping: clip.looping, curves, fill, euler, stepped, writes, rotations }
     }
 
     /// The clip time for a normalized state time.
@@ -259,21 +273,23 @@ pub struct Leaf {
     pub direct: bool,
 }
 
-/// Blend tree weights for each algorithm, as Unity computes them.
-pub fn weights_1d(thresholds: &[f32], x: f32) -> Vec<f32> {
+/// Blend tree weights for each algorithm, as Unity computes them. A 1D tree evaluates both ends of the segment
+/// its parameter lies in, an end at weight zero included, so what that end binds and the other leaves out takes
+/// its default; children it does not evaluate are None.
+pub fn weights_1d(thresholds: &[f32], x: f32) -> Vec<Option<f32>> {
     let n = thresholds.len();
-    let mut w = vec![0.0; n];
+    let mut w = vec![None; n];
     if n == 0 {
         return w;
     }
     let mut order: Vec<usize> = (0..n).collect();
     order.sort_by(|&a, &b| thresholds[a].total_cmp(&thresholds[b]));
-    if x <= thresholds[order[0]] {
-        w[order[0]] = 1.0;
+    if x < thresholds[order[0]] || n == 1 {
+        w[order[0]] = Some(1.0);
         return w;
     }
-    if x >= thresholds[order[n - 1]] {
-        w[order[n - 1]] = 1.0;
+    if x > thresholds[order[n - 1]] {
+        w[order[n - 1]] = Some(1.0);
         return w;
     }
     for k in 0..n - 1 {
@@ -281,8 +297,8 @@ pub fn weights_1d(thresholds: &[f32], x: f32) -> Vec<f32> {
         let (ta, tb) = (thresholds[a], thresholds[b]);
         if x >= ta && x <= tb {
             let s = if tb > ta { (x - ta) / (tb - ta) } else { 0.0 };
-            w[a] = 1.0 - s;
-            w[b] = s;
+            w[a] = Some(1.0 - s);
+            w[b] = Some(s);
             return w;
         }
     }
@@ -445,10 +461,8 @@ pub fn leaves(motion: &Motion, param: &dyn Fn(&str) -> f32, scale: Leaf, out: &m
         Motion::Clip(c) => out.push(Leaf { clip: c.0, ..scale }),
         Motion::BlendTree(tree) => {
             let direct = scale.direct || matches!(tree.algorithm, BlendAlgorithm::Direct { .. });
-            let push = |m: &Option<Motion>, w: f32, ts: f32, co: f32, out: &mut Vec<Leaf>| {
-                if w == 0.0 {
-                    return;
-                }
+            let push = |m: &Option<Motion>, w: Option<f32>, ts: f32, co: f32, out: &mut Vec<Leaf>| {
+                let Some(w) = w else { return };
                 if let Some(m) = m {
                     let child = Leaf {
                         clip: 0,
@@ -479,7 +493,7 @@ pub fn leaves(motion: &Motion, param: &dyn Fn(&str) -> f32, scale: Leaf, out: &m
                         _ => weights_cartesian(&pts, p),
                     };
                     for (c, w) in children.iter().zip(w) {
-                        push(&c.motion, w, c.time_scale, c.cycle_offset, out);
+                        push(&c.motion, (w != 0.0).then_some(w), c.time_scale, c.cycle_offset, out);
                     }
                 }
                 BlendAlgorithm::Direct { normalized_blend_values, children } => {
@@ -488,7 +502,7 @@ pub fn leaves(motion: &Motion, param: &dyn Fn(&str) -> f32, scale: Leaf, out: &m
                         normalize(&mut w);
                     }
                     for (c, w) in children.iter().zip(w) {
-                        push(&c.motion, w, c.time_scale, c.cycle_offset, out);
+                        push(&c.motion, (w != 0.0).then_some(w), c.time_scale, c.cycle_offset, out);
                     }
                 }
             }

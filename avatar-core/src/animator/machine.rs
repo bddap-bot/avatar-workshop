@@ -116,6 +116,7 @@ pub struct LayerRt {
     pub active: Option<Active>,
     pub weight: f32,
     pub started: bool,
+    pub snapped: Option<Playing>,
 }
 
 /// A state entered this update, with the behaviours that run on entry.
@@ -171,7 +172,7 @@ impl ControllerRt {
                         name.push_str(&s.name);
                         names.insert(*id, name);
                     }
-                    LayerRt { flat: Some(flat), synced: None, current: None, active: None, weight: l.default_weight, started: false }
+                    LayerRt { flat: Some(flat), synced: None, current: None, active: None, weight: l.default_weight, started: false, snapped: None }
                 }
                 LayerContent::Synced { layer, states, .. } => {
                     let map = states.iter().map(|s| (s.state, (s.motion.clone(), s.behaviours.clone()))).collect();
@@ -182,6 +183,7 @@ impl ControllerRt {
                         active: None,
                         weight: l.default_weight,
                         started: false,
+                        snapped: None,
                     }
                 }
             })
@@ -299,16 +301,10 @@ impl ControllerRt {
         let mut ls = Vec::new();
         self.state_leaves(layer, id, &mut ls);
         let mut d = 0.0;
-        let mut w = 0.0;
         for l in &ls {
-            let len = clips[l.clip as usize].length;
             if l.time_scale != 0.0 {
-                d += l.weight * len / l.time_scale.abs();
+                d += l.weight * clips[l.clip as usize].length / l.time_scale.abs();
             }
-            w += l.weight;
-        }
-        if w > 0.0 && w != 1.0 {
-            d /= w;
         }
         if d > 0.0 {
             d
@@ -386,7 +382,7 @@ impl ControllerRt {
                         return self.resolve(flat, &t.destination, parent);
                     }
                 }
-                self.enter_machine(flat, parent)
+                p.default_state
             }
         }
     }
@@ -403,6 +399,7 @@ impl ControllerRt {
             let (cur, act) = (self.layers[src].current.clone(), self.layers[src].active.clone());
             let before = self.layers[li].current.as_ref().map(|p| p.state);
             let before_to = self.layers[li].active.as_ref().map(|a| a.to.state);
+            self.layers[li].snapped = self.layers[src].snapped.clone();
             self.layers[li].current = cur;
             self.layers[li].active = act;
             let now = self.layers[li].current.as_ref().map(|p| p.state);
@@ -417,6 +414,7 @@ impl ControllerRt {
     }
 
     fn update_layer(&mut self, li: usize, dt: f32, clips: &[CompiledClip], entered: &mut Vec<Entered>, frozen: &dyn Fn(&ControllerRt, usize) -> Vec<(u32, f32, f32)>) {
+        self.layers[li].snapped = None;
         if !self.layers[li].started {
             self.layers[li].started = true;
             let flat = self.layers[li].flat.as_ref().unwrap();
@@ -486,7 +484,7 @@ impl ControllerRt {
         match t.exit_time {
             None => Some(0.0),
             Some(e) => {
-                let crossing = if e < 1.0 {
+                let crossing = if e <= 1.0 {
                     let k = (now - e).floor();
                     let at = k + e;
                     (at > prev && at <= now).then_some(at)
@@ -545,6 +543,9 @@ impl ControllerRt {
         };
         entered.push(Entered { layer: li, state: dest, behaviours: self.behaviours_of(li, dest) });
         if a.duration <= 0.0 {
+            if let From::State(p) = &a.from {
+                self.layers[li].snapped = Some(p.clone());
+            }
             self.layers[li].current = Some(a.to.clone());
             self.layers[li].active = None;
             return;

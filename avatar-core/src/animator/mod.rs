@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 
 use crate::model::{
-    Behaviour, BodyPart, ControlledLayer, DriverEntry, LayerBlending, MaterialProperty, ParameterValue,
+    Axis, Behaviour, BodyPart, ControlledLayer, DriverEntry, LayerBlending, MaterialProperty, ParameterValue,
     PlayableLayerType, TrackingType,
 };
 use crate::Avatar;
@@ -107,6 +107,8 @@ struct Playable {
     /// Muscles the mask lets through; None passes everything.
     muscles: Option<Vec<BodyPart>>,
     bound: Vec<u32>,
+    /// Per layer, every slot of each renderer it binds a slot of: Unity writes a renderer's slots together.
+    slots: Vec<Vec<u32>>,
     layer_masks: Vec<Option<Mask>>,
 }
 
@@ -313,6 +315,17 @@ impl Animator {
             let mut bound: Vec<u32> = rt.clip_ids().iter().flat_map(|&c| clips[c as usize].writes.iter().copied()).collect();
             bound.sort_unstable();
             bound.dedup();
+            let slots = (0..c.layers.len())
+                .map(|li| {
+                    let renderers: Vec<u32> = rt
+                        .layer_clip_ids(li)
+                        .iter()
+                        .flat_map(|&c| clips[c as usize].writes.iter())
+                        .filter_map(|&t| if let Target::Slot(n, _) = targets.list[t as usize] { Some(n) } else { None })
+                        .collect();
+                    (0..targets.len() as u32).filter(|&t| matches!(targets.list[t as usize], Target::Slot(n, _) if renderers.contains(&n))).collect()
+                })
+                .collect();
             let muscles = layer.mask.as_ref().map(|mk| mk.body_parts.iter().copied().collect());
             let layer_masks = c
                 .layers
@@ -336,6 +349,7 @@ impl Animator {
                 layer_blends: HashMap::new(),
                 muscles,
                 bound,
+                slots,
                 layer_masks,
             });
         }
@@ -431,7 +445,8 @@ impl Animator {
     fn set_eye_height(&mut self, avatar: &Avatar) {
         let y = avatar.model.descriptor.view_position[1];
         self.builtins.insert("EyeHeightAsMeters".into(), y);
-        self.builtins.insert("EyeHeightAsPercent".into(), ((y - 0.2) / (5.0 - 0.2)).clamp(0.0, 1.0));
+        let percent = (y as f64 - 0.2f32 as f64) / (5.0f32 - 0.2f32) as f64;
+        self.builtins.insert("EyeHeightAsPercent".into(), (percent as f32).clamp(0.0, 1.0));
         self.normalized = self.builtins.clone();
     }
 
@@ -461,13 +476,14 @@ impl Animator {
 
     /// Sets a built-in parameter from the host's input; false for a name that is not one of [`BUILT_INS`].
     pub fn set_builtin(&mut self, name: &str, value: f32) -> bool {
-        match self.builtins.get_mut(name) {
-            Some(v) => {
-                *v = value;
-                true
-            }
-            None => false,
+        let Some(v) = self.builtins.get_mut(name) else { return false };
+        *v = value;
+        if matches!(name, "VelocityX" | "VelocityY" | "VelocityZ") {
+            let b = &self.builtins;
+            let m = (b["VelocityX"].powi(2) + b["VelocityY"].powi(2) + b["VelocityZ"].powi(2)).sqrt();
+            self.builtins.insert("VelocityMagnitude".into(), m);
         }
+        true
     }
 
     /// The avatar's parameters: its expression parameters, then those only its controllers declare.
@@ -561,8 +577,6 @@ impl Animator {
             let v = self.normalized["Viseme"];
             b.insert("Viseme".into(), v);
         }
-        let v = b["VelocityX"].powi(2) + b["VelocityY"].powi(2) + b["VelocityZ"].powi(2);
-        b.insert("VelocityMagnitude".into(), v.sqrt());
         b.insert("IsOnFriendsList".into(), 0.0);
     }
 
@@ -682,6 +696,7 @@ impl Animator {
 
         let prev = self.values.clone();
         let clips = std::mem::take(&mut self.clips);
+        let mut all_entered = Vec::new();
         for pi in 0..self.playables.len() {
             let mut entered = Vec::new();
             {
@@ -689,18 +704,20 @@ impl Animator {
                 let prev_ref = &prev;
                 let clips_ref = &clips;
                 let bound = self.playables[pi].bound.clone();
+                let slots = self.playables[pi].slots.clone();
                 let targets = &self.targets.list;
                 let beneath = |t: u32| prev_ref[t as usize];
-                let frozen = |rt: &ControllerRt, li: usize| layer_pose(rt, li, clips_ref, defaults, &bound, targets, &beneath, &beneath);
+                let frozen = |rt: &ControllerRt, li: usize| layer_pose(rt, li, clips_ref, defaults, &bound, &slots[li], targets, &beneath, &beneath, &beneath);
                 self.playables[pi].rt.update(dt, &clips, &mut entered, &frozen);
             }
-            for e in entered {
-                self.run_behaviours(pi, e, &clips);
-            }
+            all_entered.extend(entered.into_iter().map(|e| (pi, e)));
+        }
+        for (pi, e) in all_entered {
+            self.run_behaviours(pi, e, &clips);
         }
         let n = self.targets.len();
         let cov: Vec<f32> = (0..n).map(|i| (!self.targets.list[i].rests_at_default() || self.curved[i]) as u8 as f32).collect();
-        let sum = (0..n).map(|i| cov[i] * if self.held[i] { prev[i] } else { self.defaults[i] }).collect();
+        let sum = (0..n).map(|i| cov[i] * if self.held[i] && !self.targets.list[i].discrete() { prev[i] } else { self.defaults[i] }).collect();
         let mut acc = Accum { sum, cov, touched: vec![false; n], held: self.held.clone() };
         for pi in 0..self.playables.len() {
             let params = self.evaluate(pi, &clips, &prev, &mut acc);
@@ -800,8 +817,19 @@ impl Animator {
                 }
                 continue;
             }
-            let pose = layer_pose(&p.rt, li, clips, &self.defaults, &p.bound, &self.targets.list, &beneath, &held);
+            let through = |t: u32| if acc.touched[t as usize] { beneath(t) } else { prev[t as usize] };
+            let mut pose = layer_pose(&p.rt, li, clips, &self.defaults, &p.bound, &p.slots[li], &self.targets.list, &beneath, &held, &through);
+            self.align_rotations(&mut pose, acc);
             let pulled = pulled(&p.rt, li, clips, &self.defaults);
+            for &t in &pulled {
+                let i = t as usize;
+                if passes(i) && !pose.iter().any(|x| x.0 == t) {
+                    acc.held[i] = false;
+                    if !acc.touched[i] {
+                        acc.sum[i] = acc.cov[i] * self.defaults[i];
+                    }
+                }
+            }
             for (t, v, c) in pose {
                 let i = t as usize;
                 if !passes(i) {
@@ -836,6 +864,29 @@ impl Animator {
                 Some((i, sum + (1.0 - cov) * p.rt.params[i].value))
             })
             .collect()
+    }
+
+    /// Negates a layer's rotation lying in the other hemisphere from the rotation beneath it, as Unity's blend does.
+    fn align_rotations(&self, pose: &mut [(u32, f32, f32)], acc: &Accum) {
+        let mut quats: HashMap<u32, [Option<usize>; 4]> = HashMap::new();
+        for (k, &(t, _, _)) in pose.iter().enumerate() {
+            if let Target::Rotation(n, a) = &self.targets.list[t as usize] {
+                quats.entry(*n).or_default()[axis_index(*a)] = Some(k);
+            }
+        }
+        for (n, slots) in quats {
+            let [Some(x), Some(y), Some(z), Some(w)] = slots else { continue };
+            let below = |a: Axis| {
+                let Some(i) = self.targets.index_of(&Target::Rotation(n, a)) else { return 0.0 };
+                acc.sum[i] + (1.0 - acc.cov[i]) * self.defaults[i]
+            };
+            let dot = pose[x].1 * below(Axis::X) + pose[y].1 * below(Axis::Y) + pose[z].1 * below(Axis::Z) + pose[w].1 * below(Axis::W);
+            if dot < 0.0 {
+                for k in [x, y, z, w] {
+                    pose[k].1 = -pose[k].1;
+                }
+            }
+        }
     }
 
     fn run_behaviours(&mut self, pi: usize, e: Entered, clips: &[CompiledClip]) {
@@ -1032,14 +1083,20 @@ fn node_of(t: &Target) -> Option<u32> {
 /// those the source animates and the destination does not. Nothing holds them once it ends.
 fn pulled(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32]) -> Vec<u32> {
     let l = &rt.layers[li];
-    let Some(a) = &l.active else { return vec![] };
-    let From::State(p) = &a.from else { return vec![] };
+    let (p, to) = match (&l.active, &l.snapped, &l.current) {
+        (Some(a), _, _) => match &a.from {
+            From::State(p) => (p, &a.to),
+            From::Frozen(_) => return vec![],
+        },
+        (None, Some(p), Some(to)) if rt.motion(li, to.state).is_none() || matches!(rt.motion(li, p.state), Some(crate::model::Motion::Clip(_))) => (p, to),
+        _ => return vec![],
+    };
     let wd = |s: crate::model::StateId| rt.state(li, s).is_some_and(|s| s.write_defaults);
-    if !wd(p.state) || !wd(a.to.state) {
+    if !wd(p.state) || !wd(to.state) {
         return vec![];
     }
-    let to = motion_pose(rt, li, a.to.state, a.to.time, clips, defaults);
-    motion_pose(rt, li, p.state, p.time, clips, defaults).into_keys().filter(|t| !to.contains_key(t)).collect()
+    let dest = motion_pose(rt, li, to.state, to.time, clips, defaults);
+    motion_pose(rt, li, p.state, p.time, clips, defaults).into_keys().filter(|t| !dest.contains_key(t)).collect()
 }
 
 /// One motion at one normalized time: the value of every target it writes, and whether only an animated
@@ -1058,20 +1115,38 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, ti
             e.1 &= filled;
         }
     }
+    let mut rotations: Vec<[u32; 4]> = ls.iter().flat_map(|l| clips[l.clip as usize].rotations.iter().copied()).collect();
+    rotations.sort_unstable();
+    rotations.dedup();
+    let mut started = false;
     for l in &ls {
         let c = &clips[l.clip as usize];
-        let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
-        c.sample(time + offset + l.cycle_offset, defaults, &mut |t, v| {
-            acc.get_mut(&t).unwrap().0 += l.weight * v;
-            seen.insert(t);
+        let mut own: HashMap<u32, f32> = HashMap::new();
+        let at = if l.time_scale < 0.0 { 1.0 - (time + offset) } else { time + offset };
+        c.sample(at + l.cycle_offset, defaults, &mut |t, v| {
+            own.insert(t, v);
         });
         if !direct {
-            for (t, e) in acc.iter_mut() {
-                if !seen.contains(t) {
-                    e.0 += l.weight * defaults[*t as usize];
+            for t in acc.keys() {
+                own.entry(*t).or_insert(defaults[*t as usize]);
+            }
+        }
+        if started {
+            for q in &rotations {
+                if !q.iter().all(|t| own.contains_key(t) && acc.contains_key(t)) {
+                    continue;
+                }
+                if q.iter().map(|t| own[t] * acc[t].0).sum::<f32>() < 0.0 {
+                    for t in q {
+                        own.insert(*t, -own[t]);
+                    }
                 }
             }
         }
+        for (t, v) in own {
+            acc.get_mut(&t).unwrap().0 += l.weight * v;
+        }
+        started = true;
     }
     acc
 }
@@ -1082,7 +1157,7 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, ti
 /// beneath; the destination covers by the transition's weight what it animates, and under write defaults every
 /// other bound target at its rest value.
 #[allow(clippy::too_many_arguments)]
-fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32], bound: &[u32], targets: &[Target], beneath: &dyn Fn(u32) -> f32, held: &dyn Fn(u32) -> f32) -> Vec<(u32, f32, f32)> {
+fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32], bound: &[u32], slots: &[u32], targets: &[Target], beneath: &dyn Fn(u32) -> f32, held: &dyn Fn(u32) -> f32, through: &dyn Fn(u32) -> f32) -> Vec<(u32, f32, f32)> {
     let l = &rt.layers[li];
     let Some(cur) = &l.current else { return vec![] };
     let steady = match &l.active {
@@ -1097,8 +1172,9 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
     match (&l.active, steady) {
         (_, Some(cur)) => {
             let mut pose = animated(motion_pose(rt, li, cur.state, cur.time, clips, defaults));
-            if rt.state(li, cur.state).is_some_and(|s| s.write_defaults) {
-                for &t in bound.iter().filter(|&&t| targets[t as usize].discrete()) {
+            let wd = rt.state(li, cur.state).is_some_and(|s| s.write_defaults);
+            if rt.motion(li, cur.state).is_some() {
+                for &t in slots {
                     pose.entry(t).or_insert(defaults[t as usize]);
                 }
             }
@@ -1108,7 +1184,7 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
                 for c in ids {
                     for &t in &clips[c as usize].writes {
                         if !targets[t as usize].rests_at_default() {
-                            pose.entry(t).or_insert_with(|| held(t));
+                            pose.entry(t).or_insert_with(|| if wd { through(t) } else { held(t) });
                         }
                     }
                 }
@@ -1163,6 +1239,16 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
                     cov += w;
                 }
                 if f.is_none() && d.is_none() {
+                    continue;
+                }
+                if targets[t as usize].discrete() {
+                    let v = match (f, d) {
+                        (Some((v, _)), None) => v,
+                        (None, Some(v)) => v,
+                        (Some((a, _)), Some(b)) => if w >= 0.5 { b } else { a },
+                        (None, None) => unreachable!(),
+                    };
+                    out.push((t, v, cov));
                     continue;
                 }
                 if cov > 0.0 {

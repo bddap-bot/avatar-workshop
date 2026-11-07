@@ -30,7 +30,19 @@ type Log = BTreeMap<String, BTreeMap<usize, String>>;
 
 fn log(dir: &Path, file: &str) -> Log {
     let mut out: Log = BTreeMap::new();
-    for line in text(&dir.join(file)).lines() {
+    let text = text(&dir.join(file));
+    let mut records: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let numbered = line.split_once('\t').is_some_and(|(f, _)| !f.is_empty() && f.bytes().all(|b| b.is_ascii_digit()));
+        match records.last_mut() {
+            Some(last) if !numbered => {
+                last.push('\n');
+                last.push_str(line);
+            }
+            _ => records.push(line.to_string()),
+        }
+    }
+    for line in &records {
         let mut f = line.splitn(3, '\t');
         let (Some(frame), Some(key), Some(value)) = (f.next(), f.next(), f.next()) else { continue };
         let Ok(frame) = frame.parse() else { continue };
@@ -157,6 +169,8 @@ pub struct Run {
     pub dir: std::path::PathBuf,
     pub avatar: Avatar,
     pub names: Vec<Option<String>>,
+    /// Nodes PhysBones or constraints move after the animator, whose recorded pose is not the animator's.
+    pub physics_nodes: BTreeSet<u32>,
 }
 
 fn axis(i: usize) -> Axis {
@@ -167,11 +181,29 @@ impl Run {
     pub fn new(dir: &Path, avatar: Avatar) -> Run {
         let nodes = Nodes::read(&avatar).unwrap();
         let names = paths(&avatar, &nodes);
-        Run { dir: dir.to_path_buf(), avatar, names }
+        let mut physics_nodes = BTreeSet::new();
+        for p in &avatar.model.physbones {
+            let root = p.root.0;
+            let ignored: BTreeSet<u32> = p.ignore_transforms.iter().map(|n| n.0).collect();
+            let mut stack: Vec<u32> = nodes.children[root as usize].iter().map(|&c| c as u32).filter(|c| !ignored.contains(c)).collect();
+            while let Some(n) = stack.pop() {
+                physics_nodes.insert(n);
+                stack.extend(nodes.children[n as usize].iter().map(|&c| c as u32).filter(|c| !ignored.contains(c)));
+            }
+        }
+        for c in &avatar.model.constraints {
+            physics_nodes.insert(c.target.0);
+        }
+        Run { dir: dir.to_path_buf(), avatar, names, physics_nodes }
     }
 
     fn node(&self, path: &str) -> Option<u32> {
         self.names.iter().position(|n| n.as_deref() == Some(path)).map(|i| i as u32)
+    }
+
+    /// The recording also tracks renderers the model reports unsupported (particle systems).
+    fn renderer(&self, path: &str) -> Option<u32> {
+        self.node(path).filter(|n| self.avatar.model.renderers.iter().any(|r| r.node.0 == *n))
     }
 
     fn key(&self, k: &str) -> Option<Key> {
@@ -181,10 +213,10 @@ impl Run {
         let (kind, rest) = k.split_once(':')?;
         Some(match kind {
             "active" => Key::Scalar(Target::NodeActive(self.node(rest)?)),
-            "enabled" => Key::Scalar(Target::RendererEnabled(self.node(rest)?)),
+            "enabled" => Key::Scalar(Target::RendererEnabled(self.renderer(rest)?)),
             "slot" => {
                 let (p, i) = rest.rsplit_once(':')?;
-                Key::Slot(Target::Slot(self.node(p)?, i.parse().ok()?))
+                Key::Slot(Target::Slot(self.renderer(p)?, i.parse().ok()?))
             }
             "shape" => {
                 let (p, n) = rest.split_once(':').filter(|(p, _)| self.node(p).is_some()).or_else(|| {
@@ -202,10 +234,10 @@ impl Run {
             }
             "mat" => {
                 let (p, prop) = rest.rsplit_once(':')?;
-                let n = self.node(p)?;
+                let n = self.renderer(p)?;
                 Key::Vector((0..4).map(|i| Some(Target::MaterialProperty(n, format!("{prop}.{}", ["r", "g", "b", "a"][i])))).collect())
             }
-            "xform" => Key::Transform(self.node(rest)?),
+            "xform" => Key::Transform(self.node(rest).filter(|n| !self.physics_nodes.contains(n))?),
             "playable" => Key::Playable(rest.parse().ok()?),
             "weight" => {
                 let mut f = rest.splitn(3, ':');
@@ -460,7 +492,7 @@ impl Run {
                     Key::Playable(_) | Key::Weight(..) | Key::Curve(..) | Key::Locomotion | Key::Tracking(_) | Key::View => {}
                     Key::Transform(n) => {
                         let w: Vec<f32> = want.split(',').map(|x| x.parse().unwrap()).collect();
-                        let comp = |t: Target| get(&t);
+                        let comp = |t: Target| animated(&t);
                         let mut got = [0.0f32; 10];
                         let mut any = false;
                         for i in 0..3 {

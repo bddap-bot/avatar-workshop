@@ -18,7 +18,8 @@ fn fixture_follows_the_reference() {
     assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
     assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
     assert_eq!(rep.values.wrong, 0, "values: {}", rep.values.summary(20));
-    assert!(rep.values.compared > 1_500_000, "{} values compared", rep.values.compared);
+    // Only the transform components the animator binds are scored.
+    assert!(rep.values.compared > 1_250_000, "{} values compared", rep.values.compared);
 }
 
 fn wave(local: bool) -> Animator {
