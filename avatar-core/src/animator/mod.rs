@@ -10,8 +10,8 @@ use std::collections::HashMap;
 
 
 use crate::model::{
-    Axis, Behaviour, BodyPart, ControlledLayer, DriverEntry, LayerBlending, MaterialProperty, ParameterValue,
-    PlayableLayerType, TrackingType,
+    Axis, Behaviour, BlendAlgorithm, BodyPart, ControlledLayer, DriverEntry, LayerBlending, MaterialProperty, Motion,
+    ParameterValue, PlayableLayerType, TrackingType,
 };
 use crate::Avatar;
 
@@ -107,6 +107,8 @@ struct Playable {
     /// Muscles the mask lets through; None passes everything.
     muscles: Option<Vec<BodyPart>>,
     bound: Vec<u32>,
+    /// How many of the controller's layers bind each target.
+    binders: Vec<u8>,
     /// Per layer, every slot of each renderer it binds a slot of: Unity writes a renderer's slots together.
     slots: Vec<Vec<u32>>,
     layer_masks: Vec<Option<Mask>>,
@@ -337,9 +339,19 @@ impl Animator {
                 PlayableLayerType::Action | PlayableLayerType::Sitting | PlayableLayerType::TPose | PlayableLayerType::IkPose => 0.0,
                 _ => 1.0,
             };
+            let mut binders = vec![0u8; targets.len()];
+            for li in 0..c.layers.len() {
+                let mut ts: Vec<u32> = rt.layer_clip_ids(li).iter().flat_map(|&c| clips[c as usize].writes.iter().copied()).collect();
+                ts.sort_unstable();
+                ts.dedup();
+                for t in ts {
+                    binders[t as usize] = binders[t as usize].saturating_add(1);
+                }
+            }
             playables.push(Playable {
                 kind,
                 rt,
+                binders,
                 weight,
                 blend: None,
                 layer_blends: HashMap::new(),
@@ -703,13 +715,10 @@ impl Animator {
                 let slots = self.playables[pi].slots.clone();
                 let targets = &self.targets.list;
                 let beneath = |t: u32| prev_ref[t as usize];
-                let frozen = |rt: &ControllerRt, li: usize| layer_pose(rt, li, clips_ref, defaults, &bound, &slots[li], targets, &beneath, &beneath, &beneath);
+                let frozen = |rt: &ControllerRt, li: usize| layer_pose(rt, li, clips_ref, defaults, &bound, &slots[li], targets, &beneath, &beneath, &beneath, &beneath);
                 self.playables[pi].rt.update(dt, &clips, &mut entered, &frozen);
             }
             all_entered.extend(entered.into_iter().map(|e| (pi, e)));
-        }
-        for (pi, e) in all_entered {
-            self.run_behaviours(pi, e, &clips);
         }
         let n = self.targets.len();
         let cov: Vec<f32> = (0..n).map(|i| (!self.targets.list[i].rests_at_default() || self.curved[i]) as u8 as f32).collect();
@@ -724,6 +733,9 @@ impl Animator {
                     p.rt.params[i].value = Self::convert(k, v);
                 }
             }
+        }
+        for (pi, e) in all_entered {
+            self.run_behaviours(pi, e, &clips);
         }
         let mut out = prev.clone();
         for i in 0..n {
@@ -814,7 +826,12 @@ impl Animator {
                 continue;
             }
             let through = |t: u32| if acc.touched[t as usize] { beneath(t) } else { prev[t as usize] };
-            let mut pose = layer_pose(&p.rt, li, clips, &self.defaults, &p.bound, &p.slots[li], &self.targets.list, &beneath, &held, &through);
+            let reset = |t: u32| match (acc.touched[t as usize], p.binders[t as usize] > 1) {
+                (true, _) => beneath(t),
+                (false, true) => prev[t as usize],
+                (false, false) => self.defaults[t as usize],
+            };
+            let mut pose = layer_pose(&p.rt, li, clips, &self.defaults, &p.bound, &p.slots[li], &self.targets.list, &beneath, &held, &through, &reset);
             self.align_rotations(&mut pose, acc);
             let pulled = pulled(&p.rt, li, clips, &self.defaults);
             for &t in &pulled {
@@ -1096,7 +1113,8 @@ fn pulled(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32]
 }
 
 /// One motion at one normalized time: the value of every target it writes, and whether only an animated
-/// transform's undriven components put it there.
+/// transform's undriven components put it there. Under a direct blend tree, what only leaves at weight zero bind is
+/// not written.
 fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, time: f32, clips: &[CompiledClip], defaults: &[f32]) -> HashMap<u32, (f32, bool)> {
     let mut ls: Vec<Leaf> = Vec::new();
     rt.state_leaves(layer, state, &mut ls);
@@ -1115,7 +1133,8 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, ti
     rotations.sort_unstable();
     rotations.dedup();
     let mut started = false;
-    for l in &ls {
+    let mut weighted = std::collections::HashSet::new();
+    for l in ls.iter().filter(|l| l.weight != 0.0) {
         let c = &clips[l.clip as usize];
         let mut own: HashMap<u32, f32> = HashMap::new();
         let at = if l.time_scale < 0.0 { 1.0 - (time + offset) } else { time + offset };
@@ -1141,8 +1160,14 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, ti
         }
         for (t, v) in own {
             acc.get_mut(&t).unwrap().0 += l.weight * v;
+            if direct {
+                weighted.insert(t);
+            }
         }
         started = true;
+    }
+    if direct {
+        acc.retain(|t, _| weighted.contains(t));
     }
     acc
 }
@@ -1151,9 +1176,12 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, ti
 /// transition a state covers what its motion animates. During one, the source covers by the remaining weight
 /// what it animates, and without write defaults also every other bound target but transforms at the value
 /// beneath; the destination covers by the transition's weight what it animates, and under write defaults every
-/// other bound target at its rest value.
+/// other bound target at its rest value. What a write-defaults state's motion binds but does not write this frame
+/// takes the value beneath, else last frame's (`through`); under a direct blend tree, else last frame's only when
+/// another layer binds it, else its default (`reset`): the traces show a lone direct-tree toggle returning to its
+/// default where a 2D tree's released child holds.
 #[allow(clippy::too_many_arguments)]
-fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32], bound: &[u32], slots: &[u32], targets: &[Target], beneath: &dyn Fn(u32) -> f32, held: &dyn Fn(u32) -> f32, through: &dyn Fn(u32) -> f32) -> Vec<(u32, f32, f32)> {
+fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32], bound: &[u32], slots: &[u32], targets: &[Target], beneath: &dyn Fn(u32) -> f32, held: &dyn Fn(u32) -> f32, through: &dyn Fn(u32) -> f32, reset: &dyn Fn(u32) -> f32) -> Vec<(u32, f32, f32)> {
     let l = &rt.layers[li];
     let Some(cur) = &l.current else { return vec![] };
     let steady = match &l.active {
@@ -1170,17 +1198,26 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
             let mut pose = animated(motion_pose(rt, li, cur.state, cur.time, clips, defaults));
             let wd = rt.state(li, cur.state).is_some_and(|s| s.write_defaults);
             if rt.motion(li, cur.state).is_some() {
+                let shown: std::collections::HashSet<u32> =
+                    pose.keys().filter_map(|&t| if let Target::Slot(n, _) = targets[t as usize] { Some(n) } else { None }).collect();
                 for &t in slots {
-                    pose.entry(t).or_insert(defaults[t as usize]);
+                    if !wd || matches!(targets[t as usize], Target::Slot(n, _) if shown.contains(&n)) {
+                        pose.entry(t).or_insert(defaults[t as usize]);
+                    }
                 }
             }
             if let Some(m) = rt.motion(li, cur.state) {
+                let direct = matches!(&m, Motion::BlendTree(b) if matches!(b.algorithm, BlendAlgorithm::Direct { .. }));
                 let mut ids = Vec::new();
                 machine::clip_ids(&m, &mut ids);
                 for c in ids {
                     for &t in &clips[c as usize].writes {
                         if !targets[t as usize].rests_at_default() {
-                            pose.entry(t).or_insert_with(|| if wd { through(t) } else { held(t) });
+                            pose.entry(t).or_insert_with(|| match (wd, direct) {
+                                (true, true) => reset(t),
+                                (true, false) => through(t),
+                                (false, _) => held(t),
+                            });
                         }
                     }
                 }

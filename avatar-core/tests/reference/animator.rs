@@ -85,6 +85,15 @@ fn heads(dir: &Path) -> HashMap<usize, Transform> {
     out
 }
 
+/// Whether the avatar emulator holds the eyes shut on a frame: at its default blink rate of 0.1 it blinks twice,
+/// for ten frames thirty apart, every ⌊10 + 40 / 0.1²⌋ frames, 0.1² rounding up in single precision.
+fn emulator_blink(frame: usize) -> bool {
+    let rate = 0.1f32;
+    let interval = (10.0 + 40.0 / (rate * rate)) as usize;
+    let k = frame % interval;
+    k < 60 && k % 30 < 10
+}
+
 pub struct Step {
     pub frame: usize,
     pub control: String,
@@ -339,6 +348,7 @@ impl Run {
             if let Some(h) = f.checked_sub(1).and_then(|g| heads.get(&g)) {
                 anim.set_head(*h);
             }
+            anim.set_eyes(emulator_blink(f) as u8 as f32, 0.0);
             if let Some(&t) = times.get(&f) {
                 assert!(t >= clock, "the graph's time went back at frame {f}");
                 if t > clock {
