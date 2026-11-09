@@ -55,6 +55,15 @@ fn at(log: &BTreeMap<usize, String>, frame: usize) -> Option<&str> {
     log.range(..=frame).next_back().map(|(_, v)| v.as_str())
 }
 
+/// The value the playables hold for a parameter, each having converted it to the type its controller declares.
+fn held_value(name: &str, frame: usize, values: &[f32]) -> f32 {
+    let typed = |v: f32, w: f32| w == v || w == (v != 0.0) as u8 as f32 || w == (v as f64).round_ties_even() as f32;
+    *values
+        .iter()
+        .find(|&&v| values.iter().all(|&w| typed(v, w)))
+        .unwrap_or_else(|| panic!("the playables hold {name} at {values:?} at frame {frame}"))
+}
+
 /// Unity's `Animator.StringToHash`, which the harness prints for a state it cannot name.
 fn crc32(s: &str) -> u32 {
     let mut c = !0u32;
@@ -295,7 +304,16 @@ impl Run {
             assert!(times.contains_key(&f), "the recording has no graph time at frame {f}");
         }
         let mut clock = 0.0;
-        let dynamic = self.dynamic();
+        let mut by_name: BTreeMap<&str, Vec<&BTreeMap<usize, String>>> = BTreeMap::new();
+        let held = log(&self.dir, "dynamics.tsv");
+        for (k, l) in &held {
+            by_name.entry(k.split_once(':').expect("a dynamics key is <playable>:<name>").1).or_default().push(l);
+        }
+        let mut dynamic: BTreeMap<String, Vec<&BTreeMap<usize, String>>> = BTreeMap::new();
+        for n in self.dynamic().into_iter().filter(|n| anim.get(n).is_some()) {
+            let logs = by_name.remove(canonical(&n).as_str()).unwrap_or_else(|| panic!("the recording holds no animator value of {n}"));
+            dynamic.insert(n, logs);
+        }
         let mut raw: HashMap<String, String> = HashMap::new();
         for p in anim.parameters() {
             if let Some(other) = raw.insert(canonical(&p.name), p.name.clone()) {
@@ -337,13 +355,15 @@ impl Run {
                     }
                 }
             }
-            for n in &dynamic {
-                let Some(v) = params.get(&canonical(n)).and_then(|l| at(l, f).or_else(|| l.values().next().map(String::as_str))) else { continue };
-                if n.ends_with("_IsGrabbed") || n.ends_with("_IsPosed") {
-                    anim.set(n, v.parse().unwrap());
-                } else {
-                    anim.set_dynamic(n, v.parse().unwrap());
+            for (n, logs) in &dynamic {
+                if f < created {
+                    continue;
                 }
+                let values: Vec<f32> = logs
+                    .iter()
+                    .map(|l| at(l, f).unwrap_or_else(|| panic!("the recording holds no animator value of {n} at frame {f}")).parse().unwrap())
+                    .collect();
+                anim.set(n, held_value(n, f, &values));
             }
             if let Some(h) = f.checked_sub(1).and_then(|g| heads.get(&g)) {
                 anim.set_head(*h);
@@ -373,7 +393,7 @@ impl Run {
                 }
             }
             rep.frames += 1;
-            for p in anim.parameters() {
+            for p in anim.parameters().iter().filter(|p| !dynamic.contains_key(&p.name)) {
                 let Some(l) = params.get(&canonical(&p.name)) else { continue };
                 let Some(want) = at(l, f) else { continue };
                 rep.parameters.compared += 1;

@@ -60,13 +60,14 @@ layer masks and additive layers, the expression parameters with their synced cla
 built-in parameters as host inputs, the parameter driver (local-only ones on the wearer's copy alone),
 tracking, locomotion, layer-control and temporary-pose-space behaviours, and the descriptor's lip sync and
 eyelids. A host sets built-ins (`set_builtin`), menu values (`set`), the PhysBone and contact parameters its
-dynamics produced (`set_dynamic`), the eyelids' blink and look (`set_eyes`) and the head's animated pose
+dynamics produced (`set_dynamic`, read at the next step), the eyelids' blink and look (`set_eyes`) and the head's animated pose
 (`set_head`), calls `step(dt)`, and reads `parameters()`, each layer's state, `values()` per target,
 `tracking`, `locomotion_disabled` and `view`; `saved()` and `restore` carry saved parameters across loads.
 Its timing and blending rules were fitted to Av3Emulator's traces, the reference the harness records.
 `cargo test --test animator` replays the fixture's recording in
 `avatar-core/fixtures/reference/fixture-animator/`, stepping the core by the emulator's graph time from
-`time.tsv` (its graph starts at a different frame for each avatar), and requires every parameter and state sample to equal it
+`time.tsv` (its graph starts at a different frame for each avatar) and driving contact and PhysBone parameters
+from `dynamics.tsv`, and requires every other parameter and every state sample to equal it
 and every recorded node, blendshape and material value, animated or not, to match within 1e-3.
 `cargo run --release --example animator -- RECORDING AVATAR.glb` scores any recording.
 
@@ -241,6 +242,7 @@ them), so each field's effect has a reference trace of its own. The probe rests 
 | `steps.tsv` | each step: index, first frame, frames, menu control, label, parameters set |
 | `params.tsv` | every animator parameter on each change, values printed round-trip exact |
 | `states.tsv` | every playable layer's state and transition on each change |
+| `dynamics.tsv` | each parameter the avatar's contacts and PhysBones write, as each playable's animator holds it just before evaluating, every frame from the one the graph is created on, keyed `<i>:<name>` (numbered as in `states.tsv`) and written on change; `params.tsv` shows these as the dynamics left them later in the frame. A recording fails if they were not read on a frame |
 | `values.tsv` | node active, renderer enabled, PhysBone enabled (`physbone:<path>#<k>`, the k-th on that object), material slots, blendshape weights, animated material properties and animated transforms, and what the behaviours set: each playable layer's weight (`playable:<i>`, numbered as in `states.tsv`), each animator layer's weight (`weight:<i>:<l>:<name>`, numbered as in `states.tsv`), each animator parameter a clip curve drives (`curve:<i>:<name>`), the tracking of each body part (`tracking:<part>`), `locomotion:disabled` and the view position (`view`); each on change |
 | `tips.tsv`, `chains.tsv` | every PhysBone leaf (with its endpoint; for the probe, every bone below each root) each frame, in metres from the avatar root along its axes (its scale ignored), and its rest chain length |
 | `track.tsv` | the avatar root in the world, and its head, hands and hips in metres from the root along its axes, each frame, for replaying the same input elsewhere |

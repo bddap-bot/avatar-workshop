@@ -104,6 +104,7 @@ namespace AvatarWorkshop.Reference
         struct PoseStage { }
         struct RecordStage { }
         struct DriversStage { }
+        struct DynamicsStage { }
 
         static void Install()
         {
@@ -117,6 +118,9 @@ namespace AvatarWorkshop.Reference
                     list.Insert(0, new PlayerLoopSystem { type = typeof(InputsStage), updateDelegate = () => Guard(recorder.Inputs) });
                 if (sys.type == typeof(PreLateUpdate))
                 {
+                    int anim = list.FindIndex(s => s.type == typeof(PreLateUpdate.DirectorUpdateAnimationBegin));
+                    if (anim < 0) throw new Exception("PreLateUpdate.DirectorUpdateAnimationBegin is not in the player loop");
+                    list.Insert(anim, new PlayerLoopSystem { type = typeof(DynamicsStage), updateDelegate = () => Guard(recorder.Dynamics) });
                     int at = list.FindIndex(s => s.type == typeof(PreLateUpdate.ScriptRunBehaviourLateUpdate));
                     list.Insert(at < 0 ? 0 : at, new PlayerLoopSystem { type = typeof(PoseStage), updateDelegate = () => Guard(recorder.Pose) });
                     int sdk = list.FindIndex(s => s.type?.Name == "VRCAvatarDynamicsPreSchedule");
@@ -235,8 +239,12 @@ namespace AvatarWorkshop.Reference
         readonly Dictionary<string, string> lastPoses = new Dictionary<string, string>();
         readonly Dictionary<string, string> simulated = new Dictionary<string, string>();
         int posedFrame = -1;
+        (int playable, string name, int id, AnimatorControllerParameterType type)[] dynamics;
+        AnimatorControllerPlayable[] dynamicsPlayables;
+        readonly Dictionary<string, string> lastDynamics = new Dictionary<string, string>();
+        int dynamicsFrame = -1;
 
-        StreamWriter paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, grabsOut;
+        StreamWriter dynamicsOut, paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, grabsOut;
         PhysBoneManager.Grab grab;
         readonly Dictionary<string, string> lastParams = new Dictionary<string, string>();
         readonly Dictionary<string, string> lastStates = new Dictionary<string, string>();
@@ -290,6 +298,7 @@ namespace AvatarWorkshop.Reference
                 mixer = (AnimationLayerMixerPlayable)typeof(LyumaAv3Runtime).GetField("playableMixer", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(runtime);
                 Directory.CreateDirectory(output);
                 timeOut = Open("time.tsv");
+                DynamicParameters();
                 return;
             }
             if (root == null)
@@ -306,6 +315,52 @@ namespace AvatarWorkshop.Reference
                 BeginStep(steps[stepIndex]);
             }
             steps[stepIndex].Each?.Invoke(this, stepFrame);
+        }
+
+        // Taken from the playables just before the animator evaluates: contacts and PhysBones write the emulator's
+        // parameter list at another point in the frame than the animator reads it.
+        void DynamicParameters()
+        {
+            var names = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (var r in runtime.GetComponentsInChildren<ContactReceiver>(true))
+                if (!string.IsNullOrEmpty(r.parameter)) names.Add(r.parameter);
+            foreach (var pb in runtime.GetComponentsInChildren<VRCPhysBoneBase>(true))
+                if (!string.IsNullOrEmpty(pb.parameter))
+                    foreach (var suffix in new[] { "_IsGrabbed", "_IsPosed", "_Angle", "_Stretch", "_Squish" }) names.Add(pb.parameter + suffix);
+            playables = (List<AnimatorControllerPlayable>)typeof(LyumaAv3Runtime).GetField("playables", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(runtime);
+            var found = new List<(int, string, int, AnimatorControllerParameterType)>();
+            for (int i = 0; i < playables.Count; i++)
+            {
+                if (!playables[i].IsValid()) continue;
+                for (int k = 0; k < playables[i].GetParameterCount(); k++)
+                {
+                    var p = playables[i].GetParameter(k);
+                    if (names.Contains(p.name)) found.Add((i, p.name, p.nameHash, p.type));
+                }
+            }
+            dynamics = found.OrderBy(d => d.Item1).ThenBy(d => d.Item2, StringComparer.Ordinal).ToArray();
+            dynamicsPlayables = playables.ToArray();
+            dynamicsOut = Open("dynamics.tsv");
+        }
+
+        public void Dynamics()
+        {
+            if (dynamicsOut == null || Finished) return;
+            var f = frame.ToString(inv);
+            if (!playables.SequenceEqual(dynamicsPlayables)) throw new Exception($"the emulator rebuilt its playables at frame {f}");
+            foreach (var (i, name, id, type) in dynamics)
+            {
+                var pl = playables[i];
+                if (!pl.IsValid()) throw new Exception($"playable {i}, which holds {name}, is gone at frame {f}");
+                var value = type == AnimatorControllerParameterType.Float ? F(pl.GetFloat(id))
+                    : type == AnimatorControllerParameterType.Int ? pl.GetInteger(id).ToString(inv)
+                    : pl.GetBool(id) ? "1" : "0";
+                var key = $"{i}:{name}";
+                if (lastDynamics.TryGetValue(key, out var old) && old == value) continue;
+                dynamicsOut.Write($"{f}\t{key}\t{value}\n");
+                lastDynamics[key] = value;
+            }
+            dynamicsFrame = frame;
         }
 
         public void Pose()
@@ -358,6 +413,7 @@ namespace AvatarWorkshop.Reference
             var f = frame.ToString(inv);
             if (!mixer.IsValid()) throw new Exception($"the emulator's playable graph is gone at frame {f}");
             timeOut.Write($"{f}\t{mixer.GetTime().ToString("R", inv)}\n");
+            if (dynamicsFrame != frame) throw new Exception($"no animator values of the contact and PhysBone parameters were taken before the animator ran at frame {f}");
             if (root == null || stepIndex < 0) return;
             if (posedFrame != frame) throw new Exception($"no driver poses were taken before the SDK's dynamics at frame {f}");
             foreach (var (t, path) in bones) simulated[path] = LocalPose(t);
@@ -399,7 +455,6 @@ namespace AvatarWorkshop.Reference
                 rightArm = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
                 tracked = new[] { HumanBodyBones.Head, HumanBodyBones.LeftHand, HumanBodyBones.RightHand, HumanBodyBones.Hips }.Select(animator.GetBoneTransform).ToArray();
             }
-            playables = (List<AnimatorControllerPlayable>)typeof(LyumaAv3Runtime).GetField("playables", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(runtime);
             var descriptor = runtime.GetComponent<VRCAvatarDescriptor>();
             if (descriptor.expressionParameters != null)
                 foreach (var p in descriptor.expressionParameters.parameters)
@@ -993,7 +1048,7 @@ namespace AvatarWorkshop.Reference
         void Complete()
         {
             Finished = true;
-            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, grabsOut, timeOut }) w?.Dispose();
+            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, grabsOut, timeOut, dynamicsOut }) w?.Dispose();
             File.WriteAllText(Path.Combine(output, "done"), frame.ToString(inv) + "\n");
             Debug.Log($"[aw-reference] recorded {frame} frames, {steps.Count} steps, {tips.Count} tips, {renderCount} renders into {output}");
             Harness.Finish(0);
