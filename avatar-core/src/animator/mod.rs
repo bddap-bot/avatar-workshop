@@ -109,6 +109,8 @@ struct Playable {
     bound: Vec<u32>,
     /// How many of the controller's layers bind each target.
     binders: Vec<u8>,
+    /// Per layer, whether a clip it plays drives an animator parameter.
+    drives_parameters: Vec<bool>,
     /// Per layer, every slot of each renderer it binds a slot of: Unity writes a renderer's slots together.
     slots: Vec<Vec<u32>>,
     layer_masks: Vec<Option<Mask>>,
@@ -340,8 +342,10 @@ impl Animator {
                 _ => 1.0,
             };
             let mut binders = vec![0u8; targets.len()];
+            let mut drives_parameters = Vec::new();
             for li in 0..c.layers.len() {
                 let mut ts: Vec<u32> = rt.layer_clip_ids(li).iter().flat_map(|&c| clips[c as usize].writes.iter().copied()).collect();
+                drives_parameters.push(ts.iter().any(|&t| matches!(targets.list[t as usize], Target::AnimatorParameter(_))));
                 ts.sort_unstable();
                 ts.dedup();
                 for t in ts {
@@ -352,6 +356,7 @@ impl Animator {
                 kind,
                 rt,
                 binders,
+                drives_parameters,
                 weight,
                 blend: None,
                 layer_blends: HashMap::new(),
@@ -797,7 +802,27 @@ impl Animator {
                     },
                 }
             };
+            let through = |t: u32| if acc.touched[t as usize] { beneath(t) } else { prev[t as usize] };
+            let reset = |t: u32| match (acc.touched[t as usize], p.binders[t as usize] > 1) {
+                (true, _) => beneath(t),
+                (false, true) => prev[t as usize],
+                (false, false) => self.defaults[t as usize],
+            };
             if additive {
+                if p.drives_parameters[li] && p.rt.layer_defs[li].blending != LayerBlending::Additive {
+                    let mut pose = layer_pose(&p.rt, li, clips, &self.defaults, &p.bound, &p.slots[li], &self.targets.list, &beneath, &held, &through, &reset);
+                    if let (pulled, true) = pulled(&p.rt, li, clips, &self.defaults, &self.targets.list) {
+                        self.pull_parameters(&p.rt, &pulled, &mut pose);
+                    }
+                    for (t, v, c) in pose {
+                        if matches!(self.targets.list[t as usize], Target::AnimatorParameter(_)) {
+                            let a = wl * c;
+                            let e = own.entry(t).or_insert((0.0, 0.0));
+                            e.0 = e.0 * (1.0 - a) + v * a;
+                            e.1 = e.1 * (1.0 - a) + a;
+                        }
+                    }
+                }
                 let (reference, now): (HashMap<u32, f32>, HashMap<u32, (f32, f32)>) = match &p.rt.layers[li].current {
                     Some(c) => (
                         motion_pose(&p.rt, li, c.state, 0.0, clips, &self.defaults).into_iter().map(|(t, (v, _))| (t, v)).collect(),
@@ -825,15 +850,12 @@ impl Animator {
                 }
                 continue;
             }
-            let through = |t: u32| if acc.touched[t as usize] { beneath(t) } else { prev[t as usize] };
-            let reset = |t: u32| match (acc.touched[t as usize], p.binders[t as usize] > 1) {
-                (true, _) => beneath(t),
-                (false, true) => prev[t as usize],
-                (false, false) => self.defaults[t as usize],
-            };
             let mut pose = layer_pose(&p.rt, li, clips, &self.defaults, &p.bound, &p.slots[li], &self.targets.list, &beneath, &held, &through, &reset);
             self.align_rotations(&mut pose, acc);
-            let pulled = pulled(&p.rt, li, clips, &self.defaults);
+            let (pulled, params_only) = pulled(&p.rt, li, clips, &self.defaults, &self.targets.list);
+            if params_only {
+                self.pull_parameters(&p.rt, &pulled, &mut pose);
+            }
             for &t in &pulled {
                 let i = t as usize;
                 if passes(i) && !pose.iter().any(|x| x.0 == t) {
@@ -877,6 +899,16 @@ impl Animator {
                 Some((i, sum + (1.0 - cov) * p.rt.params[i].value))
             })
             .collect()
+    }
+
+    /// Animator parameters a transition pulls to their defaults take the controller's default for them.
+    fn pull_parameters(&self, rt: &ControllerRt, pulled: &[u32], pose: &mut Vec<(u32, f32, f32)>) {
+        for &t in pulled {
+            let Target::AnimatorParameter(name) = &self.targets.list[t as usize] else { continue };
+            if let (false, Some(&j)) = (pose.iter().any(|x| x.0 == t), rt.index.get(name)) {
+                pose.push((t, rt.params[j].default, 1.0));
+            }
+        }
     }
 
     /// Negates a layer's rotation lying in the other hemisphere from the rotation beneath it, as Unity's blend does.
@@ -1093,23 +1125,31 @@ fn node_of(t: &Target) -> Option<u32> {
 }
 
 /// The targets a layer's transition between two write-defaults states pulls to the destination's defaults:
-/// those the source animates and the destination does not. Nothing holds them once it ends.
-fn pulled(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32]) -> Vec<u32> {
+/// those the source animates and the destination does not. Nothing holds them once it ends. A zero-length one
+/// from a blend tree into a state with a motion pulls only animator parameters, to the controller's defaults, and
+/// says so.
+fn pulled(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32], targets: &[Target]) -> (Vec<u32>, bool) {
     let l = &rt.layers[li];
-    let (p, to) = match (&l.active, &l.snapped, &l.current) {
+    let (p, to, params_only) = match (&l.active, &l.snapped, &l.current) {
         (Some(a), _, _) => match &a.from {
-            From::State(p) => (p, &a.to),
-            From::Frozen(_) => return vec![],
+            From::State(p) => (p, &a.to, false),
+            From::Frozen(_) => return (vec![], false),
         },
-        (None, Some(p), Some(to)) if rt.motion(li, to.state).is_none() || matches!(rt.motion(li, p.state), Some(crate::model::Motion::Clip(_))) => (p, to),
-        _ => return vec![],
+        (None, Some(p), Some(to)) => {
+            (p, to, rt.motion(li, to.state).is_some() && !matches!(rt.motion(li, p.state), Some(Motion::Clip(_))))
+        }
+        _ => return (vec![], false),
     };
     let wd = |s: crate::model::StateId| rt.state(li, s).is_some_and(|s| s.write_defaults);
     if !wd(p.state) || !wd(to.state) {
-        return vec![];
+        return (vec![], false);
     }
     let dest = motion_pose(rt, li, to.state, to.time, clips, defaults);
-    motion_pose(rt, li, p.state, p.time, clips, defaults).into_keys().filter(|t| !dest.contains_key(t)).collect()
+    let pulled = motion_pose(rt, li, p.state, p.time, clips, defaults)
+        .into_keys()
+        .filter(|t| !dest.contains_key(t) && (!params_only || matches!(targets[*t as usize], Target::AnimatorParameter(_))))
+        .collect();
+    (pulled, params_only)
 }
 
 /// One motion at one normalized time: the value of every target it writes, and whether only an animated

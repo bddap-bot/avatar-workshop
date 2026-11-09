@@ -22,6 +22,7 @@ pub struct Param {
     pub name: String,
     pub kind: Kind,
     pub value: f32,
+    pub default: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -148,7 +149,7 @@ impl ControllerRt {
                     AnimatorParameterValue::Bool(v) => (Kind::Bool, v as u8 as f32),
                     AnimatorParameterValue::Trigger(v) => (Kind::Trigger, v as u8 as f32),
                 };
-                Param { name: p.name.clone(), kind, value }
+                Param { name: p.name.clone(), kind, value, default: value }
             })
             .collect();
         let mut index = HashMap::new();
