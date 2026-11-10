@@ -77,6 +77,11 @@ impl Flat {
 pub struct Playing {
     pub state: StateId,
     pub time: f32,
+    /// Looping direct-tree leaves playing now and the state time each began at: a leaf whose weight rises from zero
+    /// plays its clip from the start.
+    pub direct_starts: Vec<(u32, f32)>,
+    /// The state time at the last update's end, from which a leaf whose weight rises this update begins.
+    prev_time: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -294,7 +299,7 @@ impl ControllerRt {
     pub fn state_leaves(&self, layer: usize, id: StateId, out: &mut Vec<Leaf>) {
         let Some(m) = self.motion(layer, id) else { return };
         let get = |n: &str| self.get(n);
-        leaves(&m, &get, Leaf { clip: 0, weight: 1.0, time_scale: 1.0, cycle_offset: 0.0, direct: false }, out);
+        leaves(&m, &get, Leaf { clip: 0, weight: 1.0, time_scale: 1.0, cycle_offset: 0.0, direct: false, id: 0 }, out);
     }
 
     /// Seconds of the state's motion at speed 1.
@@ -394,6 +399,7 @@ impl ControllerRt {
                 continue;
             }
             self.update_layer(li, dt, clips, entered, frozen);
+            self.track_direct_leaves(li, clips);
         }
         for li in 0..self.layers.len() {
             let Some((src, _)) = self.layers[li].synced.clone().map(|(s, _)| (s, ())) else { continue };
@@ -401,8 +407,17 @@ impl ControllerRt {
             let before = self.layers[li].current.as_ref().map(|p| p.state);
             let before_to = self.layers[li].active.as_ref().map(|a| a.to.state);
             self.layers[li].snapped = self.layers[src].snapped.clone();
-            self.layers[li].current = cur;
-            self.layers[li].active = act;
+            self.layers[li].current = cur.map(|mut p| {
+                p.direct_starts.clear();
+                p
+            });
+            self.layers[li].active = act.map(|mut a| {
+                a.to.direct_starts.clear();
+                if let From::State(p) = &mut a.from {
+                    p.direct_starts.clear();
+                }
+                a
+            });
             let now = self.layers[li].current.as_ref().map(|p| p.state);
             let now_to = self.layers[li].active.as_ref().map(|a| a.to.state);
             if let Some(s) = now_to.filter(|s| Some(*s) != before_to && Some(*s) != before) {
@@ -414,6 +429,39 @@ impl ControllerRt {
         }
     }
 
+    fn track_direct_leaves(&mut self, li: usize, clips: &[CompiledClip]) {
+        let track = |rt: &Self, p: &mut Playing| {
+            let scrubbed = rt.state(li, p.state).is_some_and(|s| s.time_parameter.is_some());
+            if scrubbed || !matches!(rt.motion(li, p.state), Some(Motion::BlendTree(_))) {
+                return;
+            }
+            let mut ls = Vec::new();
+            rt.state_leaves(li, p.state, &mut ls);
+            let live: Vec<u32> = ls.iter().filter(|l| l.direct && l.weight > 0.0 && clips[l.clip as usize].looping).map(|l| l.id).collect();
+            p.direct_starts.retain(|(id, _)| live.contains(id));
+            let began = p.prev_time;
+            for id in live {
+                if !p.direct_starts.iter().any(|(i, _)| *i == id) {
+                    p.direct_starts.push((id, began));
+                }
+            }
+            p.prev_time = p.time;
+        };
+        let mut layer_cur = self.layers[li].current.take();
+        let mut layer_act = self.layers[li].active.take();
+        if let Some(p) = layer_cur.as_mut() {
+            track(self, p);
+        }
+        if let Some(a) = layer_act.as_mut() {
+            track(self, &mut a.to);
+            if let From::State(p) = &mut a.from {
+                track(self, p);
+            }
+        }
+        self.layers[li].current = layer_cur;
+        self.layers[li].active = layer_act;
+    }
+
     fn update_layer(&mut self, li: usize, dt: f32, clips: &[CompiledClip], entered: &mut Vec<Entered>, frozen: &dyn Fn(&ControllerRt, usize) -> Vec<(u32, f32, f32)>) {
         self.layers[li].snapped = None;
         if !self.layers[li].started {
@@ -421,7 +469,7 @@ impl ControllerRt {
             let flat = self.layers[li].flat.as_ref().unwrap();
             let start = self.enter_machine(flat, flat.root);
             if let Some(s) = start {
-                self.layers[li].current = Some(Playing { state: s, time: 0.0 });
+                self.layers[li].current = Some(Playing { state: s, time: 0.0, direct_starts: Vec::new(), prev_time: 0.0 });
                 entered.push(Entered { layer: li, state: s, behaviours: self.behaviours_of(li, s) });
             }
         }
@@ -531,7 +579,8 @@ impl ControllerRt {
             }
         };
         let dr = self.rate(li, dest, clips);
-        let to = Playing { state: dest, time: t.offset + spent * dr };
+        let time = t.offset + spent * dr;
+        let to = Playing { state: dest, time, direct_starts: Vec::new(), prev_time: 0.0 };
         let a = Active {
             from,
             to,

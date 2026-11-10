@@ -28,12 +28,14 @@ fn segment(a: &Keyframe, b: &Keyframe, time: f32) -> f32 {
     let in_weighted = matches!(b.weighted_mode, WeightedMode::In | WeightedMode::Both);
     let s = (time - a.time) / span;
     if !out_weighted && !in_weighted {
-        let (m0, m1) = (a.out_tangent * span, b.in_tangent * span);
-        let (s2, s3) = (s * s, s * s * s);
-        return (2.0 * s3 - 3.0 * s2 + 1.0) * a.value
-            + (s3 - 2.0 * s2 + s) * m0
-            + (s3 - s2) * m1
-            + (-2.0 * s3 + 3.0 * s2) * b.value;
+        let dy = b.value - a.value;
+        let length = 1.0 / (span * span);
+        let (d1, d2) = (a.out_tangent * span, b.in_tangent * span);
+        let c0 = (d1 + d2 - dy - dy) * length / span;
+        let c1 = (dy + dy + dy - d1 - d1 - d2) * length;
+        let (c2, c3) = (a.out_tangent, a.value);
+        let x = time - a.time;
+        return x * (x * (x * c0 + c1) + c2) + c3;
     }
     let w0 = if out_weighted { a.out_weight } else { DEFAULT_WEIGHT };
     let w1 = if in_weighted { b.in_weight } else { DEFAULT_WEIGHT };

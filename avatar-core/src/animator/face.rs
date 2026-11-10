@@ -93,6 +93,25 @@ impl Face {
         Face { lips, lids }
     }
 
+    /// The targets the mouth's lip sync writes over the animator.
+    pub fn lip_targets(&self) -> Vec<u32> {
+        match &self.lips {
+            Lips::None => vec![],
+            Lips::Visemes(ids) => ids.iter().flatten().copied().collect(),
+            Lips::JawShape(t) => vec![*t],
+            Lips::JawBone { rotation, .. } => rotation.to_vec(),
+        }
+    }
+
+    /// The targets the eyelids write over the animator.
+    pub fn lid_targets(&self) -> Vec<u32> {
+        match &self.lids {
+            Lids::None => vec![],
+            Lids::Shapes { blink, up, down } => [blink, up, down].into_iter().flatten().copied().collect(),
+            Lids::Bones(lids) => lids.iter().flat_map(|l| l.rotation).collect(),
+        }
+    }
+
     /// Shapes the mouth for a viseme index, 0 being silence.
     pub fn speak(&self, viseme: usize, out: &mut [f32]) {
         match &self.lips {

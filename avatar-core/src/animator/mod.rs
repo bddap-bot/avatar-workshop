@@ -475,6 +475,15 @@ impl Animator {
         &self.defaults
     }
 
+    /// Sets a target's default as the host bound it, for a host that binds the animator after the avatar's serialized
+    /// value has changed.
+    pub fn bind_default(&mut self, target: &Target, value: f32) {
+        if let Some(i) = self.targets.index_of(target) {
+            self.defaults[i] = value;
+            self.values[i] = value;
+        }
+    }
+
     /// The head bone's pose in the avatar's space after the last frame's animation and IK, for this step: a
     /// temporary pose space takes the view position from it.
     pub fn set_head(&mut self, head: crate::physbones::Transform) {
@@ -752,9 +761,15 @@ impl Animator {
         }
         if self.tracking[MOUTH] != TrackingType::Animation {
             self.face.speak(self.builtins["Viseme"].max(0.0) as usize, &mut out);
+            for t in self.face.lip_targets() {
+                acc.held[t as usize] &= !self.curved[t as usize];
+            }
         }
         if self.tracking[EYES] != TrackingType::Animation {
             self.face.look(self.blink, self.look_y, &mut out);
+            for t in self.face.lid_targets() {
+                acc.held[t as usize] &= !self.curved[t as usize];
+            }
         }
         self.clips = clips;
         self.values = out;
@@ -825,8 +840,8 @@ impl Animator {
                 }
                 let (reference, now): (HashMap<u32, f32>, HashMap<u32, (f32, f32)>) = match &p.rt.layers[li].current {
                     Some(c) => (
-                        motion_pose(&p.rt, li, c.state, 0.0, clips, &self.defaults).into_iter().map(|(t, (v, _))| (t, v)).collect(),
-                        motion_pose(&p.rt, li, c.state, c.time, clips, &self.defaults).into_iter().map(|(t, (v, _))| (t, (v, 1.0))).collect(),
+                        motion_pose(&p.rt, li, c.state, 0.0, &[], clips, &self.defaults).into_iter().map(|(t, (v, _))| (t, v)).collect(),
+                        motion_pose(&p.rt, li, c.state, c.time, &c.direct_starts, clips, &self.defaults).into_iter().map(|(t, (v, _))| (t, (v, 1.0))).collect(),
                     ),
                     None => (HashMap::new(), HashMap::new()),
                 };
@@ -1144,8 +1159,8 @@ fn pulled(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32]
     if !wd(p.state) || !wd(to.state) {
         return (vec![], false);
     }
-    let dest = motion_pose(rt, li, to.state, to.time, clips, defaults);
-    let pulled = motion_pose(rt, li, p.state, p.time, clips, defaults)
+    let dest = motion_pose(rt, li, to.state, to.time, &to.direct_starts, clips, defaults);
+    let pulled = motion_pose(rt, li, p.state, p.time, &p.direct_starts, clips, defaults)
         .into_keys()
         .filter(|t| !dest.contains_key(t) && (!params_only || matches!(targets[*t as usize], Target::AnimatorParameter(_))))
         .collect();
@@ -1155,7 +1170,7 @@ fn pulled(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32]
 /// One motion at one normalized time: the value of every target it writes, and whether only an animated
 /// transform's undriven components put it there. Under a direct blend tree, what only leaves at weight zero bind is
 /// not written.
-fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, time: f32, clips: &[CompiledClip], defaults: &[f32]) -> HashMap<u32, (f32, bool)> {
+fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, time: f32, starts: &[(u32, f32)], clips: &[CompiledClip], defaults: &[f32]) -> HashMap<u32, (f32, bool)> {
     let mut ls: Vec<Leaf> = Vec::new();
     rt.state_leaves(layer, state, &mut ls);
     let offset = rt.cycle_offset(layer, state);
@@ -1177,7 +1192,9 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, ti
     for l in ls.iter().filter(|l| l.weight != 0.0) {
         let c = &clips[l.clip as usize];
         let mut own: HashMap<u32, f32> = HashMap::new();
-        let at = if l.time_scale < 0.0 { 1.0 - (time + offset) } else { time + offset };
+        let began = starts.iter().find(|(id, _)| *id == l.id).map_or(0.0, |&(_, t)| t);
+        let elapsed = time - began;
+        let at = if l.time_scale < 0.0 { 1.0 - (elapsed + offset) } else { elapsed + offset };
         c.sample(at + l.cycle_offset, defaults, &mut |t, v| {
             own.insert(t, v);
         });
@@ -1235,7 +1252,7 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
     let animated = |m: HashMap<u32, (f32, bool)>| -> HashMap<u32, f32> { m.into_iter().filter(|(_, (_, f))| !f).map(|(t, (v, _))| (t, v)).collect() };
     match (&l.active, steady) {
         (_, Some(cur)) => {
-            let mut pose = animated(motion_pose(rt, li, cur.state, cur.time, clips, defaults));
+            let mut pose = animated(motion_pose(rt, li, cur.state, cur.time, &cur.direct_starts, clips, defaults));
             let wd = rt.state(li, cur.state).is_some_and(|s| s.write_defaults);
             if rt.motion(li, cur.state).is_some() {
                 let shown: std::collections::HashSet<u32> =
@@ -1271,12 +1288,12 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
             let w = a.progress();
             let (from, from_wd): (HashMap<u32, (f32, f32)>, bool) = match &a.from {
                 From::State(p) => (
-                    animated(motion_pose(rt, li, p.state, p.time, clips, defaults)).into_iter().map(|(t, v)| (t, (v, 1.0))).collect(),
+                    animated(motion_pose(rt, li, p.state, p.time, &p.direct_starts, clips, defaults)).into_iter().map(|(t, v)| (t, (v, 1.0))).collect(),
                     rt.state(li, p.state).is_some_and(|s| s.write_defaults),
                 ),
                 From::Frozen(v) => (v.iter().map(|&(t, v, c)| (t, (v, c))).collect(), true),
             };
-            let to = animated(motion_pose(rt, li, a.to.state, a.to.time, clips, defaults));
+            let to = animated(motion_pose(rt, li, a.to.state, a.to.time, &a.to.direct_starts, clips, defaults));
             let to_wd = rt.state(li, a.to.state).is_some_and(|s| s.write_defaults);
             let mut out = Vec::new();
             let written: Vec<u32> = if from_wd && to_wd {

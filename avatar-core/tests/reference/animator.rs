@@ -152,6 +152,7 @@ pub struct Mismatches {
     pub skipped: usize,
     pub wrong: usize,
     pub keys: BTreeMap<String, (usize, usize, String)>,
+    pub frames: BTreeSet<usize>,
 }
 
 impl Mismatches {
@@ -160,6 +161,7 @@ impl Mismatches {
             eprintln!("{frame}\t{key}\t{detail}");
         }
         self.wrong += 1;
+        self.frames.insert(frame);
         let e = self.keys.entry(key.to_string()).or_insert((0, frame, detail));
         e.0 += 1;
     }
@@ -176,11 +178,34 @@ impl Mismatches {
 }
 
 pub struct Report {
+    /// Keys the replay compared with the reference, each with the distinct values the reference gave it.
+    pub seen: BTreeMap<String, BTreeSet<String>>,
     pub frames: usize,
     pub parameters: Mismatches,
     pub states: Mismatches,
     pub values: Mismatches,
     pub worst_value: f32,
+}
+
+impl Report {
+    /// Each menu control the recording swept and whether its effect matched the reference: every frame from its
+    /// step to the next, on every parameter, state and value, within the tolerance.
+    pub fn controls(&self, dir: &Path) -> Vec<(String, bool)> {
+        let steps = steps(dir);
+        let mut out = Vec::new();
+        for (i, s) in steps.iter().enumerate() {
+            if s.control == "-" || s.control.is_empty() || s.control.starts_with("builtin") {
+                continue;
+            }
+            let end = steps.get(i + 1).map_or(usize::MAX, |n| n.frame);
+            let bad = [&self.parameters, &self.states, &self.values].iter().any(|m| m.frames.range(s.frame..end).next().is_some());
+            match out.iter_mut().find(|(c, _): &&mut (String, bool)| *c == s.control) {
+                Some((_, ok)) => *ok &= !bad,
+                None => out.push((s.control.clone(), !bad)),
+            }
+        }
+        out
+    }
 }
 
 pub struct Run {
@@ -328,6 +353,15 @@ impl Run {
             .iter()
             .map(|k| avatar_core::animator::PLAYABLE_ORDER.iter().position(|o| o == k).unwrap())
             .collect();
+        let blink_shape = match &self.avatar.model.descriptor.eyes.eyelids {
+            avatar_core::model::Eyelids::BlendShapes { mesh, blink: Some(n), .. } => Some(Target::BlendShape(mesh.0, n.clone())),
+            _ => None,
+        };
+        // The emulator binds the animator during the blink window of its first frame, so the eyelid's bound default
+        // is the shut shape.
+        if let Some(t) = blink_shape.as_ref().filter(|_| emulator_blink(created)) {
+            anim.bind_default(t, 100.0);
+        }
         let keys: Vec<(String, Key)> = values.keys().filter_map(|k| self.key(k).map(|t| (k.clone(), t))).collect();
         let materials: Vec<String> = self.avatar.gltf["materials"]
             .as_array()
@@ -339,6 +373,7 @@ impl Run {
             by_frame.entry(s.frame).or_default().push(s);
         }
         let mut rep = Report {
+            seen: BTreeMap::new(),
             frames: 0,
             parameters: Mismatches::default(),
             states: Mismatches::default(),
@@ -396,6 +431,7 @@ impl Run {
             for p in anim.parameters().iter().filter(|p| !dynamic.contains_key(&p.name)) {
                 let Some(l) = params.get(&canonical(&p.name)) else { continue };
                 let Some(want) = at(l, f) else { continue };
+                rep.seen.entry(p.name.clone()).or_default().insert(want.to_string());
                 rep.parameters.compared += 1;
                 let want: f32 = want.parse().unwrap();
                 if want != p.value {
@@ -406,6 +442,7 @@ impl Run {
                 let key = canonical(&format!("{}:{li}:{name}", order[pi]));
                 let Some(l) = states.get(&key) else { continue };
                 let Some(want) = at(l, f) else { continue };
+                rep.seen.entry(key.clone()).or_default().insert(want.to_string());
                 rep.states.compared += 1;
                 let ours: Vec<String> = std::iter::once(cur).chain(next).collect();
                 let wants: Vec<&str> = want.split(" -> ").collect();
@@ -469,6 +506,7 @@ impl Run {
                 if want == "-" {
                     continue;
                 }
+                rep.seen.entry(k.clone()).or_default().insert(want.to_string());
                 if f == first && !matches!(key, Key::Slot(_)) {
                     rep.values.skipped += 1;
                     continue;
@@ -553,6 +591,7 @@ impl Run {
                         if !any {
                             continue;
                         }
+                        rep.seen.entry(k.clone()).or_default().insert(want.to_string());
                         let len = (q.iter().map(|x| x * x).sum::<f32>()).sqrt();
                         let unity = [-got[0], got[1], got[2]];
                         let mut uq = [q[0] / len, -q[1] / len, -q[2] / len, q[3] / len];

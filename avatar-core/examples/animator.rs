@@ -19,4 +19,10 @@ fn main() {
     println!("parameters: {}", rep.parameters.summary(limit));
     println!("states: {}", rep.states.summary(limit));
     println!("values: {} (largest difference {})", rep.values.summary(limit), rep.worst_value);
+    let controls = rep.controls(Path::new(&args[1]));
+    let matched = controls.iter().filter(|c| c.1).count();
+    println!("menu controls: {matched} of {} match", controls.len());
+    for (c, _) in controls.iter().filter(|c| !c.1).take(limit) {
+        println!("  {c}");
+    }
 }

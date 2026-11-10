@@ -271,6 +271,8 @@ pub struct Leaf {
     /// Under a direct blend tree, whose weights need not sum to one: a target only some leaves write gets no
     /// share of its default from the others.
     pub direct: bool,
+    /// Which leaf of the motion this is, counting every leaf whether or not it plays this frame.
+    pub id: u32,
 }
 
 /// Blend tree weights for each algorithm, as Unity computes them. A 1D tree evaluates both ends of the segment
@@ -457,22 +459,39 @@ fn normalize(w: &mut [f32]) {
 
 /// The clips a motion plays and their weights, given a parameter lookup.
 pub fn leaves(motion: &Motion, param: &dyn Fn(&str) -> f32, scale: Leaf, out: &mut Vec<Leaf>) {
+    let mut next = 0;
+    walk(motion, param, scale, &mut next, out);
+}
+
+fn leaf_count(motion: &Motion) -> u32 {
+    let mut ids = Vec::new();
+    super::machine::clip_ids(motion, &mut ids);
+    ids.len() as u32
+}
+
+fn walk(motion: &Motion, param: &dyn Fn(&str) -> f32, scale: Leaf, next: &mut u32, out: &mut Vec<Leaf>) {
     match motion {
-        Motion::Clip(c) => out.push(Leaf { clip: c.0, ..scale }),
+        Motion::Clip(c) => {
+            out.push(Leaf { clip: c.0, id: *next, ..scale });
+            *next += 1;
+        }
         Motion::BlendTree(tree) => {
             let direct = scale.direct || matches!(tree.algorithm, BlendAlgorithm::Direct { .. });
-            let push = |m: &Option<Motion>, w: Option<f32>, ts: f32, co: f32, out: &mut Vec<Leaf>| {
-                let Some(w) = w else { return };
-                if let Some(m) = m {
-                    let child = Leaf {
-                        clip: 0,
-                        weight: scale.weight * w,
-                        time_scale: scale.time_scale * ts,
-                        cycle_offset: scale.cycle_offset + co,
-                        direct,
-                    };
-                    leaves(m, param, child, out);
-                }
+            let mut push = |m: &Option<Motion>, w: Option<f32>, ts: f32, co: f32, out: &mut Vec<Leaf>| {
+                let Some(m) = m else { return };
+                let Some(w) = w else {
+                    *next += leaf_count(m);
+                    return;
+                };
+                let child = Leaf {
+                    clip: 0,
+                    weight: scale.weight * w,
+                    time_scale: scale.time_scale * ts,
+                    cycle_offset: scale.cycle_offset + co,
+                    direct,
+                    id: 0,
+                };
+                walk(m, param, child, next, out);
             };
             match &tree.algorithm {
                 BlendAlgorithm::Simple1D { blend_parameter, children } => {
@@ -497,7 +516,7 @@ pub fn leaves(motion: &Motion, param: &dyn Fn(&str) -> f32, scale: Leaf, out: &m
                     }
                 }
                 BlendAlgorithm::Direct { normalized_blend_values, children } => {
-                    let mut w: Vec<f32> = children.iter().map(|c| param(&c.direct_blend_parameter)).collect();
+                    let mut w: Vec<f32> = children.iter().map(|c| param(&c.direct_blend_parameter).max(0.0)).collect();
                     if *normalized_blend_values {
                         normalize(&mut w);
                     }
