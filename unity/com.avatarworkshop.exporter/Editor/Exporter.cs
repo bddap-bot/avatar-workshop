@@ -11,6 +11,20 @@ namespace AvatarWorkshop.Exporter
 {
     public static class Exporter
     {
+        // An animated component field is mirrored as its static value is: the x of a position, direction or
+        // vector, the y and z of a rotation, and a roll.
+        public static bool MirroredField(string prop)
+        {
+            var lower = prop.ToLowerInvariant();
+            int dot = lower.LastIndexOf('.');
+            if (dot < 0) return lower.EndsWith("roll");
+            var name = lower.Substring(0, dot);
+            var axis = lower.Substring(dot + 1);
+            if (name.Contains("rotation")) return axis == "y" || axis == "z";
+            if (name.Contains("position") || name.Contains("translation") || name.Contains("axis") || name.Contains("vector")) return axis == "x";
+            return false;
+        }
+
         public const string Version = "0.1.0";
 
         // Exports the avatar as the SDK would upload it: a clone, DynamicBones migrated by the SDK's own

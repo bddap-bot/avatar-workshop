@@ -188,6 +188,16 @@ pub struct Animator {
     look_y: f32,
 }
 
+pub struct LayerState {
+    pub playable: usize,
+    pub layer: usize,
+    pub name: String,
+    pub current: String,
+    pub current_time: f32,
+    pub next: Option<String>,
+    pub next_time: Option<f32>,
+}
+
 /// A target's value as the avatar was authored, which it keeps while nothing animates it.
 pub fn authored(avatar: &Avatar, t: &Target) -> f32 {
     let rest = crate::physbones::Nodes::read(avatar).map(|n| n.rest).unwrap_or_default();
@@ -548,24 +558,24 @@ impl Animator {
         self.dynamics.push((name.to_string(), value));
     }
 
-    /// Each playable layer and its controller layers' states this frame: (playable index, layer index, layer
-    /// name, state, the state it is transitioning to).
-    pub fn states(&self) -> Vec<(usize, usize, String, String, Option<String>)> {
+    /// Each playable's controller layers' states this frame, with their playable and layer indices.
+    pub fn states(&self) -> Vec<LayerState> {
         let mut out = Vec::new();
         for (pi, p) in self.playables.iter().enumerate() {
             for (li, l) in p.rt.layers.iter().enumerate() {
                 let name = |s| p.rt.names.get(&s).cloned().unwrap_or_default();
-                let (cur, next) = match &l.active {
-                    Some(a) => (
-                        match &a.from {
-                            From::State(s) => name(s.state),
-                            From::Frozen(_) => l.current.as_ref().map(|c| name(c.state)).unwrap_or_default(),
-                        },
-                        Some(name(a.to.state)),
-                    ),
-                    None => (l.current.as_ref().map_or_else(|| "#00000000".to_string(), |c| name(c.state)), None),
+                let held = l.current.as_ref();
+                let (current, current_time, next, next_time) = match &l.active {
+                    Some(a) => {
+                        let (cur, t) = match &a.from {
+                            From::State(s) => (name(s.state), s.time),
+                            From::Frozen(_) => (held.map(|c| name(c.state)).unwrap_or_default(), held.map_or(0.0, |c| c.time)),
+                        };
+                        (cur, t, Some(name(a.to.state)), Some(a.to.time))
+                    }
+                    None => (held.map_or_else(|| "#00000000".to_string(), |c| name(c.state)), held.map_or(0.0, |c| c.time), None, None),
                 };
-                out.push((pi, li, p.rt.layer_defs[li].name.clone(), cur, next));
+                out.push(LayerState { playable: pi, layer: li, name: p.rt.layer_defs[li].name.clone(), current, current_time, next, next_time });
             }
         }
         out

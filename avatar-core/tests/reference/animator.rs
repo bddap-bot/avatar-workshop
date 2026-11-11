@@ -25,6 +25,34 @@ fn graph_times(dir: &Path) -> BTreeMap<usize, f64> {
         .collect()
 }
 
+struct Clocks {
+    columns: HashMap<String, usize>,
+    frames: BTreeMap<usize, Vec<(f32, Option<f32>)>>,
+}
+
+fn clocks(dir: &Path) -> Clocks {
+    let text = text(&dir.join("clocks.tsv"));
+    let mut lines = text.lines();
+    let header: Vec<&str> = lines.next().expect("clocks.tsv has no header").split('\t').skip(1).collect();
+    let columns = header.iter().enumerate().map(|(i, k)| (k.to_string(), i)).collect();
+    let mut frames = BTreeMap::new();
+    for line in lines {
+        let mut f = line.split('\t');
+        let frame: usize = f.next().unwrap().parse().unwrap();
+        let cells: Vec<(f32, Option<f32>)> = f
+            .map(|c| match c.split_once('>') {
+                Some((cur, next)) => (cur.parse().unwrap(), Some(next.parse().unwrap())),
+                None => (c.parse().unwrap(), None),
+            })
+            .collect();
+        assert_eq!(cells.len(), header.len(), "frame {frame} of clocks.tsv holds {} of {} layers", cells.len(), header.len());
+        frames.insert(frame, cells);
+    }
+    Clocks { columns, frames }
+}
+
+const BOOLEAN_FIELDS: &[&str] = &["m_Enabled", "IsActive", "Locked", "FreezeToWorld", "SolveInLocalSpace", "RebakeOffsetsWhenUnfrozen", "allowSelf", "allowOthers", "localOnly", "UseUpTransform", "m_Active"];
+
 /// A change log: key → frame → value as recorded.
 type Log = BTreeMap<String, BTreeMap<usize, String>>;
 
@@ -142,6 +170,7 @@ enum Key {
     Locomotion,
     View,
     Curve(usize, String),
+    Binding(Target),
 }
 
 #[derive(Default)]
@@ -185,6 +214,11 @@ pub struct Report {
     pub states: Mismatches,
     pub values: Mismatches,
     pub worst_value: f32,
+    pub clocks: Mismatches,
+    pub clock_bits_differ: usize,
+    pub worst_clock: f32,
+    pub bindings: Mismatches,
+    pub worst_binding: f32,
 }
 
 impl Report {
@@ -253,6 +287,9 @@ impl Run {
         if k == "view" {
             return Some(Key::View);
         }
+        if let Some(target) = self.binding(k) {
+            return Some(Key::Binding(target));
+        }
         let (kind, rest) = k.split_once(':')?;
         Some(match kind {
             "active" => Key::Scalar(Target::NodeActive(self.node(rest)?)),
@@ -293,6 +330,27 @@ impl Run {
                 Key::Curve(p.parse().ok()?, n.to_string())
             }
             _ => return None,
+        })
+    }
+
+    fn binding(&self, k: &str) -> Option<Target> {
+        let (kind, rest) = k.split_once(':')?;
+        if kind == "muscle" {
+            return Some(Target::Muscle(rest.to_string()));
+        }
+        if !matches!(kind, "constraint" | "sender" | "receiver") {
+            return None;
+        }
+        let (rest, field) = rest.rsplit_once(':')?;
+        let (path, k) = rest.rsplit_once('#')?;
+        let node = self.node(path)?;
+        let k: usize = k.parse().ok()?;
+        let nth = |nodes: Vec<u32>| nodes.iter().enumerate().filter(|(_, n)| **n == node).nth(k).map(|(i, _)| i as u32);
+        let m = &self.avatar.model;
+        Some(match kind {
+            "constraint" => Target::Constraint(nth(m.constraints.iter().map(|c| c.node.0).collect())?, field.to_string()),
+            "sender" => Target::ContactSender(nth(m.contacts.senders.iter().map(|c| c.node.0).collect())?, field.to_string()),
+            _ => Target::ContactReceiver(nth(m.contacts.receivers.iter().map(|c| c.node.0).collect())?, field.to_string()),
         })
     }
 
@@ -379,7 +437,22 @@ impl Run {
             states: Mismatches::default(),
             values: Mismatches::default(),
             worst_value: 0.0,
+            clocks: Mismatches::default(),
+            clock_bits_differ: 0,
+            worst_clock: 0.0,
+            bindings: Mismatches::default(),
+            worst_binding: 0.0,
         };
+        let recorded: BTreeSet<&Target> = keys.iter().filter_map(|(_, k)| if let Key::Binding(t) = k { Some(t) } else { None }).collect();
+        for t in anim.targets() {
+            if matches!(t, Target::Muscle(_) | Target::Constraint(..) | Target::ContactSender(..) | Target::ContactReceiver(..)) && !recorded.contains(t) {
+                panic!("the recording holds no value of the curve binding {t:?}");
+            }
+        }
+        let held_clocks = clocks(&self.dir);
+        for f in created.min(first)..end {
+            assert!(held_clocks.frames.contains_key(&f), "the recording has no state times at frame {f}");
+        }
         for f in 0..end {
             for s in by_frame.get(&f).into_iter().flatten() {
                 for (n, v) in &s.sets {
@@ -421,7 +494,7 @@ impl Run {
                     rep.parameters.note(k, f, "missing from the core".into());
                 }
                 let ours: BTreeSet<String> =
-                    anim.states().into_iter().map(|(pi, li, name, ..)| canonical(&format!("{}:{li}:{name}", order[pi]))).collect();
+                    anim.states().into_iter().map(|s| canonical(&format!("{}:{}:{}", order[s.playable], s.layer, s.name))).collect();
                 for k in states.keys().filter(|k| !ours.contains(*k)) {
                     rep.states.compared += 1;
                     rep.states.note(k, f, "missing from the core".into());
@@ -438,8 +511,17 @@ impl Run {
                     rep.parameters.note(&p.name, f, format!("{} (want {want})", p.value));
                 }
             }
-            for (pi, li, name, cur, next) in anim.states() {
-                let key = canonical(&format!("{}:{li}:{name}", order[pi]));
+            let layer_states = anim.states();
+            if f == first {
+                let ours: BTreeSet<String> = layer_states.iter().map(|s| format!("{}:{}", order[s.playable], s.layer)).collect();
+                for k in held_clocks.columns.keys().filter(|k| !ours.contains(*k)) {
+                    rep.clocks.compared += 1;
+                    rep.clocks.note(k, f, "missing from the core".into());
+                }
+            }
+            for s in &layer_states {
+                let (cur, next) = (s.current.clone(), s.next.clone());
+                let key = canonical(&format!("{}:{}:{}", order[s.playable], s.layer, s.name));
                 let Some(l) = states.get(&key) else { continue };
                 let Some(want) = at(l, f) else { continue };
                 rep.seen.entry(key.clone()).or_default().insert(want.to_string());
@@ -451,6 +533,33 @@ impl Run {
                 let want = wants.iter().map(|w| canonical(w)).collect::<Vec<_>>().join(" -> ");
                 if got != want {
                     rep.states.note(&key, f, format!("{got} (want {want})"));
+                }
+            }
+            let cells = &held_clocks.frames[&f];
+            for s in &layer_states {
+                let (cur, next) = (s.current_time, s.next_time);
+                let key = format!("{}:{}", order[s.playable], s.layer);
+                let column = *held_clocks.columns.get(&key).unwrap_or_else(|| panic!("clocks.tsv holds no layer {key}"));
+                let (want_cur, want_next) = cells[column];
+                let mut compare = |got: f32, want: f32, which: &str| {
+                    rep.clocks.compared += 1;
+                    if got.to_bits() != want.to_bits() {
+                        rep.clock_bits_differ += 1;
+                    }
+                    let d = (got - want).abs();
+                    rep.worst_clock = rep.worst_clock.max(d);
+                    if d > 1e-3 {
+                        rep.clocks.note(&key, f, format!("{which} {got} (want {want})"));
+                    }
+                };
+                compare(cur, want_cur, "current");
+                match (next, want_next) {
+                    (Some(g), Some(w)) => compare(g, w, "next"),
+                    (None, None) => {}
+                    (g, w) => {
+                        rep.clocks.compared += 1;
+                        rep.clocks.note(&key, f, format!("next {g:?} (want {w:?})"));
+                    }
                 }
             }
             let weights = anim.weights();
@@ -506,6 +615,9 @@ impl Run {
                 if want == "-" {
                     continue;
                 }
+                if matches!(key, Key::Binding(t) if !index.contains_key(t)) {
+                    continue;
+                }
                 rep.seen.entry(k.clone()).or_default().insert(want.to_string());
                 if f == first && !matches!(key, Key::Slot(_)) {
                     rep.values.skipped += 1;
@@ -556,6 +668,22 @@ impl Run {
                             }
                             rep.worst_value = rep.worst_value.max(d);
                         }
+                    }
+                    Key::Binding(t) => {
+                        let Some(v) = animated(t) else { continue };
+                        let v = match t {
+                            Target::Constraint(_, field) | Target::ContactSender(_, field) | Target::ContactReceiver(_, field) if BOOLEAN_FIELDS.contains(&field.as_str()) || field.starts_with("Affects") || field.starts_with("m_Affect") => {
+                                (v != 0.0) as u8 as f32
+                            }
+                            _ => v,
+                        };
+                        let w: f32 = want.parse().unwrap();
+                        let d = (v - w).abs();
+                        rep.bindings.compared += 1;
+                        if d > 1e-3 {
+                            rep.bindings.note(k, f, format!("{v} (want {w})"));
+                        }
+                        rep.worst_binding = rep.worst_binding.max(d);
                     }
                     Key::Playable(_) | Key::Weight(..) | Key::Curve(..) | Key::Locomotion | Key::Tracking(_) | Key::View => {}
                     Key::Transform(n) => {

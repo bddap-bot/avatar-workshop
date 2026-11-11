@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using Lyuma.Av3Emulator.Runtime;
+using Unity.Collections;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEditor.SceneManagement;
@@ -183,6 +184,35 @@ namespace AvatarWorkshop.Reference
         }
     }
 
+    // The humanoid values the animator produced, read from its output stream: muscles the layers mixed, before the
+    // skeleton is posed from them and before anything moves its bones afterwards.
+    struct HumanOutput : IAnimationJob
+    {
+        public NativeArray<MuscleHandle> Handles;
+        public NativeArray<float> Values;
+        public NativeArray<int> Runs;
+
+        public void ProcessRootMotion(AnimationStream stream) { }
+
+        public void ProcessAnimation(AnimationStream stream)
+        {
+            if (!stream.isHumanStream) return;
+            var h = stream.AsHuman();
+            int n = 0;
+            for (int i = 0; i < Handles.Length; i++) Values[n++] = h.GetMuscle(Handles[i]);
+            n = Put(n, h.bodyLocalPosition, h.bodyLocalRotation);
+            foreach (AvatarIKGoal g in Enum.GetValues(typeof(AvatarIKGoal))) n = Put(n, h.GetGoalLocalPosition(g), h.GetGoalLocalRotation(g));
+            Runs[0]++;
+        }
+
+        int Put(int n, Vector3 p, Quaternion q)
+        {
+            Values[n++] = p.x; Values[n++] = p.y; Values[n++] = p.z;
+            Values[n++] = q.x; Values[n++] = q.y; Values[n++] = q.z; Values[n++] = q.w;
+            return n;
+        }
+    }
+
     class Step
     {
         public string Label;
@@ -243,6 +273,16 @@ namespace AvatarWorkshop.Reference
         AnimatorControllerPlayable[] dynamicsPlayables;
         readonly Dictionary<string, string> lastDynamics = new Dictionary<string, string>();
         int dynamicsFrame = -1;
+        (int playable, int layer)[] clockLayers;
+        StreamWriter clocksOut;
+        (string key, EditorCurveBinding binding)[] fields = new (string, EditorCurveBinding)[0];
+        string[] unheld = new string[0];
+        string[] humanKeys = new string[0];
+        bool[] humanHeld = new bool[0];
+        NativeArray<MuscleHandle> humanHandles;
+        NativeArray<float> humanValues;
+        NativeArray<int> humanRuns;
+        int humanSeen;
 
         StreamWriter dynamicsOut, paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, grabsOut;
         PhysBoneManager.Grab grab;
@@ -299,6 +339,8 @@ namespace AvatarWorkshop.Reference
                 Directory.CreateDirectory(output);
                 timeOut = Open("time.tsv");
                 DynamicParameters();
+                HumanStream();
+                ClockLayers();
                 return;
             }
             if (root == null)
@@ -315,6 +357,65 @@ namespace AvatarWorkshop.Reference
                 BeginStep(steps[stepIndex]);
             }
             steps[stepIndex].Each?.Invoke(this, stepFrame);
+        }
+
+        // Put between the emulator's mixer and its output, which only reads what passes through.
+        void HumanStream()
+        {
+            var animator = runtime.GetComponent<Animator>();
+            if (animator == null || !animator.isHuman) return;
+            var graph = mixer.GetGraph();
+            if (graph.GetOutputCountByType<AnimationPlayableOutput>() != 1) throw new Exception("the emulator's graph does not have one animation output");
+            var output = (AnimationPlayableOutput)graph.GetOutputByType<AnimationPlayableOutput>(0);
+            if (!output.GetSourcePlayable().Equals((Playable)mixer)) throw new Exception("the emulator's animation output does not play its mixer");
+
+            var handles = new MuscleHandle[MuscleHandle.muscleHandleCount];
+            MuscleHandle.GetMuscleHandles(handles);
+            humanHandles = new NativeArray<MuscleHandle>(handles, Allocator.Persistent);
+            var keys = handles.Select(h => "muscle:" + Fixture.Binding(h.name)).ToList();
+            var mapped = handles.Select(h => Array.IndexOf(HumanTrait.MuscleName, h.name))
+                .Select(m => m < 0 || animator.GetBoneTransform((HumanBodyBones)HumanTrait.BoneFromMuscle(m)) != null).ToList();
+            foreach (var part in new[] { "Root" }.Concat(Enum.GetNames(typeof(AvatarIKGoal))))
+                keys.AddRange(new[] { "T.x", "T.y", "T.z", "Q.x", "Q.y", "Q.z", "Q.w" }.Select(c => "muscle:" + part + c));
+            humanKeys = keys.ToArray();
+            humanHeld = mapped.Concat(Enumerable.Repeat(true, keys.Count - mapped.Count)).ToArray();
+            humanValues = new NativeArray<float>(humanKeys.Length, Allocator.Persistent);
+            humanRuns = new NativeArray<int>(1, Allocator.Persistent);
+            var job = AnimationScriptPlayable.Create(graph, new HumanOutput { Handles = humanHandles, Values = humanValues, Runs = humanRuns }, 1);
+            graph.Connect(mixer, 0, job, 0);
+            job.SetInputWeight(0, 1);
+            output.SetSourcePlayable(job);
+        }
+
+        void ClockLayers()
+        {
+            var layers = new List<(int, int)>();
+            for (int i = 0; i < playables.Count; i++)
+                if (playables[i].IsValid())
+                    for (int l = 0; l < playables[i].GetLayerCount(); l++) layers.Add((i, l));
+            clockLayers = layers.ToArray();
+            clocksOut = Open("clocks.tsv");
+            clocksOut.Write("frame\t" + string.Join("\t", clockLayers.Select(x => $"{x.playable}:{x.layer}")) + "\n");
+        }
+
+        void Clocks(string f)
+        {
+            var line = new StringBuilder(f);
+            foreach (var (i, l) in clockLayers)
+            {
+                var pl = playables[i];
+                if (!pl.IsValid()) throw new Exception($"playable {i} is gone at frame {f}");
+                line.Append('\t').Append(Clock(pl.GetCurrentAnimatorStateInfo(l), i, l, f));
+                if (pl.IsInTransition(l)) line.Append('>').Append(Clock(pl.GetNextAnimatorStateInfo(l), i, l, f));
+            }
+            clocksOut.Write(line.Append('\n').ToString());
+        }
+
+        string Clock(AnimatorStateInfo info, int playable, int layer, string f)
+        {
+            if (float.IsNaN(info.normalizedTime) || float.IsInfinity(info.normalizedTime))
+                throw new Exception($"layer {playable}:{layer} holds no state time at frame {f}: {info.normalizedTime}");
+            return F(info.normalizedTime);
         }
 
         // Taken from the playables just before the animator evaluates: contacts and PhysBones write the emulator's
@@ -414,6 +515,7 @@ namespace AvatarWorkshop.Reference
             if (!mixer.IsValid()) throw new Exception($"the emulator's playable graph is gone at frame {f}");
             timeOut.Write($"{f}\t{mixer.GetTime().ToString("R", inv)}\n");
             if (dynamicsFrame != frame) throw new Exception($"no animator values of the contact and PhysBone parameters were taken before the animator ran at frame {f}");
+            Clocks(f);
             if (root == null || stepIndex < 0) return;
             if (posedFrame != frame) throw new Exception($"no driver poses were taken before the SDK's dynamics at frame {f}");
             foreach (var (t, path) in bones) simulated[path] = LocalPose(t);
@@ -461,7 +563,7 @@ namespace AvatarWorkshop.Reference
                     if (!string.IsNullOrEmpty(p.name)) defaults[p.name] = p.defaultValue;
 
             var controllers = descriptor.baseAnimationLayers.Concat(descriptor.specialAnimationLayers ?? new VRCAvatarDescriptor.CustomAnimLayer[0])
-                .Select(l => l.animatorController as AnimatorController).Where(c => c != null).Distinct().ToList();
+                .Select(l => l.animatorController).Where(c => c != null).Distinct().ToList();
             foreach (var c in Resources.FindObjectsOfTypeAll<AnimatorController>())
                 foreach (var layer in c.layers) Names(layer.stateMachine, layer.name);
             var bindings = controllers.SelectMany(c => c.animationClips).Distinct().SelectMany(AnimationUtility.GetCurveBindings).ToList();
@@ -475,6 +577,19 @@ namespace AvatarWorkshop.Reference
                 if (shader == null) continue;
                 materialProps.Add((r, g.Key.path, prop, shader.GetPropertyType(shader.FindPropertyIndex(prop))));
             }
+            if (animator != null && animator.isHuman && animator.avatar.humanDescription.hasTranslationDoF && bindings.Any(b => b.type == typeof(Animator) && b.propertyName.Contains("TDOF")))
+                throw new Exception("the avatar has translation DoF: its TDOF curves hold values the animator's output stream cannot read");
+            fields = bindings.Where(b => typeof(Component).IsAssignableFrom(b.type)).Select(b => (b, c: root.Find(b.path)?.GetComponent(b.type)))
+                .Where(x => x.c is VRCConstraintBase || x.c is IConstraint || x.c is ContactSender || x.c is ContactReceiver)
+                .Select(x => (FieldKey(x.c, x.b.propertyName), x.b))
+                .GroupBy(x => x.Item1).Select(g => g.First())
+                .OrderBy(x => x.Item1, StringComparer.Ordinal).ToArray();
+            unheld = fields.Where(f => !AnimationUtility.GetFloatValue(root.gameObject, f.binding, out _)).Select(f => f.key)
+                .Concat(Resources.FindObjectsOfTypeAll<RuntimeAnimatorController>().SelectMany(c => c.animationClips).SelectMany(AnimationUtility.GetCurveBindings)
+                    .Where(b => b.type == typeof(Animator) && b.path == "").Select(b => "muscle:" + b.propertyName))
+                .Distinct().Except(humanKeys).ToArray();
+            var unheldSet = new HashSet<string>(unheld);
+            fields = fields.Where(f => !unheldSet.Contains(f.key)).ToArray();
             foreach (var path in bindings.Where(b => b.type == typeof(Transform)).Select(b => b.path).Distinct().OrderBy(p => p, StringComparer.Ordinal))
             {
                 var t = root.Find(path);
@@ -532,6 +647,23 @@ namespace AvatarWorkshop.Reference
             var p = property.Substring("material.".Length);
             int dot = p.LastIndexOf('.');
             return dot > 0 && p.Length - dot == 2 && "rgbaxyzw".Contains(p[dot + 1]) ? p.Substring(0, dot) : p;
+        }
+
+        string FieldKey(Component c, string field)
+        {
+            switch (c)
+            {
+                case ContactBase contact:
+                    Transform Anchor(ContactBase o) => o.rootTransform != null && o.rootTransform.IsChildOf(root) ? o.rootTransform : o.transform;
+                    var anchor = Anchor(contact);
+                    bool sender = contact is ContactSender;
+                    var peers = root.GetComponentsInChildren<ContactBase>(true)
+                        .Where(o => o.shapeType != ContactBase.ShapeType.Box && (o is ContactSender) == sender && Anchor(o) == anchor).ToList();
+                    return $"{(sender ? "sender" : "receiver")}:{PathOf(anchor)}#{peers.IndexOf(contact)}:{field}";
+                default:
+                    var all = c.GetComponents<VRCConstraintBase>().Cast<Component>().Concat(c.GetComponents<IConstraint>().Cast<Component>()).ToList();
+                    return $"constraint:{PathOf(c.transform)}#{all.IndexOf(c)}:{field}";
+            }
         }
 
         void Names(AnimatorStateMachine sm, string prefix)
@@ -747,6 +879,18 @@ namespace AvatarWorkshop.Reference
                     if (p.type == AnimatorControllerParameterType.Float && pl.IsParameterControlledByCurve(p.nameHash)) v[$"curve:{i}:{p.name}"] = F(pl.GetFloat(p.nameHash));
                 }
             }
+            if (humanKeys.Length > 0)
+            {
+                if (humanRuns[0] == humanSeen) throw new Exception($"the animator's output stream held no humanoid values at frame {frame}");
+                humanSeen = humanRuns[0];
+                for (int i = 0; i < humanKeys.Length; i++) v[humanKeys[i]] = humanHeld[i] ? F(humanValues[i]) : "-";
+            }
+            foreach (var (key, binding) in fields)
+            {
+                if (!AnimationUtility.GetFloatValue(root.gameObject, binding, out var field)) throw new Exception($"{key} has no value at frame {frame}");
+                v[key] = F(AvatarWorkshop.Exporter.Exporter.MirroredField(binding.propertyName) ? -field : field);
+            }
+            foreach (var key in unheld) v[key] = "-";
             var ik = runtime.IKTrackingOutputData;
             foreach (var (part, type) in new[] { ("head", ik.trackingHead), ("leftHand", ik.trackingLeftHand), ("rightHand", ik.trackingRightHand), ("hip", ik.trackingHip),
                 ("leftFoot", ik.trackingLeftFoot), ("rightFoot", ik.trackingRightFoot), ("leftFingers", ik.trackingLeftFingers), ("rightFingers", ik.trackingRightFingers),
@@ -1048,7 +1192,7 @@ namespace AvatarWorkshop.Reference
         void Complete()
         {
             Finished = true;
-            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, grabsOut, timeOut, dynamicsOut }) w?.Dispose();
+            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, grabsOut, timeOut, dynamicsOut, clocksOut }) w?.Dispose();
             File.WriteAllText(Path.Combine(output, "done"), frame.ToString(inv) + "\n");
             Debug.Log($"[aw-reference] recorded {frame} frames, {steps.Count} steps, {tips.Count} tips, {renderCount} renders into {output}");
             Harness.Finish(0);

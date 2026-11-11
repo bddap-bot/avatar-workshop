@@ -19,6 +19,8 @@ fn main() {
     println!("parameters: {}", rep.parameters.summary(limit));
     println!("states: {}", rep.states.summary(limit));
     println!("values: {} (largest difference {})", rep.values.summary(limit), rep.worst_value);
+    println!("state times: {} ({} not the recorded bits, largest difference {})", rep.clocks.summary(limit), rep.clock_bits_differ, rep.worst_clock);
+    println!("muscle, constraint and contact bindings: {} (largest difference {})", rep.bindings.summary(limit), rep.worst_binding);
     let controls = rep.controls(Path::new(&args[1]));
     let matched = controls.iter().filter(|c| c.1).count();
     println!("menu controls: {matched} of {} match", controls.len());

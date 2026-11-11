@@ -444,7 +444,7 @@ namespace AvatarWorkshop.Exporter
             var component = typeof(Component).IsAssignableFrom(b.type) ? t.GetComponent(b.type) : null;
             if (component is Component c)
             {
-                bool negate = MirroredField(prop);
+                bool negate = Exporter.MirroredField(prop);
                 if (physboneIndex.TryGetValue(c, out int pi)) return (new Obj { { "type", "physBone" }, { "index", pi }, { "field", prop } }, negate);
                 if (constraintIndex.TryGetValue(c, out int ci)) return (new Obj { { "type", "constraint" }, { "index", ci }, { "field", prop } }, negate);
                 if (senderIndex.TryGetValue(c, out int si)) return (new Obj { { "type", "contactSender" }, { "index", si }, { "field", prop } }, negate);
@@ -452,20 +452,6 @@ namespace AvatarWorkshop.Exporter
             }
             Drop(component == null && b.type != typeof(GameObject) ? "animation curve on a missing component" : "animated " + b.type.Name + "." + prop.Split('.')[0]);
             return (null, false);
-        }
-
-        // An animated component field is mirrored as its static value is: the x of a position, direction or
-        // vector, the y and z of a rotation, and a roll.
-        static bool MirroredField(string prop)
-        {
-            var lower = prop.ToLowerInvariant();
-            int dot = lower.LastIndexOf('.');
-            if (dot < 0) return lower.EndsWith("roll");
-            var name = lower.Substring(0, dot);
-            var axis = lower.Substring(dot + 1);
-            if (name.Contains("rotation")) return axis == "y" || axis == "z";
-            if (name.Contains("position") || name.Contains("translation") || name.Contains("axis") || name.Contains("vector")) return axis == "x";
-            return false;
         }
     }
 }

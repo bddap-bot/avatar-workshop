@@ -22,6 +22,62 @@ fn fixture_follows_the_reference() {
     assert!(controls.len() >= 9 && controls.iter().all(|c| c.1), "{controls:?}");
     // Only the transform components the animator binds are scored.
     assert!(rep.values.compared > 1_250_000, "{} values compared", rep.values.compared);
+    assert!(rep.clocks.compared > 150_000, "{} state times compared", rep.clocks.compared);
+    assert!(rep.bindings.compared > 400_000, "{} bindings compared", rep.bindings.compared);
+    for kind in ["muscle:", "constraint:", "sender:", "receiver:"] {
+        assert!(rep.seen.keys().any(|k| k.starts_with(kind)), "no {kind} binding was compared");
+    }
+    for kind in ["constraint:", "sender:", "receiver:"] {
+        assert!(!rep.bindings.keys.keys().any(|k| k.starts_with(kind)), "bindings: {}", rep.bindings.summary(20));
+    }
+    assert_eq!(wrong_keys(&rep.clocks), CLOCKS_NOT_YET_MATCHED, "state times: {}", rep.clocks.summary(20));
+    assert_eq!(wrong_keys(&rep.bindings), BINDINGS_NOT_YET_MATCHED, "bindings: {}", rep.bindings.summary(20));
+}
+
+fn wrong_keys(m: &reference::animator::Mismatches) -> Vec<(&str, usize)> {
+    m.keys.iter().map(|(k, v)| (k.as_str(), v.0)).collect()
+}
+
+const CLOCKS_NOT_YET_MATCHED: &[(&str, usize)] = &[("7:19", 4928), ("7:9", 70)];
+
+const BINDINGS_NOT_YET_MATCHED: &[(&str, usize)] = &[
+    ("muscle:Chest Front-Back", 4841),
+    ("muscle:Left Arm Down-Up", 45),
+    ("muscle:LeftHand.Index.1 Stretched", 4897),
+    ("muscle:LeftHand.Middle.1 Stretched", 4897),
+    ("muscle:Right Arm Down-Up", 45),
+    ("muscle:RightHand.Index.1 Stretched", 4897),
+    ("muscle:RightHand.Middle.1 Stretched", 4897),
+    ("muscle:Spine Twist Left-Right", 45),
+];
+
+/// A copy of the fixture's recording with one of its files rewritten.
+fn edited_recording(name: &str, file: &str, edit: impl Fn(&str) -> bool) -> std::path::PathBuf {
+    let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/reference/fixture-animator");
+    let to = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+    std::fs::create_dir_all(&to).unwrap();
+    for e in std::fs::read_dir(&from).unwrap() {
+        let e = e.unwrap();
+        std::fs::copy(e.path(), to.join(e.file_name())).unwrap();
+    }
+    let text = reference::text(&from.join(file));
+    let kept: Vec<&str> = text.lines().filter(|l| edit(l)).collect();
+    std::fs::write(to.join(file), kept.join("\n") + "\n").unwrap();
+    to
+}
+
+#[test]
+#[should_panic(expected = "no state times at frame 500")]
+fn a_recording_missing_a_frames_state_times_fails() {
+    let dir = edited_recording("clocks", "clocks.tsv", |l| !l.starts_with("500\t"));
+    Run::new(&dir, fixture()).run(None);
+}
+
+#[test]
+#[should_panic(expected = "no value of the curve binding")]
+fn a_recording_missing_a_binding_fails() {
+    let dir = edited_recording("binding", "values.tsv", |l| !l.contains("\tsender:Probe#0:m_Enabled\t"));
+    Run::new(&dir, fixture()).run(None);
 }
 
 /// Each semantic with the recorded keys that exercise it in the fixture's trace: every key must be compared with
@@ -62,6 +118,13 @@ const SEMANTICS: &[(&str, &[&str])] = &[
     ("curve binding: material property", &["mat:Body:_Color"]),
     ("curve binding: material slot", &["slot:Body:0"]),
     ("curve binding: animator parameter", &["curve:7:Driven"]),
+    ("curve binding: humanoid muscle", &["muscle:Left Upper Leg Front-Back", "muscle:Right Upper Leg Front-Back"]),
+    (
+        "curve binding: constraint field",
+        &["constraint:Probe#0:GlobalWeight", "constraint:Probe#0:Sources.source0.Weight", "constraint:Probe#0:PositionOffset.x"],
+    ),
+    ("curve binding: contact sender field", &["sender:Probe#0:m_Enabled"]),
+    ("curve binding: contact receiver field", &["receiver:Probe#0:minVelocity", "receiver:Probe#0:allowSelf"]),
     ("driver: set", &["Setter"]),
     ("driver: add", &["Counter"]),
     ("driver: random", &["Rand", "Chance"]),
@@ -78,7 +141,7 @@ const SEMANTICS: &[(&str, &[&str])] = &[
 fn each_semantic_follows_its_reference_trace() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/reference/fixture-animator");
     let rep = Run::new(&dir, fixture()).run(None);
-    let wrong = |k: &str| rep.parameters.keys.contains_key(k) || rep.states.keys.contains_key(k) || rep.values.keys.contains_key(k);
+    let wrong = |k: &str| [&rep.parameters, &rep.states, &rep.values, &rep.bindings].iter().any(|m| m.keys.contains_key(k));
     let mut problems = Vec::new();
     for (name, keys) in SEMANTICS {
         for key in *keys {

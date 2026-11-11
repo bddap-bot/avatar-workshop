@@ -608,6 +608,21 @@ namespace AvatarWorkshop.Reference
             touch.allowSelf = true;
             touch.receiverType = ContactReceiver.ReceiverType.OnEnter;
             touch.parameter = "Touched";
+
+            // Touches nothing and moves nothing: it only carries the component fields the animator's curves bind.
+            var probe = new GameObject("Probe");
+            probe.transform.SetParent(t["Hips"].root, false);
+            var constraint = probe.AddComponent<VRCPositionConstraint>();
+            constraint.Sources.Add(new VRCConstraintSource { SourceTransform = t["Hips"], Weight = 1 });
+            constraint.IsActive = true;
+            var nobodySends = probe.AddComponent<VRCContactSender>();
+            nobodySends.shapeType = ContactBase.ShapeType.Sphere; nobodySends.radius = 0.05f;
+            nobodySends.collisionTags = new List<string> { "AWNobody" };
+            var nobodyHears = probe.AddComponent<VRCContactReceiver>();
+            nobodyHears.shapeType = ContactBase.ShapeType.Sphere; nobodyHears.radius = 0.1f;
+            nobodyHears.collisionTags = new List<string> { "AWNobodyElse" };
+            nobodyHears.receiverType = ContactReceiver.ReceiverType.Proximity;
+            nobodyHears.parameter = "NobodyHeard";
         }
 
         static ExprParam P(string name, VRCExpressionParameters.ValueType type, float def, bool saved = true, bool synced = true) =>
@@ -1022,6 +1037,19 @@ namespace AvatarWorkshop.Reference
             Go(kept, swapped, 0).AddCondition(AnimatorConditionMode.If, 0, "Swap");
             Go(swapped, kept, 0).AddCondition(AnimatorConditionMode.IfNot, 0, "Swap");
 
+            var fieldsL = fx.Layer("Fields");
+            var fields = fieldsL.stateMachine.AddState("Animate"); fields.writeDefaultValues = true;
+            fields.motion = k.Make("ComponentFields", c =>
+            {
+                Curve(c, "Probe", typeof(VRCPositionConstraint), "GlobalWeight", (0, 0.2f), (1, 0.8f), (2, 0.2f));
+                Curve(c, "Probe", typeof(VRCPositionConstraint), "Sources.source0.Weight", (0, 1), (1, 0.5f), (2, 1));
+                Curve(c, "Probe", typeof(VRCPositionConstraint), "PositionOffset.x", (0, 0.1f), (1, -0.1f), (2, 0.1f));
+                Stepped(c, "Probe", typeof(VRCContactSender), "m_Enabled", (0, 1), (1, 0), (2, 1));
+                Curve(c, "Probe", typeof(VRCContactReceiver), "minVelocity", (0, 0.05f), (1, 0.2f), (2, 0.05f));
+                Stepped(c, "Probe", typeof(VRCContactReceiver), "allowSelf", (0, 1), (1, 0), (2, 1));
+            }, loop: true);
+            fieldsL.stateMachine.defaultState = fields;
+
             EditorUtility.SetDirty(ctrl);
             return ctrl;
         }
@@ -1060,7 +1088,8 @@ namespace AvatarWorkshop.Reference
             foreach (var (m, v) in values) Const(c, "", typeof(Animator), m, v);
         }
 
-        static string Binding(string muscle) => Regex.Replace(muscle, @"^(Left|Right) (Thumb|Index|Middle|Ring|Little) (\d) ", "$1Hand.$2.$3 ");
+        // A finger muscle's curve name, which differs from Unity's name for the muscle.
+        internal static string Binding(string muscle) => Regex.Replace(muscle, @"^(Left|Right) (Thumb|Index|Middle|Ring|Little) (\d Stretched|Spread)$", "$1Hand.$2.$3");
 
         static void Body(AnimationClip c)
         {

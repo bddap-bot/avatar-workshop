@@ -33,7 +33,7 @@ namespace AvatarWorkshop.Reference
             "mask.body_part", "mask.transform", "layer.additive", "layer.synced", "parameter.trigger",
             "submachine.entry", "submachine.exit", "transition.exit_time_offset",
             "state.speed_parameter", "state.time_parameter", "state.cycle_offset_parameter", "state.mirror_parameter",
-            "curve.animator_parameter", "curve.stepped", "curve.weighted", "curve.euler", "curve.material_swap",
+            "curve.animator_parameter", "curve.muscle", "curve.constraint", "curve.contact_sender", "curve.contact_receiver", "curve.stepped", "curve.weighted", "curve.euler", "curve.material_swap",
         };
 
         public static SortedDictionary<string, int> Count(GameObject root)
@@ -135,7 +135,10 @@ namespace AvatarWorkshop.Reference
         {
             foreach (var b in AnimationUtility.GetCurveBindings(clip))
             {
-                if (b.type == typeof(Animator) && parameters.Contains(b.propertyName)) add("curve.animator_parameter");
+                if (b.type == typeof(Animator) && b.path == "") add(parameters.Contains(b.propertyName) ? "curve.animator_parameter" : "curve.muscle");
+                if (typeof(VRCConstraintBase).IsAssignableFrom(b.type)) add("curve.constraint");
+                if (typeof(ContactSender).IsAssignableFrom(b.type)) add("curve.contact_sender");
+                if (typeof(ContactReceiver).IsAssignableFrom(b.type)) add("curve.contact_receiver");
                 if (b.type == typeof(Transform) && b.propertyName.Contains("EulerAngles")) add("curve.euler");
                 var keys = AnimationUtility.GetEditorCurve(clip, b).keys;
                 if (keys.Any(k => float.IsInfinity(k.inTangent) || float.IsInfinity(k.outTangent))) add("curve.stepped");
