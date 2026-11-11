@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Unity.Collections;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 using UnityEngine.Animations;
+using UnityEngine.Playables;
 using VRC.Dynamics;
 using VRC.SDK3.Avatars.Components;
 using VRC.SDK3.Avatars.ScriptableObjects;
@@ -73,7 +75,14 @@ namespace AvatarWorkshop.Exporter
                 var clips = new List<AnimationClip>();
                 o.Add("layers", Layers(clips));
                 o.Add("behaviourTypes", behaviourTypes.Select(kv => (object)new Obj { { "type", kv.Key }, { "count", kv.Value } }).ToList());
+                for (int i = 0; i < clips.Count; i++)
+                {
+                    var s = AnimationUtility.GetAnimationClipSettings(clips[i]);
+                    if (s.hasAdditiveReferencePose && s.additiveReferencePoseClip != null && !clips.Contains(s.additiveReferencePoseClip)) clips.Add(s.additiveReferencePoseClip);
+                }
                 o.Add("clips", clips.Count);
+                o.Add("clipSettings", clips.Select(c => (object)ClipSettings(c)).ToList());
+                o.Add("humanRest", HumanRest());
                 o.Add("curves", Curves(clips, Use));
                 o.Add("materials", materials.Select(m => (object)MaterialCensus(m)).ToList());
                 return o;
@@ -352,6 +361,91 @@ namespace AvatarWorkshop.Exporter
                     });
                 }
                 return o;
+            }
+
+            static Obj ClipSettings(AnimationClip c)
+            {
+                var s = AnimationUtility.GetAnimationClipSettings(c);
+                var o = new Obj { { "name", c.name }, { "loop", s.loopTime }, { "cycleOffset", s.cycleOffset }, { "hasAdditiveReferencePose", s.hasAdditiveReferencePose } };
+                if (s.hasAdditiveReferencePose && s.additiveReferencePoseClip != null)
+                    o.Add("additiveReferencePose", new Obj { { "clip", s.additiveReferencePoseClip.name }, { "time", s.additiveReferencePoseTime } });
+                o.Add("humanMotion", c.humanMotion);
+                o.Add("mirror", s.mirror);
+                o.Add("loopBlend", s.loopBlend);
+                o.Add("loopBlendOrientation", s.loopBlendOrientation);
+                o.Add("keepOriginalOrientation", s.keepOriginalOrientation);
+                o.Add("orientationOffsetY", s.orientationOffsetY);
+                o.Add("loopBlendPositionY", s.loopBlendPositionY);
+                o.Add("keepOriginalPositionY", s.keepOriginalPositionY);
+                o.Add("heightFromFeet", s.heightFromFeet);
+                o.Add("level", s.level);
+                o.Add("loopBlendPositionXZ", s.loopBlendPositionXZ);
+                o.Add("keepOriginalPositionXZ", s.keepOriginalPositionXZ);
+                return o;
+            }
+
+            struct Stream : IAnimationJob
+            {
+                public NativeArray<float> Out;
+                public NativeArray<int> Runs;
+                public void ProcessRootMotion(AnimationStream stream) { }
+                public void ProcessAnimation(AnimationStream stream)
+                {
+                    if (!stream.isHumanStream) return;
+                    var h = stream.AsHuman();
+                    var at = new (Vector3 p, Quaternion q)[]
+                    {
+                        (h.bodyLocalPosition, h.bodyLocalRotation),
+                        (h.GetGoalLocalPosition(AvatarIKGoal.LeftFoot), h.GetGoalLocalRotation(AvatarIKGoal.LeftFoot)),
+                        (h.GetGoalLocalPosition(AvatarIKGoal.RightFoot), h.GetGoalLocalRotation(AvatarIKGoal.RightFoot)),
+                        (h.GetGoalLocalPosition(AvatarIKGoal.LeftHand), h.GetGoalLocalRotation(AvatarIKGoal.LeftHand)),
+                        (h.GetGoalLocalPosition(AvatarIKGoal.RightHand), h.GetGoalLocalRotation(AvatarIKGoal.RightHand)),
+                    };
+                    for (int i = 0; i < at.Length; i++)
+                        for (int k = 0; k < 7; k++) Out[i * 7 + k] = k < 3 ? at[i].p[k] : at[i].q[k - 3];
+                    Runs[0]++;
+                }
+            }
+
+            // Measured through a clip holding every muscle at 0, where the exporter plays nothing, so the two agree only
+            // if both are Unity's rest.
+            Obj HumanRest()
+            {
+                var animator = root.GetComponent<Animator>();
+                if (animator == null || animator.avatar == null || !animator.avatar.isHuman) return null;
+                var saved = nodes.Select(t => (t, t.localPosition, t.localRotation, t.localScale)).ToList();
+                var (culling, enabled) = (animator.cullingMode, animator.enabled);
+                var values = new NativeArray<float>(35, Allocator.TempJob);
+                var runs = new NativeArray<int>(1, Allocator.TempJob);
+                var clip = new AnimationClip();
+                foreach (var m in HumanTrait.MuscleName)
+                    clip.SetCurve("", typeof(Animator), System.Text.RegularExpressions.Regex.Replace(m, @"^(Left|Right) (Thumb|Index|Middle|Ring|Little) (\d Stretched|Spread)$", "$1Hand.$2.$3"), AnimationCurve.Constant(0, 1, 0));
+                var graph = PlayableGraph.Create("census rest");
+                try
+                {
+                    animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+                    animator.enabled = true;
+                    var reader = AnimationScriptPlayable.Create(graph, new Stream { Out = values, Runs = runs }, 1);
+                    graph.Connect(AnimationClipPlayable.Create(graph, clip), 0, reader, 0);
+                    reader.SetInputWeight(0, 1);
+                    AnimationPlayableOutput.Create(graph, "census rest", animator).SetSourcePlayable(reader);
+                    graph.Evaluate(0);
+                    if (runs[0] == 0) return null;
+                    var names = new[] { "body", "leftFoot", "rightFoot", "leftHand", "rightHand" };
+                    var o = new Obj();
+                    for (int i = 0; i < names.Length; i++)
+                        o.Add(names[i], Enumerable.Range(0, 7).Select(k => (object)values[i * 7 + k]).ToList());
+                    return o;
+                }
+                finally
+                {
+                    graph.Destroy();
+                    values.Dispose();
+                    runs.Dispose();
+                    UnityEngine.Object.DestroyImmediate(clip);
+                    (animator.cullingMode, animator.enabled) = (culling, enabled);
+                    foreach (var (t, p, r, sc) in saved) { t.localPosition = p; t.localRotation = r; t.localScale = sc; }
+                }
             }
 
             Obj Curves(List<AnimationClip> clips, Action<Material> use)

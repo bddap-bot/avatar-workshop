@@ -100,6 +100,11 @@ pub struct CompiledClip {
     pub mirrored: Option<Box<CompiledClip>>,
     /// Muscles a humanoid clip has no curve for: Unity evaluates its whole human pose, these at rest.
     rest_muscles: Vec<u32>,
+    /// The clip's own mirror, combined with the state's and the blend tree's.
+    pub mirror: bool,
+    pub cycle_offset: f32,
+    /// What an additive layer measures the clip from: a clip index and seconds into it.
+    pub reference: Option<(u32, f32)>,
 }
 
 /// The rest value of a node's local rotation as Unity's Euler angles (ZXY order), in degrees, in glTF axes.
@@ -226,7 +231,21 @@ impl CompiledClip {
                 }
             }
         }
-        CompiledClip { length: clip.length, looping: clip.looping, curves, fill, euler, stepped, writes, rotations, mirrored: None, rest_muscles: Vec::new() }
+        CompiledClip {
+            length: clip.length,
+            looping: clip.looping,
+            curves,
+            fill,
+            euler,
+            stepped,
+            writes,
+            rotations,
+            mirrored: None,
+            rest_muscles: Vec::new(),
+            mirror: clip.humanoid.as_ref().is_some_and(|h| h.mirror),
+            cycle_offset: clip.cycle_offset,
+            reference: clip.additive_reference_pose.as_ref().map(|r| (r.clip.0, r.time)),
+        }
     }
 
     /// Gives a humanoid clip, and its mirror, every muscle of `muscles` it has no curve for at rest.
@@ -248,8 +267,9 @@ impl CompiledClip {
         self.writes.dedup();
     }
 
+    /// The clip as a leaf plays it: mirrored when the leaf's mirror and the clip's own differ.
     pub fn variant(&self, mirror: bool) -> &CompiledClip {
-        match (&self.mirrored, mirror) {
+        match (&self.mirrored, mirror != self.mirror) {
             (Some(m), true) => m,
             _ => self,
         }

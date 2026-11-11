@@ -690,12 +690,13 @@ namespace AvatarWorkshop.Reference
         {
             readonly string path;
             public Clips(string path) { this.path = path; }
-            public AnimationClip Make(string name, Action<AnimationClip> fill, float length = 0, bool loop = false)
+            public AnimationClip Make(string name, Action<AnimationClip> fill, float length = 0, bool loop = false, Action<AnimationClipSettings> settings = null)
             {
                 var c = new AnimationClip { name = name };
                 fill(c);
                 var s = AnimationUtility.GetAnimationClipSettings(c);
                 s.loopTime = loop;
+                settings?.Invoke(s);
                 AnimationUtility.SetAnimationClipSettings(c, s);
                 AssetDatabase.CreateAsset(c, $"{path}/{name}.anim");
                 return c;
@@ -925,7 +926,9 @@ namespace AvatarWorkshop.Reference
 
             var addL = fx.Layer("Additive", AnimatorLayerBlendingMode.Additive);
             var addS = addL.stateMachine.AddState("Add"); addS.writeDefaultValues = false;
-            addS.motion = k.Make("Additive", c => Curve(c, "Orbs/Puppet", typeof(Transform), "m_LocalPosition.z", (0, 0), (1, 0.1f), (2, 0)), loop: true);
+            var addReference = k.Make("AdditiveReference", c => Curve(c, "Orbs/Puppet", typeof(Transform), "m_LocalPosition.z", (0, 0.02f), (1, 0.06f)));
+            addS.motion = k.Make("Additive", c => Curve(c, "Orbs/Puppet", typeof(Transform), "m_LocalPosition.z", (0, 0), (1, 0.1f), (2, 0)), loop: true,
+                settings: s => { s.hasAdditiveReferencePose = true; s.additiveReferencePoseClip = addReference; s.additiveReferencePoseTime = 0.5f; });
 
             var visL = fx.Layer("Viseme");
             var visIdle = visL.stateMachine.AddState("Quiet"); visIdle.motion = empty; visIdle.writeDefaultValues = false;
@@ -1119,7 +1122,8 @@ namespace AvatarWorkshop.Reference
             var b = new Ctl("Base", ("VelocityZ", AnimatorControllerParameterType.Float), ("Seated", AnimatorControllerParameterType.Bool), ("Grounded", AnimatorControllerParameterType.Bool), ("Flip", AnimatorControllerParameterType.Bool));
             var sm = b.Layer("Locomotion").stateMachine;
             var standing = sm.AddState("Standing"); standing.writeDefaultValues = true;
-            standing.motion = k.Make("Stand", c => Muscles(c, ("Left Arm Down-Up", 0.3f), ("Right Arm Down-Up", -0.1f), ("Spine Twist Left-Right", 0.2f)));
+            standing.motion = k.Make("Stand", c => Muscles(c, ("Left Arm Down-Up", 0.3f), ("Right Arm Down-Up", -0.1f), ("Spine Twist Left-Right", 0.2f)),
+                settings: s => { s.mirror = true; s.keepOriginalOrientation = false; s.keepOriginalPositionY = true; s.loopBlendPositionXZ = true; s.keepOriginalPositionXZ = false; });
             standing.mirrorParameterActive = true; standing.mirrorParameter = "Flip";
             standing.AddStateMachineBehaviour<VRCAnimatorLocomotionControl>().disableLocomotion = false;
             var moving = sm.AddState("Moving"); moving.writeDefaultValues = true;
@@ -1128,7 +1132,18 @@ namespace AvatarWorkshop.Reference
                 Muscles(c);
                 Curve(c, "", typeof(Animator), "Left Upper Leg Front-Back", (0, 0.3f), (0.5f, -0.3f), (1, 0.3f));
                 Curve(c, "", typeof(Animator), "Right Upper Leg Front-Back", (0, -0.3f), (0.5f, 0.3f), (1, -0.3f));
-            }, loop: true);
+                Curve(c, "", typeof(Animator), "RootT.x", (0, 0), (1, 0.1f));
+                Curve(c, "", typeof(Animator), "RootT.y", (0, 1), (0.5f, 0.97f), (1, 1));
+                Curve(c, "", typeof(Animator), "RootT.z", (0, 0), (1, 0.6f));
+                Curve(c, "", typeof(Animator), "RootQ.y", (0, 0), (1, 0.130526f));
+                Curve(c, "", typeof(Animator), "RootQ.w", (0, 1), (1, 0.991445f));
+            }, loop: true, settings: s =>
+            {
+                s.cycleOffset = 0.25f; s.loopBlend = true;
+                s.loopBlendOrientation = true; s.keepOriginalOrientation = true; s.orientationOffsetY = 10;
+                s.loopBlendPositionY = true; s.keepOriginalPositionY = false; s.heightFromFeet = true; s.level = 0.05f;
+                s.loopBlendPositionXZ = false; s.keepOriginalPositionXZ = true;
+            });
             sm.defaultState = standing;
             var toMove = Go(standing, moving, 0.2f); toMove.offset = 0.2f; toMove.AddCondition(AnimatorConditionMode.Greater, 1, "VelocityZ");
             var toStand = moving.AddTransition(standing); toStand.hasExitTime = true; toStand.exitTime = 0.5f; toStand.offset = 0.3f; toStand.duration = 0.25f; toStand.hasFixedDuration = true;
@@ -1136,7 +1151,8 @@ namespace AvatarWorkshop.Reference
 
             var seated = sm.AddStateMachine("Seated");
             var sit = seated.AddState("Sit"); sit.writeDefaultValues = true;
-            sit.motion = k.Make("Sit", c => Muscles(c, ("Left Upper Leg Front-Back", 0.8f), ("Right Upper Leg Front-Back", 0.8f), ("Left Lower Leg Stretch", -0.6f), ("Right Lower Leg Stretch", -0.6f)));
+            sit.motion = k.Make("Sit", c => Muscles(c, ("Left Upper Leg Front-Back", 0.8f), ("Right Upper Leg Front-Back", 0.8f), ("Left Lower Leg Stretch", -0.6f), ("Right Lower Leg Stretch", -0.6f)),
+                settings: s => { s.keepOriginalOrientation = false; s.keepOriginalPositionY = false; s.heightFromFeet = false; s.keepOriginalPositionXZ = false; });
             sit.AddStateMachineBehaviour<VRCAnimatorLocomotionControl>().disableLocomotion = true;
             var slump = seated.AddState("Slump"); slump.writeDefaultValues = true;
             slump.motion = k.Make("Slump", c => Muscles(c, ("Spine Front-Back", 0.5f), ("Left Upper Leg Front-Back", 0.8f), ("Right Upper Leg Front-Back", 0.8f)));

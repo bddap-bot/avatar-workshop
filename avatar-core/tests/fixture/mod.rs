@@ -131,11 +131,18 @@ fn curve(binding: Binding, keys: Vec<Keyframe>) -> Curve {
     }
 }
 
+fn placed(position: Vec3, rotation: Quat) -> HumanTransform {
+    HumanTransform { position, rotation }
+}
+
 fn clip(name: &str, curves: Vec<Curve>) -> Clip {
     Clip {
         name: name.into(),
         length: 1.0 / 60.0,
         looping: false,
+        cycle_offset: 0.0,
+        additive_reference_pose: None,
+        humanoid: None,
         curves,
         slot_curves: vec![],
     }
@@ -582,6 +589,13 @@ fn model() -> AwAvatar {
             lower_leg_twist: 0.5,
             feet_spacing: 0.0,
             has_translation_do_f: false,
+            rest: Some(HumanRest {
+                body: placed([0.0; 3], [0.0, 0.0, 0.0, 1.0]),
+                left_foot: placed([-0.0737, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]),
+                right_foot: placed([-0.0737, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]),
+                left_hand: placed([0.0; 3], [0.0, 0.0, 0.0, 1.0]),
+                right_hand: placed([0.0; 3], [0.0, 0.0, 0.0, 1.0]),
+            }),
         },
         descriptor: Descriptor {
             view_position: [0.0, 1.5, 0.08],
@@ -1399,6 +1413,29 @@ fn model() -> AwAvatar {
             Clip {
                 length: 2.0,
                 looping: true,
+                cycle_offset: 0.25,
+                additive_reference_pose: Some(ReferencePose {
+                    clip: ClipIndex(0),
+                    time: 0.0,
+                }),
+                humanoid: Some(HumanoidClip {
+                    mirror: true,
+                    loop_pose: true,
+                    rotation: RootRotation {
+                        bake_into_pose: true,
+                        based_upon: RotationBasis::BodyOrientation,
+                        offset_degrees: 10.0,
+                    },
+                    height: RootHeight {
+                        bake_into_pose: true,
+                        based_upon: HeightBasis::Feet,
+                        offset: 0.05,
+                    },
+                    xz: RootXz {
+                        bake_into_pose: false,
+                        based_upon: XzBasis::Original,
+                    },
+                }),
                 ..clip(
                     "Wave",
                     vec![

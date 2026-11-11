@@ -305,6 +305,45 @@ fn unity_export_keeps_what_the_fixture_authored() {
         "the empty clip's curve on a missing object is not reported: {:?}",
         model.unsupported
     );
+    let clip = |name: &str| {
+        model
+            .clips
+            .iter()
+            .find(|c| c.name == name)
+            .unwrap_or_else(|| panic!("no clip {name}"))
+    };
+    let walk = clip("Walk");
+    let root = walk.humanoid.as_ref().expect("Walk is a humanoid clip");
+    assert_eq!(walk.cycle_offset, 0.25);
+    assert!(root.loop_pose && !root.mirror);
+    use avatar_core::model::{HeightBasis, RotationBasis, XzBasis};
+    assert_eq!(
+        (root.rotation.bake_into_pose, root.rotation.based_upon, root.rotation.offset_degrees),
+        (true, RotationBasis::Original, 10.0)
+    );
+    assert_eq!(
+        (root.height.bake_into_pose, root.height.based_upon, root.height.offset),
+        (true, HeightBasis::Feet, 0.05)
+    );
+    assert_eq!((root.xz.bake_into_pose, root.xz.based_upon), (false, XzBasis::Original));
+    let stand = clip("Stand").humanoid.as_ref().unwrap();
+    assert!(stand.mirror && stand.xz.bake_into_pose);
+    assert_eq!(
+        (stand.rotation.based_upon, stand.height.based_upon, stand.xz.based_upon),
+        (RotationBasis::BodyOrientation, HeightBasis::Original, XzBasis::CenterOfMass)
+    );
+    let sit = clip("Sit").humanoid.as_ref().unwrap();
+    assert_eq!(sit.height.based_upon, HeightBasis::CenterOfMass);
+    let additive = clip("Additive");
+    assert!(additive.humanoid.is_none());
+    let reference = additive.additive_reference_pose.as_ref().expect("the additive clip's reference pose");
+    assert_eq!(model.clips[reference.clip.0 as usize].name, "AdditiveReference");
+    assert_eq!(reference.time, 0.5);
+    let unsupported: Vec<&str> = model.unsupported.iter().map(|u| u.kind.as_str()).collect();
+    assert!(!unsupported.iter().any(|k| k.starts_with("mirrored") || k.starts_with("clip ")), "{unsupported:?}");
+    let rest = model.humanoid.rest.as_ref().expect("the fixture's humanoid rest");
+    assert_eq!((rest.body.position, rest.body.rotation), ([0.0; 3], [0.0, 0.0, 0.0, 1.0]));
+    assert!((rest.left_foot.position[0] + 0.06).abs() < 1e-6 && rest.left_foot.position[1..] == [0.0, 0.0], "Unity's foot goals rest beside the body: {rest:?}");
 }
 
 fn fx(avatar: &mut avatar_core::Avatar) -> &mut avatar_core::model::Controller {

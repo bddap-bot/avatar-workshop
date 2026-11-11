@@ -34,6 +34,10 @@ namespace AvatarWorkshop.Reference
             "submachine.entry", "submachine.exit", "transition.exit_time_offset",
             "state.speed_parameter", "state.time_parameter", "state.cycle_offset_parameter", "state.mirror_parameter",
             "curve.animator_parameter", "curve.muscle", "curve.constraint", "curve.contact_sender", "curve.contact_receiver", "curve.stepped", "curve.weighted", "curve.euler", "curve.material_swap",
+            "clip.cycle_offset", "clip.additive_reference_pose", "clip.mirror", "clip.loop_pose",
+            "clip.root_rotation.bake", "clip.root_rotation.original", "clip.root_rotation.body", "clip.root_rotation.offset",
+            "clip.root_height.bake", "clip.root_height.original", "clip.root_height.center_of_mass", "clip.root_height.feet", "clip.root_height.offset",
+            "clip.root_xz.bake", "clip.root_xz.original", "clip.root_xz.center_of_mass",
         };
 
         public static SortedDictionary<string, int> Count(GameObject root)
@@ -146,6 +150,20 @@ namespace AvatarWorkshop.Reference
             }
             foreach (var b in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 if (b.propertyName.StartsWith("m_Materials.Array.data[")) add("curve.material_swap");
+            var s = AnimationUtility.GetAnimationClipSettings(clip);
+            if (s.cycleOffset != 0) add("clip.cycle_offset");
+            if (s.hasAdditiveReferencePose && s.additiveReferencePoseClip != null) add("clip.additive_reference_pose");
+            if (!clip.humanMotion) return;
+            if (s.mirror) add("clip.mirror");
+            if (s.loopBlend) add("clip.loop_pose");
+            if (s.loopBlendOrientation) add("clip.root_rotation.bake");
+            add(s.keepOriginalOrientation ? "clip.root_rotation.original" : "clip.root_rotation.body");
+            if (s.orientationOffsetY != 0) add("clip.root_rotation.offset");
+            if (s.loopBlendPositionY) add("clip.root_height.bake");
+            add(s.keepOriginalPositionY ? "clip.root_height.original" : s.heightFromFeet ? "clip.root_height.feet" : "clip.root_height.center_of_mass");
+            if (s.level != 0) add("clip.root_height.offset");
+            if (s.loopBlendPositionXZ) add("clip.root_xz.bake");
+            add(s.keepOriginalPositionXZ ? "clip.root_xz.original" : "clip.root_xz.center_of_mass");
         }
 
         static void Machine(AnimatorStateMachine sm, AnimatorStateMachine parent, HashSet<string> parameters, HashSet<string> triggers, System.Action<string> add)

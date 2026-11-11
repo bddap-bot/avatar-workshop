@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Animations;
+using UnityEngine.Playables;
 using VRC.Dynamics;
 using VRC.Dynamics.ManagedTypes;
 using VRC.SDK3.Avatars.Components;
@@ -70,7 +72,70 @@ namespace AvatarWorkshop.Exporter
             h.Add("lowerLegTwist", desc.lowerLegTwist);
             h.Add("feetSpacing", desc.feetSpacing);
             h.Add("hasTranslationDoF", desc.hasTranslationDoF);
+            if (Rest(animator) is Obj rest) h.Add("rest", rest);
+            else Drop("humanoid rest pose Unity did not evaluate");
             return h;
+        }
+
+        struct RestJob : IAnimationJob
+        {
+            public NativeArray<float> Values;
+            public NativeArray<int> Runs;
+
+            public void ProcessRootMotion(AnimationStream stream) { }
+
+            public void ProcessAnimation(AnimationStream stream)
+            {
+                if (!stream.isHumanStream) return;
+                var h = stream.AsHuman();
+                int n = Put(0, h.bodyLocalPosition, h.bodyLocalRotation);
+                foreach (AvatarIKGoal g in Enum.GetValues(typeof(AvatarIKGoal))) n = Put(n, h.GetGoalLocalPosition(g), h.GetGoalLocalRotation(g));
+                Runs[0]++;
+            }
+
+            int Put(int n, Vector3 p, Quaternion q)
+            {
+                Values[n++] = p.x; Values[n++] = p.y; Values[n++] = p.z;
+                Values[n++] = q.x; Values[n++] = q.y; Values[n++] = q.z; Values[n++] = q.w;
+                return n;
+            }
+        }
+
+        // The humanoid stream of a graph with nothing playing holds every muscle at rest. Evaluating it poses the
+        // skeleton, so every node's transform is put back afterwards; a culling or disabled animator would not evaluate it.
+        Obj Rest(Animator animator)
+        {
+            var saved = nodes.Select(t => (t, t.localPosition, t.localRotation, t.localScale)).ToList();
+            var (culling, enabled) = (animator.cullingMode, animator.enabled);
+            var values = new NativeArray<float>(35, Allocator.TempJob);
+            var runs = new NativeArray<int>(1, Allocator.TempJob);
+            var graph = PlayableGraph.Create("avatar-workshop rest");
+            try
+            {
+                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+                animator.enabled = true;
+                var output = AnimationPlayableOutput.Create(graph, "rest", animator);
+                output.SetSourcePlayable(AnimationScriptPlayable.Create(graph, new RestJob { Values = values, Runs = runs }, 0));
+                graph.Evaluate(0);
+                if (runs[0] == 0) return null;
+                Obj Transform(int i) => new Obj
+                {
+                    { "position", new[] { values[i * 7], values[i * 7 + 1], values[i * 7 + 2] } },
+                    { "rotation", new[] { values[i * 7 + 3], values[i * 7 + 4], values[i * 7 + 5], values[i * 7 + 6] } },
+                };
+                var o = new Obj { { "body", Transform(0) } };
+                var goals = (AvatarIKGoal[])Enum.GetValues(typeof(AvatarIKGoal));
+                for (int i = 0; i < goals.Length; i++) o.Add(char.ToLowerInvariant(goals[i].ToString()[0]) + goals[i].ToString().Substring(1), Transform(i + 1));
+                return o;
+            }
+            finally
+            {
+                graph.Destroy();
+                values.Dispose();
+                runs.Dispose();
+                (animator.cullingMode, animator.enabled) = (culling, enabled);
+                foreach (var (t, p, r, sc) in saved) { t.localPosition = p; t.localRotation = r; t.localScale = sc; }
+            }
         }
 
         static Obj Rotations(VRCAvatarDescriptor.CustomEyeLookSettings.EyeRotations r) =>

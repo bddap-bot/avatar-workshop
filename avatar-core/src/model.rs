@@ -134,6 +134,27 @@ pub struct Humanoid {
     pub lower_leg_twist: f32,
     pub feet_spacing: f32,
     pub has_translation_do_f: bool,
+    /// The body and IK goals with every muscle at rest, as Unity's humanoid stream holds them: in its humanoid
+    /// space, like the humanoid curves. Absent on an avatar with no humanoid definition.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rest: Option<HumanRest>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HumanRest {
+    pub body: HumanTransform,
+    pub left_foot: HumanTransform,
+    pub right_foot: HumanTransform,
+    pub left_hand: HumanTransform,
+    pub right_hand: HumanTransform,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HumanTransform {
+    pub position: Vec3,
+    pub rotation: Quat,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -1332,8 +1353,82 @@ pub struct Clip {
     pub length: f32,
     #[serde(rename = "loop")]
     pub looping: bool,
+    /// A fraction of the length, added to the time the clip is sampled at.
+    pub cycle_offset: f32,
+    /// The pose an additive layer measures this clip's change from, in place of its first frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub additive_reference_pose: Option<ReferencePose>,
+    /// Present on a clip with humanoid curves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub humanoid: Option<HumanoidClip>,
     pub curves: Vec<Curve>,
     pub slot_curves: Vec<SlotCurve>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReferencePose {
+    pub clip: ClipIndex,
+    /// Seconds into `clip`.
+    pub time: f32,
+}
+
+/// A humanoid clip's mirror and root-motion settings, as Unity's clip settings hold them.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HumanoidClip {
+    pub mirror: bool,
+    /// Loop Pose: the end blends into the start.
+    pub loop_pose: bool,
+    pub rotation: RootRotation,
+    pub height: RootHeight,
+    pub xz: RootXz,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RootRotation {
+    pub bake_into_pose: bool,
+    pub based_upon: RotationBasis,
+    pub offset_degrees: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum RotationBasis {
+    Original,
+    BodyOrientation,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RootHeight {
+    pub bake_into_pose: bool,
+    pub based_upon: HeightBasis,
+    /// In the humanoid space's units, like `RootT`.
+    pub offset: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum HeightBasis {
+    Original,
+    CenterOfMass,
+    Feet,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RootXz {
+    pub bake_into_pose: bool,
+    pub based_upon: XzBasis,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum XzBasis {
+    Original,
+    CenterOfMass,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]

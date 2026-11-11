@@ -48,7 +48,8 @@ namespace AvatarWorkshop.Exporter
                 if (Playable.Mask(l) is AvatarMask mask) record.Add("mask", Mask(mask));
                 layers[Array.IndexOf(LayerOrder, key)] = new KeyValuePair<string, Obj>(key, record);
             }
-            foreach (var p in pendingClips) p();
+            // A clip record numbers the clip its additive reference pose names, which appends to the list.
+            for (int i = 0; i < pendingClips.Count; i++) pendingClips[i]();
             var o = new Obj();
             foreach (var kv in layers.Values) o.Add(kv.Key, kv.Value);
             return o;
@@ -395,11 +396,25 @@ namespace AvatarWorkshop.Exporter
                 else Drop(t == null ? "animation curve on a missing object" : "animated object reference " + binding.type.Name + "." + binding.propertyName.Split('.')[0]);
             }
             var settings = AnimationUtility.GetAnimationClipSettings(clip);
-            if (settings.mirror) Drop("mirrored clip");
-            if (settings.cycleOffset != 0) Drop("clip cycle offset");
-            if (settings.hasAdditiveReferencePose) Drop("clip additive reference pose");
-            return new Obj { { "name", clip.name }, { "length", clip.length }, { "loop", settings.loopTime }, { "curves", curves }, { "slotCurves", slots } };
+            var o = new Obj { { "name", clip.name }, { "length", clip.length }, { "loop", settings.loopTime }, { "cycleOffset", settings.cycleOffset } };
+            if (settings.hasAdditiveReferencePose)
+            {
+                if (settings.additiveReferencePoseClip == null) Drop("clip additive reference pose with no clip");
+                else o.Add("additiveReferencePose", new Obj { { "clip", Clip(settings.additiveReferencePoseClip) }, { "time", settings.additiveReferencePoseTime } });
+            }
+            if (clip.humanMotion) o.Add("humanoid", HumanoidClip(settings));
+            o.Add("curves", curves);
+            o.Add("slotCurves", slots);
+            return o;
         }
+
+        static Obj HumanoidClip(AnimationClipSettings s) => new Obj
+        {
+            { "mirror", s.mirror }, { "loopPose", s.loopBlend },
+            { "rotation", new Obj { { "bakeIntoPose", s.loopBlendOrientation }, { "basedUpon", s.keepOriginalOrientation ? "original" : "bodyOrientation" }, { "offsetDegrees", s.orientationOffsetY } } },
+            { "height", new Obj { { "bakeIntoPose", s.loopBlendPositionY }, { "basedUpon", s.keepOriginalPositionY ? "original" : s.heightFromFeet ? "feet" : "centerOfMass" }, { "offset", s.level } } },
+            { "xz", new Obj { { "bakeIntoPose", s.loopBlendPositionXZ }, { "basedUpon", s.keepOriginalPositionXZ ? "original" : "centerOfMass" } } },
+        };
 
         Transform Path(string path)
         {

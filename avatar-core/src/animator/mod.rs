@@ -951,7 +951,7 @@ impl Animator {
                 }
                 let (reference, now): (HashMap<u32, f32>, HashMap<u32, (f32, f32)>) = match &p.rt.layers[li].current {
                     Some(c) => (
-                        motion_pose(&p.rt, li, c.state, 0.0, &[], clips, &self.defaults).into_iter().map(|(t, (v, _))| (t, v)).collect(),
+                        motion_pose(&p.rt, li, c.state, Sample::Reference, &[], clips, &self.defaults).into_iter().map(|(t, (v, _))| (t, v)).collect(),
                         playing_pose(&p.rt, li, c, clips, &self.defaults).into_iter().map(|(t, (v, _))| (t, (v, 1.0))).collect(),
                     ),
                     None => (HashMap::new(), HashMap::new()),
@@ -1280,13 +1280,25 @@ fn pulled(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32]
 
 /// A playing state's pose, its motion sampled where its time parameter puts it.
 fn playing_pose(rt: &ControllerRt, layer: usize, p: &machine::Playing, clips: &[CompiledClip], defaults: &[f32]) -> HashMap<u32, (f32, bool)> {
-    motion_pose(rt, layer, p.state, rt.sampled(layer, p.state, p.time), &p.direct_starts, clips, defaults)
+    motion_pose(rt, layer, p.state, Sample::At(rt.sampled(layer, p.state, p.time)), &p.direct_starts, clips, defaults)
 }
 
 /// One motion at one normalized time: the value of every target it writes, and whether only an animated
 /// transform's undriven components put it there. Under a direct blend tree, what only leaves at weight zero bind is
 /// not written.
-fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, time: f32, starts: &[(u32, f32)], clips: &[CompiledClip], defaults: &[f32]) -> HashMap<u32, (f32, bool)> {
+#[derive(Clone, Copy)]
+enum Sample {
+    /// A normalized state time.
+    At(f32),
+    /// The pose an additive layer subtracts: each clip's reference pose, or its first frame.
+    Reference,
+}
+
+fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, sample: Sample, starts: &[(u32, f32)], clips: &[CompiledClip], defaults: &[f32]) -> HashMap<u32, (f32, bool)> {
+    let time = match sample {
+        Sample::At(t) => t,
+        Sample::Reference => 0.0,
+    };
     let mut ls: Vec<Leaf> = Vec::new();
     rt.state_leaves(layer, state, &mut ls);
     let offset = rt.cycle_offset(layer, state);
@@ -1311,9 +1323,23 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, ti
         let began = starts.iter().find(|(id, _)| *id == l.id).map_or(0.0, |&(_, t)| t);
         let elapsed = time - began;
         let at = if l.time_scale < 0.0 { 1.0 - (elapsed + offset) } else { elapsed + offset };
-        c.sample(at + l.cycle_offset, defaults, &mut |t, v| {
-            own.insert(t, v);
-        });
+        match (sample, c.reference) {
+            (Sample::Reference, Some((r, seconds))) => {
+                let r = &clips[r as usize];
+                let r = if c.mirror == r.mirror { r.variant(l.mirror) } else { r.variant(!l.mirror) };
+                r.sample(if r.length > 0.0 { seconds / r.length } else { 0.0 }, defaults, &mut |t, v| {
+                    if c.writes.binary_search(&t).is_ok() {
+                        own.insert(t, v);
+                    }
+                });
+            }
+            (Sample::Reference, None) => c.sample(at + l.cycle_offset, defaults, &mut |t, v| {
+                own.insert(t, v);
+            }),
+            (Sample::At(_), _) => c.sample(at + l.cycle_offset + c.cycle_offset, defaults, &mut |t, v| {
+                own.insert(t, v);
+            }),
+        }
         if !direct {
             for t in acc.keys() {
                 own.entry(*t).or_insert(defaults[*t as usize]);

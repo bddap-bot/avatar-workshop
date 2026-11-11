@@ -131,6 +131,8 @@ impl Check<'_> {
         self.parameters_and_menu();
         self.layers();
         self.curves();
+        self.clip_settings();
+        self.human_rest();
         self.materials();
         self.inactive();
         self.components();
@@ -747,6 +749,149 @@ impl Check<'_> {
         }
         let by: Vec<String> = model.iter().filter(|(_, n)| **n > 0).map(|(k, n)| format!("{n} {k}")).collect();
         self.report.line(&format!("curves by binding ({})", by.join(", ")), ut, format!("{mt} + {reported} reported"), faults);
+    }
+
+    fn clip_settings(&mut self) {
+        use avatar_core::model::{HeightBasis, HumanoidClip, RotationBasis, XzBasis};
+        const SETTINGS: [&str; 12] = [
+            "loop", "cycleOffset", "additiveReferencePose", "mirror", "loopPose", "rotationBakeIntoPose", "rotationBasedUpon",
+            "rotationOffsetDegrees", "heightBakeIntoPose", "heightBasedUpon", "heightOffset", "xzBakeIntoPose",
+        ];
+        const ALL: [&str; 13] = [
+            SETTINGS[0], SETTINGS[1], SETTINGS[2], SETTINGS[3], SETTINGS[4], SETTINGS[5], SETTINGS[6], SETTINGS[7], SETTINGS[8],
+            SETTINGS[9], SETTINGS[10], SETTINGS[11], "xzBasedUpon",
+        ];
+        type Settings = (String, BTreeMap<&'static str, Value>);
+        let model = self.model();
+        let humanoid_settings = |h: Option<&HumanoidClip>| -> [Value; 10] {
+            let Some(h) = h else {
+                return [json!(false), json!(false), json!(false), json!("bodyOrientation"), jf(0.0), json!(false), json!("centerOfMass"), jf(0.0), json!(false), json!("centerOfMass")];
+            };
+            let rotation = match h.rotation.based_upon {
+                RotationBasis::Original => "original",
+                RotationBasis::BodyOrientation => "bodyOrientation",
+            };
+            let height = match h.height.based_upon {
+                HeightBasis::Original => "original",
+                HeightBasis::CenterOfMass => "centerOfMass",
+                HeightBasis::Feet => "feet",
+            };
+            let xz = match h.xz.based_upon {
+                XzBasis::Original => "original",
+                XzBasis::CenterOfMass => "centerOfMass",
+            };
+            [
+                json!(h.mirror), json!(h.loop_pose), json!(h.rotation.bake_into_pose), json!(rotation), jf(h.rotation.offset_degrees),
+                json!(h.height.bake_into_pose), json!(height), jf(h.height.offset), json!(h.xz.bake_into_pose), json!(xz),
+            ]
+        };
+        let record = |name: &str, looping: Value, cycle: Value, reference: Value, humanoid: bool, h: [Value; 10]| -> Settings {
+            let mut v: BTreeMap<&'static str, Value> = ALL[3..].iter().copied().zip(h).collect();
+            v.extend([("loop", looping), ("cycleOffset", cycle), ("additiveReferencePose", reference), ("humanoid", json!(humanoid))]);
+            (name.to_string(), v)
+        };
+        let model_settings: Vec<Settings> = model
+            .clips
+            .iter()
+            .map(|c| {
+                let reference = c.additive_reference_pose.as_ref().map_or(Value::Null, |r| json!({ "clip": model.clips[r.clip.0 as usize].name, "time": jf(r.time) }));
+                record(&c.name, json!(c.looping), jf(c.cycle_offset), reference, c.humanoid.is_some(), humanoid_settings(c.humanoid.as_ref()))
+            })
+            .collect();
+        let census = arr(&self.census["clipSettings"]);
+        let lost_reference = census.iter().filter(|c| c["hasAdditiveReferencePose"] == json!(true) && c["additiveReferencePose"].is_null()).count();
+        let unity_settings: Vec<Settings> = census
+            .iter()
+            .map(|c| {
+                let reference = match &c["additiveReferencePose"] {
+                    Value::Null => Value::Null,
+                    r => json!({ "clip": r["clip"], "time": jf(num(&r["time"])) }),
+                };
+                let humanoid = c["humanMotion"] == json!(true);
+                let flag = |k: &str| json!(humanoid && c[k] == json!(true));
+                let h = if humanoid {
+                    let t = |k: &str| c[k] == json!(true);
+                    [
+                        flag("mirror"), flag("loopBlend"), flag("loopBlendOrientation"),
+                        json!(if t("keepOriginalOrientation") { "original" } else { "bodyOrientation" }),
+                        jf(num(&c["orientationOffsetY"])), flag("loopBlendPositionY"),
+                        json!(if t("keepOriginalPositionY") { "original" } else if t("heightFromFeet") { "feet" } else { "centerOfMass" }),
+                        jf(num(&c["level"])), flag("loopBlendPositionXZ"),
+                        json!(if t("keepOriginalPositionXZ") { "original" } else { "centerOfMass" }),
+                    ]
+                } else {
+                    humanoid_settings(None)
+                };
+                record(c["name"].as_str().unwrap_or(""), c["loop"].clone(), jf(num(&c["cycleOffset"])), reference, humanoid, h)
+            })
+            .collect();
+        let mut faults = vec![];
+        let reported = self.unsupported("clip additive reference pose with no clip");
+        if lost_reference != reported {
+            faults.push(format!("{lost_reference} additive reference poses with no clip, {reported} reported"));
+        }
+        let humanoid = |s: &[Settings]| s.iter().filter(|(_, v)| v["humanoid"] == json!(true)).count();
+        let (uh, mh) = (humanoid(&unity_settings), humanoid(&model_settings));
+        if uh != mh {
+            faults.push(format!("Unity {uh} humanoid clips, model {mh}"));
+        }
+        self.report.line("humanoid clips", uh, mh, faults);
+        let neutral = humanoid_settings(None);
+        for (i, k) in ALL.into_iter().enumerate() {
+            let pairs = |s: &[Settings]| {
+                let mut p: Vec<String> = s.iter().map(|(n, v)| format!("{n} = {}", v[k])).collect();
+                p.sort();
+                p
+            };
+            let (u, mut rest) = (pairs(&unity_settings), pairs(&model_settings));
+            let mut faults = vec![];
+            let mut equal = 0;
+            for x in &u {
+                match rest.iter().position(|y| y == x) {
+                    Some(j) => {
+                        rest.swap_remove(j);
+                        equal += 1;
+                    }
+                    None => faults.push(format!("Unity clip {x} has no model clip equal to it")),
+                }
+            }
+            faults.extend(rest.iter().map(|x| format!("model clip {x} is not Unity's")));
+            let unset = match i {
+                0 => json!(false),
+                1 => jf(0.0),
+                2 => Value::Null,
+                _ => neutral[i - 3].clone(),
+            };
+            let set = unity_settings.iter().filter(|(_, v)| v[k] != unset).count();
+            self.report.line(&format!("clip setting {k} ({set} not the default)"), u.len(), equal, faults);
+        }
+    }
+
+    fn human_rest(&mut self) {
+        let unity = &self.census["humanRest"];
+        let mut faults = vec![];
+        let reported = self.unsupported("humanoid rest pose Unity did not evaluate");
+        let Some(rest) = &self.model().humanoid.rest else {
+            if !unity.is_null() {
+                faults.push("Unity's humanoid stream holds rest values the model lacks".into());
+            } else if !self.model().humanoid.bones.is_empty() && reported != 1 {
+                faults.push(format!("a humanoid avatar without rest values, {reported} reported"));
+            }
+            self.report.line("humanoid rest (body and IK goals)", 0, 0, faults);
+            return;
+        };
+        let model = [("body", &rest.body), ("leftFoot", &rest.left_foot), ("rightFoot", &rest.right_foot), ("leftHand", &rest.left_hand), ("rightHand", &rest.right_hand)];
+        let mut equal = 0;
+        for (k, g) in model {
+            let u: Vec<f32> = arr(&unity[k]).iter().map(num).collect();
+            let m: Vec<f32> = g.position.iter().chain(&g.rotation).copied().collect();
+            if u.len() == m.len() && u.iter().zip(&m).all(|(a, b)| same(*a, *b)) {
+                equal += 1;
+            } else {
+                faults.push(format!("{k}: Unity {u:?}, model {m:?}"));
+            }
+        }
+        self.report.line("humanoid rest (body and IK goals)", model.len(), equal, faults);
     }
 
     fn materials(&mut self) {

@@ -57,7 +57,7 @@ mirroring X:
 
 These stay as Unity holds them:
 - scales;
-- humanoid curves (muscles, root and IK goals), which are in Unity's humanoid space;
+- humanoid curves (muscles, root and IK goals) and the humanoid rest values, which are in Unity's humanoid space;
 - a PhysBone's per-bone curves (`curve` on a field, the limit rotation's `xCurve`/`yCurve`/`zCurve`), which scale
   its mirrored value;
 - blendshape curve values, on Unity's scale where a shape's last frame weight is fully applied. A node's glTF
@@ -74,7 +74,7 @@ by its mesh's `extras.targetNames` entry.
 | Section | Contents |
 |---|---|
 | `source` | importer name and version, source format, licence text and author as found in the source (absent when the source has none; never invented) |
-| `humanoid` | Unity HumanBodyBones name → node; the source's rest pose as given (no assumed T-pose); muscle limits from the human description |
+| `humanoid` | Unity HumanBodyBones name → node; the source's rest pose as given (no assumed T-pose); muscle limits from the human description; the body and the four IK goals as Unity's humanoid stream holds them with every muscle at rest |
 | `descriptor` | view position, lip-sync mode and the 15 viseme blendshapes, eyelid mode and shapes, eye bones and their rotation limits |
 | `renderers` | per mesh node: initially enabled, material slots |
 | `nodes` | per node: active as the uploaded avatar holds it; the evaluation core's animator applies the default states |
@@ -87,7 +87,7 @@ by its mesh's `extras.targetNames` entry.
 | `menu` | controls as authored: name, type, parameter, value, sub-parameters, labels, icon, submenu |
 | `layers` | the playable layers (base, additive, gesture, action, FX, sitting, T-pose, IK pose) each with the controller and mask it runs (the SDK's default controller and imposed mask where the avatar keeps the default): layers with weight, blending (override/additive), avatar mask and sync source; state machines with sub-machines kept; states with speed and its parameter, cycle offset, mirror, motion, write defaults, behaviours; transitions with conditions, exit time, duration (fixed or normalised), offset, interruption source, ordered interruption, can-transition-to-self; blend trees with their algorithm (1D, 2D simple directional, 2D freeform directional, 2D freeform cartesian, direct) and children |
 | `behaviours` | parameter drivers (set, add, random, copy with ranges, local only), tracking control, locomotion control, playable and animator layer control, temporary pose space; play-audio reported unsupported |
-| `clips` | length, loop, and curves with Hermite keys (value, in/out tangents and weights). Each curve binds a typed property: node active, renderer enabled, blendshape weight, material property by name (on the first of the renderer's materials whose shader declares it), material slot (a real material swap), node translation/rotation/scale, humanoid muscle, animator parameter, physbone/constraint/contact field |
+| `clips` | length, loop, cycle offset, additive reference pose (a clip and a time), and on a humanoid clip its mirror, loop pose and root-motion settings (bake into pose and based-upon for rotation, height and XZ, and the rotation and height offsets) as Unity's clip settings hold them; and curves with Hermite keys (value, in/out tangents and weights). Each curve binds a typed property: node active, renderer enabled, blendshape weight, material property by name (on the first of the renderer's materials whose shader declares it), material slot (a real material swap), node translation/rotation/scale, humanoid muscle, animator parameter, physbone/constraint/contact field |
 | `unsupported` | every source component or property the importer could not represent, by kind and count, e.g. particles, audio sources, unknown shaders |
 
 The JSON schema is generated from the core's types, so the schema, the reader and the writer cannot drift.

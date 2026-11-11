@@ -383,6 +383,17 @@
         },
         "hasTranslationDoF": {
           "type": "boolean"
+        },
+        "rest": {
+          "description": "The body and IK goals with every muscle at rest, as Unity's humanoid stream holds them: in its humanoid\nspace, like the humanoid curves. Absent on an avatar with no humanoid definition.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HumanRest"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false,
@@ -510,6 +521,62 @@
         "position",
         "rotation",
         "scale"
+      ]
+    },
+    "HumanRest": {
+      "type": "object",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/HumanTransform"
+        },
+        "leftFoot": {
+          "$ref": "#/$defs/HumanTransform"
+        },
+        "rightFoot": {
+          "$ref": "#/$defs/HumanTransform"
+        },
+        "leftHand": {
+          "$ref": "#/$defs/HumanTransform"
+        },
+        "rightHand": {
+          "$ref": "#/$defs/HumanTransform"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "body",
+        "leftFoot",
+        "rightFoot",
+        "leftHand",
+        "rightHand"
+      ]
+    },
+    "HumanTransform": {
+      "type": "object",
+      "properties": {
+        "position": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "rotation": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "position",
+        "rotation"
       ]
     },
     "Descriptor": {
@@ -4174,6 +4241,33 @@
         "loop": {
           "type": "boolean"
         },
+        "cycleOffset": {
+          "description": "A fraction of the length, added to the time the clip is sampled at.",
+          "type": "number",
+          "format": "float"
+        },
+        "additiveReferencePose": {
+          "description": "The pose an additive layer measures this clip's change from, in place of its first frame.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReferencePose"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "humanoid": {
+          "description": "Present on a clip with humanoid curves.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HumanoidClip"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "curves": {
           "type": "array",
           "items": {
@@ -4192,8 +4286,138 @@
         "name",
         "length",
         "loop",
+        "cycleOffset",
         "curves",
         "slotCurves"
+      ]
+    },
+    "ReferencePose": {
+      "type": "object",
+      "properties": {
+        "clip": {
+          "$ref": "#/$defs/ClipIndex"
+        },
+        "time": {
+          "description": "Seconds into `clip`.",
+          "type": "number",
+          "format": "float"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "clip",
+        "time"
+      ]
+    },
+    "HumanoidClip": {
+      "description": "A humanoid clip's mirror and root-motion settings, as Unity's clip settings hold them.",
+      "type": "object",
+      "properties": {
+        "mirror": {
+          "type": "boolean"
+        },
+        "loopPose": {
+          "description": "Loop Pose: the end blends into the start.",
+          "type": "boolean"
+        },
+        "rotation": {
+          "$ref": "#/$defs/RootRotation"
+        },
+        "height": {
+          "$ref": "#/$defs/RootHeight"
+        },
+        "xz": {
+          "$ref": "#/$defs/RootXz"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "mirror",
+        "loopPose",
+        "rotation",
+        "height",
+        "xz"
+      ]
+    },
+    "RootRotation": {
+      "type": "object",
+      "properties": {
+        "bakeIntoPose": {
+          "type": "boolean"
+        },
+        "basedUpon": {
+          "$ref": "#/$defs/RotationBasis"
+        },
+        "offsetDegrees": {
+          "type": "number",
+          "format": "float"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bakeIntoPose",
+        "basedUpon",
+        "offsetDegrees"
+      ]
+    },
+    "RotationBasis": {
+      "type": "string",
+      "enum": [
+        "original",
+        "bodyOrientation"
+      ]
+    },
+    "RootHeight": {
+      "type": "object",
+      "properties": {
+        "bakeIntoPose": {
+          "type": "boolean"
+        },
+        "basedUpon": {
+          "$ref": "#/$defs/HeightBasis"
+        },
+        "offset": {
+          "description": "In the humanoid space's units, like `RootT`.",
+          "type": "number",
+          "format": "float"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bakeIntoPose",
+        "basedUpon",
+        "offset"
+      ]
+    },
+    "HeightBasis": {
+      "type": "string",
+      "enum": [
+        "original",
+        "centerOfMass",
+        "feet"
+      ]
+    },
+    "RootXz": {
+      "type": "object",
+      "properties": {
+        "bakeIntoPose": {
+          "type": "boolean"
+        },
+        "basedUpon": {
+          "$ref": "#/$defs/XzBasis"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bakeIntoPose",
+        "basedUpon"
+      ]
+    },
+    "XzBasis": {
+      "type": "string",
+      "enum": [
+        "original",
+        "centerOfMass"
       ]
     },
     "Curve": {
