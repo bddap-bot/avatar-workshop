@@ -298,8 +298,9 @@ impl ControllerRt {
     /// The leaves of a state's motion with the state's own time settings applied.
     pub fn state_leaves(&self, layer: usize, id: StateId, out: &mut Vec<Leaf>) {
         let Some(m) = self.motion(layer, id) else { return };
+        let mirror = self.state(layer, id).is_some_and(|s| s.mirror_parameter.as_ref().map_or(s.mirror, |n| self.get(n) != 0.0));
         let get = |n: &str| self.get(n);
-        leaves(&m, &get, Leaf { clip: 0, weight: 1.0, time_scale: 1.0, cycle_offset: 0.0, direct: false, id: 0 }, out);
+        leaves(&m, &get, Leaf { clip: 0, weight: 1.0, time_scale: 1.0, cycle_offset: 0.0, direct: false, id: 0, mirror }, out);
     }
 
     /// Seconds of the state's motion at speed 1.
@@ -333,11 +334,16 @@ impl ControllerRt {
         }
     }
 
-    /// A playing state's normalized time after `dt`: its time parameter's value when it has one.
+    /// A playing state's normalized time after `dt`, which runs on under a time parameter.
     fn advanced(&self, layer: usize, p: &Playing, dt: f32, clips: &[CompiledClip]) -> f32 {
-        match self.state(layer, p.state).and_then(|s| s.time_parameter.as_ref()) {
+        p.time + dt * self.rate(layer, p.state, clips)
+    }
+
+    /// The normalized time a state's motion is sampled at: its time parameter's value when it has one.
+    pub fn sampled(&self, layer: usize, id: StateId, time: f32) -> f32 {
+        match self.state(layer, id).and_then(|s| s.time_parameter.as_ref()) {
             Some(n) => self.get(n),
-            None => p.time + dt * self.rate(layer, p.state, clips),
+            None => time,
         }
     }
 
@@ -475,7 +481,11 @@ impl ControllerRt {
         }
         let Some(cur) = self.layers[li].current.clone() else { return };
         let prev = cur.time;
-        if self.layers[li].active.is_some() {
+        if let Some(a) = &self.layers[li].active {
+            if matches!(a.from, From::State(_)) {
+                let t = self.advanced(li, &cur, dt, clips);
+                self.layers[li].current.as_mut().unwrap().time = t;
+            }
             if self.interrupt(li, clips, entered, frozen) {
                 return;
             }

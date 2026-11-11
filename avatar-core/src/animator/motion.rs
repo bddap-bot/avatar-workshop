@@ -96,6 +96,10 @@ pub struct CompiledClip {
     /// Every target this clip writes, sorted.
     pub writes: Vec<u32>,
     pub rotations: Vec<[u32; 4]>,
+    /// The clip played mirrored, when it has humanoid curves: Unity mirrors only those.
+    pub mirrored: Option<Box<CompiledClip>>,
+    /// Muscles a humanoid clip has no curve for: Unity evaluates its whole human pose, these at rest.
+    rest_muscles: Vec<u32>,
 }
 
 /// The rest value of a node's local rotation as Unity's Euler angles (ZXY order), in degrees, in glTF axes.
@@ -142,6 +146,12 @@ pub fn target_of(binding: &Binding) -> Option<Target> {
 
 impl CompiledClip {
     pub fn compile(clip: &Clip, targets: &mut Targets) -> CompiledClip {
+        let mut c = Self::compile_as_is(clip, targets);
+        c.mirrored = mirror_clip(clip).map(|m| Box::new(Self::compile_as_is(&m, targets)));
+        c
+    }
+
+    fn compile_as_is(clip: &Clip, targets: &mut Targets) -> CompiledClip {
         let mut curves = Vec::new();
         let mut euler: Vec<EulerGroup> = Vec::new();
         for c in &clip.curves {
@@ -216,7 +226,37 @@ impl CompiledClip {
                 }
             }
         }
-        CompiledClip { length: clip.length, looping: clip.looping, curves, fill, euler, stepped, writes, rotations }
+        CompiledClip { length: clip.length, looping: clip.looping, curves, fill, euler, stepped, writes, rotations, mirrored: None, rest_muscles: Vec::new() }
+    }
+
+    /// Gives a humanoid clip, and its mirror, every muscle of `muscles` it has no curve for at rest.
+    pub fn complete_human_pose(&mut self, muscles: &[u32], targets: &Targets) {
+        let human = |c: &CompiledClip| c.curves.iter().any(|(t, _)| matches!(targets.list[*t as usize], Target::Muscle(_)));
+        if !human(self) {
+            return;
+        }
+        self.rest_unbound_muscles(muscles);
+        if let Some(m) = self.mirrored.as_deref_mut() {
+            m.rest_unbound_muscles(muscles);
+        }
+    }
+
+    fn rest_unbound_muscles(&mut self, muscles: &[u32]) {
+        self.rest_muscles = muscles.iter().copied().filter(|t| !self.curves.iter().any(|x| x.0 == *t)).collect();
+        self.writes.extend(self.rest_muscles.iter().copied());
+        self.writes.sort_unstable();
+        self.writes.dedup();
+    }
+
+    pub fn variant(&self, mirror: bool) -> &CompiledClip {
+        match (&self.mirrored, mirror) {
+            (Some(m), true) => m,
+            _ => self,
+        }
+    }
+
+    pub fn bindings(&self) -> impl Iterator<Item = u32> + '_ {
+        self.writes.iter().chain(self.mirrored.iter().flat_map(|m| m.writes.iter())).copied()
     }
 
     /// The clip time for a normalized state time.
@@ -233,7 +273,7 @@ impl CompiledClip {
         for (target, curve) in &self.curves {
             out(*target, curve.evaluate(t));
         }
-        for &t in &self.fill {
+        for &t in self.fill.iter().chain(&self.rest_muscles) {
             out(t, defaults[t as usize]);
         }
         for g in &self.euler {
@@ -261,6 +301,27 @@ impl CompiledClip {
     }
 }
 
+/// A clip with its humanoid curves mirrored, or None when it has none.
+fn mirror_clip(clip: &Clip) -> Option<Clip> {
+    if !clip.curves.iter().any(|c| matches!(c.binding, Binding::Muscle { .. })) {
+        return None;
+    }
+    let mut m = clip.clone();
+    for c in &mut m.curves {
+        let Binding::Muscle { name } = &c.binding else { continue };
+        let (other, negate) = super::human::mirrored(name);
+        c.binding = Binding::Muscle { name: other };
+        if negate {
+            for k in &mut c.curve.keys {
+                k.value = -k.value;
+                k.in_tangent = -k.in_tangent;
+                k.out_tangent = -k.out_tangent;
+            }
+        }
+    }
+    Some(m)
+}
+
 /// A leaf of a motion's blend: a clip, its weight, and the time scale and cycle offset its tree path applies.
 #[derive(Clone, Copy, Debug)]
 pub struct Leaf {
@@ -273,6 +334,8 @@ pub struct Leaf {
     pub direct: bool,
     /// Which leaf of the motion this is, counting every leaf whether or not it plays this frame.
     pub id: u32,
+    /// Whether the state and the tree path above it mirror the clip, each mirror undoing the one above.
+    pub mirror: bool,
 }
 
 /// Blend tree weights for each algorithm, as Unity computes them. A 1D tree evaluates both ends of the segment
@@ -477,7 +540,7 @@ fn walk(motion: &Motion, param: &dyn Fn(&str) -> f32, scale: Leaf, next: &mut u3
         }
         Motion::BlendTree(tree) => {
             let direct = scale.direct || matches!(tree.algorithm, BlendAlgorithm::Direct { .. });
-            let mut push = |m: &Option<Motion>, w: Option<f32>, ts: f32, co: f32, out: &mut Vec<Leaf>| {
+            let mut push = |m: &Option<Motion>, w: Option<f32>, ts: f32, co: f32, mirror: bool, out: &mut Vec<Leaf>| {
                 let Some(m) = m else { return };
                 let Some(w) = w else {
                     *next += leaf_count(m);
@@ -490,6 +553,7 @@ fn walk(motion: &Motion, param: &dyn Fn(&str) -> f32, scale: Leaf, next: &mut u3
                     cycle_offset: scale.cycle_offset + co,
                     direct,
                     id: 0,
+                    mirror: scale.mirror ^ mirror,
                 };
                 walk(m, param, child, next, out);
             };
@@ -498,7 +562,7 @@ fn walk(motion: &Motion, param: &dyn Fn(&str) -> f32, scale: Leaf, next: &mut u3
                     let th: Vec<f32> = children.iter().map(|c| c.threshold).collect();
                     let w = weights_1d(&th, param(blend_parameter));
                     for (c, w) in children.iter().zip(w) {
-                        push(&c.motion, w, c.time_scale, c.cycle_offset, out);
+                        push(&c.motion, w, c.time_scale, c.cycle_offset, c.mirror, out);
                     }
                 }
                 BlendAlgorithm::SimpleDirectional2D { blend_parameter, blend_parameter_y, children }
@@ -512,7 +576,7 @@ fn walk(motion: &Motion, param: &dyn Fn(&str) -> f32, scale: Leaf, next: &mut u3
                         _ => weights_cartesian(&pts, p),
                     };
                     for (c, w) in children.iter().zip(w) {
-                        push(&c.motion, (w != 0.0).then_some(w), c.time_scale, c.cycle_offset, out);
+                        push(&c.motion, (w != 0.0).then_some(w), c.time_scale, c.cycle_offset, c.mirror, out);
                     }
                 }
                 BlendAlgorithm::Direct { normalized_blend_values, children } => {
@@ -521,7 +585,7 @@ fn walk(motion: &Motion, param: &dyn Fn(&str) -> f32, scale: Leaf, next: &mut u3
                         normalize(&mut w);
                     }
                     for (c, w) in children.iter().zip(w) {
-                        push(&c.motion, (w != 0.0).then_some(w), c.time_scale, c.cycle_offset, out);
+                        push(&c.motion, (w != 0.0).then_some(w), c.time_scale, c.cycle_offset, c.mirror, out);
                     }
                 }
             }

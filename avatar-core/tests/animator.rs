@@ -23,33 +23,14 @@ fn fixture_follows_the_reference() {
     // Only the transform components the animator binds are scored.
     assert!(rep.values.compared > 1_250_000, "{} values compared", rep.values.compared);
     assert!(rep.clocks.compared > 150_000, "{} state times compared", rep.clocks.compared);
+    assert_eq!(rep.clock_bits_differ, 0, "state times not the recorded bits");
     assert!(rep.bindings.compared > 400_000, "{} bindings compared", rep.bindings.compared);
     for kind in ["muscle:", "constraint:", "sender:", "receiver:"] {
         assert!(rep.seen.keys().any(|k| k.starts_with(kind)), "no {kind} binding was compared");
     }
-    for kind in ["constraint:", "sender:", "receiver:"] {
-        assert!(!rep.bindings.keys.keys().any(|k| k.starts_with(kind)), "bindings: {}", rep.bindings.summary(20));
-    }
-    assert_eq!(wrong_keys(&rep.clocks), CLOCKS_NOT_YET_MATCHED, "state times: {}", rep.clocks.summary(20));
-    assert_eq!(wrong_keys(&rep.bindings), BINDINGS_NOT_YET_MATCHED, "bindings: {}", rep.bindings.summary(20));
+    assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
+    assert_eq!(rep.bindings.wrong, 0, "bindings: {}", rep.bindings.summary(20));
 }
-
-fn wrong_keys(m: &reference::animator::Mismatches) -> Vec<(&str, usize)> {
-    m.keys.iter().map(|(k, v)| (k.as_str(), v.0)).collect()
-}
-
-const CLOCKS_NOT_YET_MATCHED: &[(&str, usize)] = &[("7:19", 4928), ("7:9", 70)];
-
-const BINDINGS_NOT_YET_MATCHED: &[(&str, usize)] = &[
-    ("muscle:Chest Front-Back", 4841),
-    ("muscle:Left Arm Down-Up", 45),
-    ("muscle:LeftHand.Index.1 Stretched", 4897),
-    ("muscle:LeftHand.Middle.1 Stretched", 4897),
-    ("muscle:Right Arm Down-Up", 45),
-    ("muscle:RightHand.Index.1 Stretched", 4897),
-    ("muscle:RightHand.Middle.1 Stretched", 4897),
-    ("muscle:Spine Twist Left-Right", 45),
-];
 
 /// A copy of the fixture's recording with one of its files rewritten.
 fn edited_recording(name: &str, file: &str, edit: impl Fn(&str) -> bool) -> std::path::PathBuf {
@@ -92,7 +73,7 @@ const SEMANTICS: &[(&str, &[&str])] = &[
         &["GestureLeft", "Viseme", "VelocityZ", "Upright", "Grounded", "Seated"],
     ),
     ("base playable", &["0:0:Locomotion"]),
-    ("additive playable", &["=1:0:Breathe"]),
+    ("additive playable, which leaves the humanoid pose alone", &["=1:0:Breathe", "=muscle:Chest Front-Back"]),
     ("sitting playable", &["2:0:Sit", "playable:2"]),
     ("gesture playable", &["5:0:LeftHand", "5:1:RightHand"]),
     ("action playable", &["6:0:Action", "playable:6"]),
@@ -119,6 +100,8 @@ const SEMANTICS: &[(&str, &[&str])] = &[
     ("curve binding: material slot", &["slot:Body:0"]),
     ("curve binding: animator parameter", &["curve:7:Driven"]),
     ("curve binding: humanoid muscle", &["muscle:Left Upper Leg Front-Back", "muscle:Right Upper Leg Front-Back"]),
+    ("mirror parameter", &["Flip", "muscle:Left Arm Down-Up", "muscle:Right Arm Down-Up", "muscle:Spine Twist Left-Right"]),
+    ("humanoid layer mask", &["muscle:Left Arm Down-Up", "muscle:Spine Front-Back"]),
     (
         "curve binding: constraint field",
         &["constraint:Probe#0:GlobalWeight", "constraint:Probe#0:Sources.source0.Weight", "constraint:Probe#0:PositionOffset.x"],
@@ -170,7 +153,7 @@ fn a_negative_direct_weight_contributes_nothing() {
     }));
     let param = |n: &str| if n == "a" { -163.0 } else { 0.5 };
     let mut out = Vec::new();
-    leaves(&tree, &param, Leaf { clip: 0, weight: 1.0, time_scale: 1.0, cycle_offset: 0.0, direct: false, id: 0 }, &mut out);
+    leaves(&tree, &param, Leaf { clip: 0, weight: 1.0, time_scale: 1.0, cycle_offset: 0.0, direct: false, id: 0, mirror: false }, &mut out);
     assert_eq!(out.iter().map(|l| (l.clip, l.weight)).collect::<Vec<_>>(), vec![(1, 0.5)]);
 }
 
@@ -226,4 +209,98 @@ fn an_animated_material_property_defaults_from_the_first_material_declaring_it()
     assert_eq!(value(&avatar, "_Unknown"), 0.0);
     avatar.model.materials[n - 2].declared.insert("_Probe".into(), MaterialProperty::Float(1.0));
     assert_eq!(value(&avatar, "_Probe"), 1.0);
+}
+
+fn muscle(name: &str, value: f32) -> avatar_core::model::Curve {
+    use avatar_core::model::{AnimationCurve, Binding, Curve, Keyframe, WeightedMode};
+    let key = Keyframe { time: 0.0, value, in_tangent: 0.0, out_tangent: 0.0, in_weight: 1.0 / 3.0, out_weight: 1.0 / 3.0, weighted_mode: WeightedMode::None };
+    Curve { binding: Binding::Muscle { name: name.into() }, curve: AnimationCurve { keys: vec![key] } }
+}
+
+fn clip_mut<'a>(avatar: &'a mut avatar_core::Avatar, name: &str) -> &'a mut avatar_core::model::Clip {
+    avatar.model.clips.iter_mut().find(|c| c.name == name).unwrap()
+}
+
+fn value(a: &Animator, name: &str) -> f32 {
+    let t = avatar_core::animator::motion::Target::Muscle(name.into());
+    a.values()[a.targets().iter().position(|x| *x == t).unwrap()]
+}
+
+/// The fixture with left finger bones, whose base pose bends the index and ring fingers the gesture layer's clips
+/// leave alone or set.
+fn fingered() -> avatar_core::Avatar {
+    use avatar_core::model::{HumanBodyBone, HumanBone};
+    let mut avatar = fixture();
+    let hand = avatar.model.humanoid.bones[&HumanBodyBone::LeftHand].node;
+    for b in [HumanBodyBone::LeftIndexProximal, HumanBodyBone::LeftMiddleProximal, HumanBodyBone::LeftRingProximal] {
+        avatar.model.humanoid.bones.insert(b, HumanBone { node: hand, limit: None });
+    }
+    clip_mut(&mut avatar, "Stand").curves.extend([muscle("LeftHand.Index.1 Stretched", 0.5), muscle("LeftHand.Ring.1 Stretched", 0.5)]);
+    avatar
+}
+
+fn run(a: &mut Animator, frames: usize) {
+    for _ in 0..frames {
+        a.step(1.0 / 60.0);
+    }
+}
+
+/// A humanoid clip is a whole pose: when the gesture layer's clips have curves for the index and middle fingers
+/// alone, its open hand rests the ring finger over the base layer's bend.
+#[test]
+fn a_humanoid_clip_writes_a_whole_pose() {
+    let mut avatar = fingered();
+    for clip in ["LeftOpen", "LeftFist", "RightOpen", "RightFist"] {
+        clip_mut(&mut avatar, clip).curves.retain(|c| matches!(&c.binding, avatar_core::model::Binding::Muscle { name } if name.contains("Index.1") || name.contains("Middle.1")));
+    }
+    let mut a = Animator::new(&avatar);
+    run(&mut a, 10);
+    assert_eq!((value(&a, "LeftHand.Index.1 Stretched"), value(&a, "LeftHand.Ring.1 Stretched")), (1.0, 0.0));
+}
+
+/// A controller covers the muscles it binds with its last output while a motionless state writes nothing.
+#[test]
+fn a_controller_holds_what_a_motionless_state_leaves() {
+    let mut avatar = fingered();
+    let gesture = avatar.model.layers.get_mut(&avatar_core::model::PlayableLayerType::Gesture).unwrap();
+    let avatar_core::model::LayerContent::StateMachine { state_machine } = &mut gesture.controller.as_mut().unwrap().layers[0].content else { panic!() };
+    state_machine.states.iter_mut().find(|s| s.name == "Open").unwrap().motion = None;
+    let mut a = Animator::new(&avatar);
+    a.set_builtin("GestureLeft", 1.0);
+    run(&mut a, 30);
+    assert_eq!(value(&a, "LeftHand.Index.1 Stretched"), -1.0);
+    a.set_builtin("GestureLeft", 0.0);
+    run(&mut a, 30);
+    assert_eq!(value(&a, "LeftHand.Index.1 Stretched"), -1.0);
+}
+
+#[test]
+fn body_and_goal_rotations_rest_at_the_identity_and_stay_unit() {
+    use avatar_core::animator::{authored, motion::Target};
+    let mut avatar = fixture();
+    for (n, w) in [("RootQ.w", 1.0), ("LeftFootQ.w", 1.0), ("RootQ.x", 0.0), ("RootT.y", 0.0)] {
+        assert_eq!(authored(&avatar, &Target::Muscle(n.into())), w, "{n}");
+    }
+    clip_mut(&mut avatar, "Stand").curves.extend([muscle("RootQ.x", 0.0), muscle("RootQ.y", 0.0), muscle("RootQ.z", 0.0), muscle("RootQ.w", 0.5)]);
+    let mut a = Animator::new(&avatar);
+    run(&mut a, 3);
+    assert_eq!(value(&a, "RootQ.w"), 1.0);
+}
+
+#[test]
+fn component_fields_default_to_their_authored_values() {
+    use avatar_core::animator::{authored, motion::Target};
+    let mut avatar = fixture();
+    let m = &mut avatar.model;
+    m.constraints[0].weight = 0.7;
+    m.constraints[0].sources[0].weight = 0.4;
+    m.contacts.receivers[0].enabled = true;
+    m.physbones[0].collision = avatar_core::model::Permission { allow_self: true, allow_others: false };
+    m.physbones[0].grabbing = avatar_core::model::Permission { allow_self: true, allow_others: true };
+    let field = |t: Target| authored(&avatar, &t);
+    assert_eq!(field(Target::Constraint(0, "GlobalWeight".into())), 0.7);
+    assert_eq!(field(Target::Constraint(0, "Sources.source0.Weight".into())), 0.4);
+    assert_eq!(field(Target::ContactReceiver(0, "m_Enabled".into())), 1.0);
+    assert_eq!(field(Target::PhysBone(0, "allowCollision".into())), 2.0);
+    assert_eq!(field(Target::PhysBone(0, "allowGrabbing".into())), 1.0);
 }

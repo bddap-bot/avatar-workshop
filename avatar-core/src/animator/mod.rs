@@ -3,6 +3,7 @@
 
 mod face;
 mod machine;
+pub mod human;
 pub mod motion;
 mod random;
 
@@ -114,6 +115,11 @@ struct Playable {
     /// Per layer, every slot of each renderer it binds a slot of: Unity writes a renderer's slots together.
     slots: Vec<Vec<u32>>,
     layer_masks: Vec<Option<Mask>>,
+    /// The humanoid values the controller outputs whatever its layers write, with their last values: Unity's human
+    /// stream is whole, so a controller covers every muscle it binds, holding what nothing writes this frame.
+    human: Vec<(u32, f32)>,
+    /// Per target, whether it is one of `human`.
+    whole: Vec<bool>,
 }
 
 #[derive(Clone)]
@@ -167,6 +173,10 @@ pub struct Animator {
     /// The head bone's pose in the avatar's space after this frame's animation, from the host.
     head: Option<crate::physbones::Transform>,
     pose_spaces: Vec<PoseSpace>,
+    /// Muscles of bones the avatar lacks, which Unity's human stream holds at rest.
+    boneless: Vec<u32>,
+    /// The body's and IK goals' rotation components, which Unity's human pose holds as unit quaternions.
+    human_rotations: Vec<[u32; 4]>,
     clips: Vec<CompiledClip>,
     defaults: Vec<f32>,
     values: Vec<f32>,
@@ -245,8 +255,77 @@ fn default_of(avatar: &Avatar, t: &Target, rest: &[crate::physbones::Transform])
             .find(|r| r.node.0 == *n)
             .and_then(|r| r.materials.get(*s as usize))
             .map_or(-1.0, |x| x.0 as f32),
-        Target::PhysBone(i, f) if f == "m_Enabled" => {
-            m.physbones.get(*i as usize).map_or(1.0, |p| p.enabled as u8 as f32)
+        Target::PhysBone(i, f) => m.physbones.get(*i as usize).map_or(0.0, |p| {
+            let permission = |x: &crate::model::Permission| match (x.allow_self, x.allow_others) {
+                (false, false) => 0.0,
+                (true, true) => 1.0,
+                _ => 2.0,
+            };
+            match f.as_str() {
+                "m_Enabled" => p.enabled as u8 as f32,
+                "allowCollision" => permission(&p.collision),
+                "allowGrabbing" => permission(&p.grabbing),
+                "allowPosing" => permission(&p.posing),
+                _ => 0.0,
+            }
+        }),
+        Target::Muscle(n) if human::goal(n).is_some_and(|(_, c)| c == "Q.w") => 1.0,
+        Target::Constraint(i, f) => m.constraints.get(*i as usize).map_or(0.0, |c| constraint_field(c, f)),
+        Target::ContactSender(i, f) => m.contacts.senders.get(*i as usize).map_or(0.0, |c| match f.as_str() {
+            "m_Enabled" => c.enabled as u8 as f32,
+            _ => 0.0,
+        }),
+        Target::ContactReceiver(i, f) => m.contacts.receivers.get(*i as usize).map_or(0.0, |c| match f.as_str() {
+            "m_Enabled" => c.enabled as u8 as f32,
+            "allowSelf" => c.allow_self as u8 as f32,
+            "allowOthers" => c.allow_others as u8 as f32,
+            "localOnly" => c.local_only as u8 as f32,
+            "minVelocity" => match c.receiver_type {
+                crate::model::ReceiverType::OnEnter { min_velocity } => min_velocity,
+                _ => 0.0,
+            },
+            _ => 0.0,
+        }),
+        _ => 0.0,
+    }
+}
+
+/// A constraint field's authored value, by the name a curve binds it with, signed as the model holds it.
+fn constraint_field(c: &crate::model::Constraint, field: &str) -> f32 {
+    use crate::model::ConstraintKind::*;
+    let (name, axis) = match field.rsplit_once('.') {
+        Some((n, a)) if a.len() == 1 && "xyz".contains(a) => (n, Some("xyz".find(a).unwrap())),
+        _ => (field, None),
+    };
+    if let Some(rest) = name.strip_prefix("Sources.source") {
+        let Some((k, f)) = rest.split_once('.') else { return 0.0 };
+        let Some(src) = k.parse::<usize>().ok().and_then(|k| c.sources.get(k)) else { return 0.0 };
+        return match (f, axis) {
+            ("Weight", None) => src.weight,
+            ("ParentPositionOffset", Some(a)) => src.position_offset[a],
+            ("ParentRotationOffset", Some(a)) => src.rotation_offset[a],
+            _ => 0.0,
+        };
+    }
+    let channel = |which: &str| match (&c.kind, which) {
+        (Parent { position, .. } | Position { position }, "Position") => Some(position),
+        (Parent { rotation, .. } | Rotation { rotation } | Aim { rotation, .. } | LookAt { rotation, .. }, "Rotation") => Some(rotation),
+        (Scale { scale }, "Scale") => Some(scale),
+        _ => None,
+    };
+    match (name, axis) {
+        ("m_Enabled", None) => c.enabled as u8 as f32,
+        ("IsActive", None) => c.is_active as u8 as f32,
+        ("GlobalWeight", None) => c.weight,
+        ("FreezeToWorld", None) => c.freeze_to_world as u8 as f32,
+        ("SolveInLocalSpace", None) => c.solve_in_local_space as u8 as f32,
+        (n, Some(a)) => {
+            let (which, part) = ["Offset", "AtRest"].iter().find_map(|p| n.strip_suffix(p).map(|w| (w, *p))).unwrap_or((n, ""));
+            match (channel(which), part) {
+                (Some(ch), "Offset") => ch.offset[a],
+                (Some(ch), "AtRest") => ch.at_rest[a],
+                _ => 0.0,
+            }
         }
         _ => 0.0,
     }
@@ -261,51 +340,16 @@ fn controlled(l: ControlledLayer) -> PlayableLayerType {
     }
 }
 
-/// The humanoid body part a Unity muscle or root curve belongs to.
-pub fn muscle_part(name: &str) -> BodyPart {
-    if name.starts_with("Root") || name.starts_with("Motion") {
-        return BodyPart::Root;
-    }
-    for (prefix, part) in [
-        ("LeftFootT", BodyPart::LeftFootIK),
-        ("LeftFootQ", BodyPart::LeftFootIK),
-        ("RightFootT", BodyPart::RightFootIK),
-        ("RightFootQ", BodyPart::RightFootIK),
-        ("LeftHandT", BodyPart::LeftHandIK),
-        ("LeftHandQ", BodyPart::LeftHandIK),
-        ("RightHandT", BodyPart::RightHandIK),
-        ("RightHandQ", BodyPart::RightHandIK),
-        ("LeftHand.", BodyPart::LeftFingers),
-        ("RightHand.", BodyPart::RightFingers),
-    ] {
-        if name.starts_with(prefix) {
-            return part;
-        }
-    }
-    let lower = name.to_ascii_lowercase();
-    if lower.starts_with("left") {
-        if ["upper leg", "lower leg", "foot", "toes"].iter().any(|k| lower.contains(k)) {
-            return BodyPart::LeftLeg;
-        }
-        return BodyPart::LeftArm;
-    }
-    if lower.starts_with("right") {
-        if ["upper leg", "lower leg", "foot", "toes"].iter().any(|k| lower.contains(k)) {
-            return BodyPart::RightLeg;
-        }
-        return BodyPart::RightArm;
-    }
-    if ["neck", "head", "eye", "jaw"].iter().any(|k| lower.contains(k)) {
-        return BodyPart::Head;
-    }
-    BodyPart::Body
-}
-
 impl Animator {
     pub fn new(avatar: &Avatar) -> Animator {
         let m = &avatar.model;
         let mut targets = Targets::default();
-        let clips: Vec<CompiledClip> = m.clips.iter().map(|c| CompiledClip::compile(c, &mut targets)).collect();
+        let mut clips: Vec<CompiledClip> = m.clips.iter().map(|c| CompiledClip::compile(c, &mut targets)).collect();
+        let muscle_targets: Vec<u32> =
+            (0..targets.len() as u32).filter(|&t| matches!(&targets.list[t as usize], Target::Muscle(n) if human::goal(n).is_none())).collect();
+        for c in &mut clips {
+            c.complete_human_pose(&muscle_targets, &targets);
+        }
         let face = face::Face::new(&m.descriptor, &mut targets);
         let anim_params = |c: u32| -> Vec<String> {
             clips[c as usize]
@@ -317,12 +361,14 @@ impl Animator {
                 })
                 .collect()
         };
+        let rest = crate::physbones::Nodes::read(avatar).map(|n| n.rest).unwrap_or_default();
+        let defaults: Vec<f32> = targets.list.iter().map(|t| default_of(avatar, t, &rest)).collect();
         let mut playables = Vec::new();
         for kind in PLAYABLE_ORDER {
             let Some(layer) = m.layers.get(&kind) else { continue };
             let Some(c) = &layer.controller else { continue };
             let rt = ControllerRt::new(c, &clips, &anim_params);
-            let mut bound: Vec<u32> = rt.clip_ids().iter().flat_map(|&c| clips[c as usize].writes.iter().copied()).collect();
+            let mut bound: Vec<u32> = rt.clip_ids().iter().flat_map(|&c| clips[c as usize].bindings()).collect();
             bound.sort_unstable();
             bound.dedup();
             let slots = (0..c.layers.len())
@@ -336,7 +382,10 @@ impl Animator {
                     (0..targets.len() as u32).filter(|&t| matches!(targets.list[t as usize], Target::Slot(n, _) if renderers.contains(&n))).collect()
                 })
                 .collect();
-            let muscles = layer.mask.as_ref().map(|mk| mk.body_parts.iter().copied().collect());
+            let muscles = match kind {
+                PlayableLayerType::Additive => Some(vec![]),
+                _ => layer.mask.as_ref().map(|mk| mk.body_parts.iter().copied().collect()),
+            };
             let layer_masks = c
                 .layers
                 .iter()
@@ -354,7 +403,7 @@ impl Animator {
             let mut binders = vec![0u8; targets.len()];
             let mut drives_parameters = Vec::new();
             for li in 0..c.layers.len() {
-                let mut ts: Vec<u32> = rt.layer_clip_ids(li).iter().flat_map(|&c| clips[c as usize].writes.iter().copied()).collect();
+                let mut ts: Vec<u32> = rt.layer_clip_ids(li).iter().flat_map(|&c| clips[c as usize].bindings()).collect();
                 drives_parameters.push(ts.iter().any(|&t| matches!(targets.list[t as usize], Target::AnimatorParameter(_))));
                 ts.sort_unstable();
                 ts.dedup();
@@ -362,8 +411,24 @@ impl Animator {
                     binders[t as usize] = binders[t as usize].saturating_add(1);
                 }
             }
+            let writable = |part: BodyPart| {
+                muscles.as_ref().is_none_or(|ps: &Vec<BodyPart>| ps.contains(&part))
+                    && c.layers.iter().any(|l| l.mask.as_ref().is_none_or(|mk| mk.body_parts.contains(&part)))
+            };
+            let human = bound
+                .iter()
+                .filter(|&&t| match &targets.list[t as usize] {
+                    Target::Muscle(n) => writable(human::part(n)),
+                    _ => false,
+                })
+                .map(|&t| (t, defaults[t as usize]))
+                .collect::<Vec<_>>();
+            let mut whole = vec![false; targets.len()];
+            human.iter().for_each(|&(t, _)| whole[t as usize] = true);
             playables.push(Playable {
                 kind,
+                human,
+                whole,
                 rt,
                 binders,
                 drives_parameters,
@@ -376,8 +441,6 @@ impl Animator {
                 layer_masks,
             });
         }
-        let rest = crate::physbones::Nodes::read(avatar).map(|n| n.rest).unwrap_or_default();
-        let defaults: Vec<f32> = targets.list.iter().map(|t| default_of(avatar, t, &rest)).collect();
 
         let mut parameters = Vec::new();
         let mut index = HashMap::new();
@@ -427,12 +490,24 @@ impl Animator {
             Some((s, rest_m.rotation.inverse() * (s * view - rest_m.translation)))
         });
         let mut curved = vec![false; targets.list.len()];
-        for c in &clips {
+        for c in clips.iter().flat_map(|c| std::iter::once(c).chain(c.mirrored.as_deref())) {
             for &t in c.writes.iter().filter(|t| !c.fill.contains(t)) {
                 curved[t as usize] = true;
             }
         }
+        let human_rotations = human::GOALS
+            .iter()
+            .filter_map(|(g, _)| {
+                let id = |c: &str| targets.index_of(&Target::Muscle(format!("{g}Q.{c}"))).map(|i| i as u32);
+                Some([id("x")?, id("y")?, id("z")?, id("w")?])
+            })
+            .collect();
+        let boneless = (0..targets.len() as u32)
+            .filter(|&t| matches!(&targets.list[t as usize], Target::Muscle(n) if human::bone(n).is_some_and(|b| !m.humanoid.bones.contains_key(&b))))
+            .collect();
         let mut a = Animator {
+            boneless,
+            human_rotations,
             held: vec![true; curved.len()],
             curved,
             tracking: [TrackingType::NoChange; 10],
@@ -749,8 +824,24 @@ impl Animator {
         let sum = (0..n).map(|i| cov[i] * if self.held[i] && !self.targets.list[i].discrete() { prev[i] } else { self.defaults[i] }).collect();
         let mut acc = Accum { sum, cov, touched: vec![false; n], held: self.held.clone() };
         for pi in 0..self.playables.len() {
+            let pw = self.playables[pi].weight;
+            let below: Vec<(f32, f32, bool)> = self.playables[pi]
+                .human
+                .iter()
+                .map(|&(t, v)| {
+                    let i = t as usize;
+                    let b = (acc.sum[i], acc.cov[i], acc.touched[i]);
+                    (acc.sum[i], acc.cov[i], acc.touched[i]) = (v, 1.0, true);
+                    b
+                })
+                .collect();
             let params = self.evaluate(pi, &clips, &prev, &mut acc);
             let p = &mut self.playables[pi];
+            for (h, (s0, c0, t0)) in p.human.iter_mut().zip(below) {
+                let i = h.0 as usize;
+                h.1 = acc.sum[i];
+                (acc.sum[i], acc.cov[i], acc.touched[i]) = (s0 * (1.0 - pw) + h.1 * pw, c0 * (1.0 - pw) + pw, t0 || pw > 0.0);
+            }
             if p.weight > 0.0 {
                 for (i, v) in params {
                     let k = p.rt.params[i].kind;
@@ -781,6 +872,15 @@ impl Animator {
                 acc.held[t as usize] &= !self.curved[t as usize];
             }
         }
+        for &t in &self.boneless {
+            out[t as usize] = self.defaults[t as usize];
+        }
+        for q in &self.human_rotations {
+            let len = q.iter().map(|&t| out[t as usize] * out[t as usize]).sum::<f32>().sqrt();
+            if len > 0.0 {
+                q.iter().for_each(|&t| out[t as usize] /= len);
+            }
+        }
         self.clips = clips;
         self.values = out;
         self.head = None;
@@ -793,7 +893,8 @@ impl Animator {
         let p = &self.playables[pi];
         let mut own: HashMap<u32, (f32, f32)> = HashMap::new();
         for li in 0..p.rt.layers.len() {
-            let wl = if li == 0 { 1.0 } else { p.rt.layers[li].weight } * p.weight;
+            let lw = if li == 0 { 1.0 } else { p.rt.layers[li].weight };
+            let wl = lw * p.weight;
             if wl <= 0.0 {
                 continue;
             }
@@ -814,13 +915,13 @@ impl Animator {
             let mask = &p.layer_masks[li];
             let passes = |i: usize| -> bool {
                 if let (Target::Muscle(name), Some(parts)) = (&self.targets.list[i], &p.muscles) {
-                    if !parts.contains(&muscle_part(name)) {
+                    if !parts.contains(&human::part(name)) {
                         return false;
                     }
                 }
                 let Some(mk) = mask else { return true };
                 match &self.targets.list[i] {
-                    Target::Muscle(name) => mk.parts.contains(&muscle_part(name)),
+                    Target::Muscle(name) => mk.parts.contains(&human::part(name)),
                     other => match (&mk.nodes, node_of(other)) {
                         (Some(nodes), Some(n)) => nodes.get(&n).copied().unwrap_or(false),
                         _ => true,
@@ -851,7 +952,7 @@ impl Animator {
                 let (reference, now): (HashMap<u32, f32>, HashMap<u32, (f32, f32)>) = match &p.rt.layers[li].current {
                     Some(c) => (
                         motion_pose(&p.rt, li, c.state, 0.0, &[], clips, &self.defaults).into_iter().map(|(t, (v, _))| (t, v)).collect(),
-                        motion_pose(&p.rt, li, c.state, c.time, &c.direct_starts, clips, &self.defaults).into_iter().map(|(t, (v, _))| (t, (v, 1.0))).collect(),
+                        playing_pose(&p.rt, li, c, clips, &self.defaults).into_iter().map(|(t, (v, _))| (t, (v, 1.0))).collect(),
                     ),
                     None => (HashMap::new(), HashMap::new()),
                 };
@@ -863,12 +964,12 @@ impl Animator {
                     match now.get(&t) {
                         Some(&(v, c)) => {
                             let r = reference.get(&t).copied().unwrap_or(self.defaults[i]);
-                            acc.sum[i] += (v - r) * wl * c;
+                            acc.sum[i] += (v - r) * if p.whole[i] { lw } else { wl } * c;
                             acc.touched[i] = true;
                         }
                         None => {
                             if acc.cov[i] > 0.0 {
-                                acc.sum[i] += (self.defaults[i] - self.targets.list[i].identity()) * wl * acc.cov[i];
+                                acc.sum[i] += (self.defaults[i] - self.targets.list[i].identity()) * if p.whole[i] { lw } else { wl } * acc.cov[i];
                             }
                         }
                     }
@@ -895,7 +996,7 @@ impl Animator {
                 if !passes(i) {
                     continue;
                 }
-                let a = wl * c;
+                let a = if p.whole[i] { lw } else { wl } * c;
                 if let Target::AnimatorParameter(_) = &self.targets.list[i] {
                     let e = own.entry(t).or_insert((0.0, 0.0));
                     e.0 = e.0 * (1.0 - a) + v * a;
@@ -1169,12 +1270,17 @@ fn pulled(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32]
     if !wd(p.state) || !wd(to.state) {
         return (vec![], false);
     }
-    let dest = motion_pose(rt, li, to.state, to.time, &to.direct_starts, clips, defaults);
-    let pulled = motion_pose(rt, li, p.state, p.time, &p.direct_starts, clips, defaults)
+    let dest = playing_pose(rt, li, to, clips, defaults);
+    let pulled = playing_pose(rt, li, p, clips, defaults)
         .into_keys()
         .filter(|t| !dest.contains_key(t) && (!params_only || matches!(targets[*t as usize], Target::AnimatorParameter(_))))
         .collect();
     (pulled, params_only)
+}
+
+/// A playing state's pose, its motion sampled where its time parameter puts it.
+fn playing_pose(rt: &ControllerRt, layer: usize, p: &machine::Playing, clips: &[CompiledClip], defaults: &[f32]) -> HashMap<u32, (f32, bool)> {
+    motion_pose(rt, layer, p.state, rt.sampled(layer, p.state, p.time), &p.direct_starts, clips, defaults)
 }
 
 /// One motion at one normalized time: the value of every target it writes, and whether only an animated
@@ -1187,20 +1293,20 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, ti
     let mut acc: HashMap<u32, (f32, bool)> = HashMap::new();
     let direct = ls.iter().any(|l| l.direct);
     for l in &ls {
-        let c = &clips[l.clip as usize];
+        let c = clips[l.clip as usize].variant(l.mirror);
         for &t in &c.writes {
             let filled = c.fill.contains(&t);
             let e = acc.entry(t).or_insert((0.0, true));
             e.1 &= filled;
         }
     }
-    let mut rotations: Vec<[u32; 4]> = ls.iter().flat_map(|l| clips[l.clip as usize].rotations.iter().copied()).collect();
+    let mut rotations: Vec<[u32; 4]> = ls.iter().flat_map(|l| clips[l.clip as usize].variant(l.mirror).rotations.iter().copied()).collect();
     rotations.sort_unstable();
     rotations.dedup();
     let mut started = false;
     let mut weighted = std::collections::HashSet::new();
     for l in ls.iter().filter(|l| l.weight != 0.0) {
-        let c = &clips[l.clip as usize];
+        let c = clips[l.clip as usize].variant(l.mirror);
         let mut own: HashMap<u32, f32> = HashMap::new();
         let began = starts.iter().find(|(id, _)| *id == l.id).map_or(0.0, |&(_, t)| t);
         let elapsed = time - began;
@@ -1262,7 +1368,7 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
     let animated = |m: HashMap<u32, (f32, bool)>| -> HashMap<u32, f32> { m.into_iter().filter(|(_, (_, f))| !f).map(|(t, (v, _))| (t, v)).collect() };
     match (&l.active, steady) {
         (_, Some(cur)) => {
-            let mut pose = animated(motion_pose(rt, li, cur.state, cur.time, &cur.direct_starts, clips, defaults));
+            let mut pose = animated(playing_pose(rt, li, cur, clips, defaults));
             let wd = rt.state(li, cur.state).is_some_and(|s| s.write_defaults);
             if rt.motion(li, cur.state).is_some() {
                 let shown: std::collections::HashSet<u32> =
@@ -1298,12 +1404,12 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
             let w = a.progress();
             let (from, from_wd): (HashMap<u32, (f32, f32)>, bool) = match &a.from {
                 From::State(p) => (
-                    animated(motion_pose(rt, li, p.state, p.time, &p.direct_starts, clips, defaults)).into_iter().map(|(t, v)| (t, (v, 1.0))).collect(),
+                    animated(playing_pose(rt, li, p, clips, defaults)).into_iter().map(|(t, v)| (t, (v, 1.0))).collect(),
                     rt.state(li, p.state).is_some_and(|s| s.write_defaults),
                 ),
                 From::Frozen(v) => (v.iter().map(|&(t, v, c)| (t, (v, c))).collect(), true),
             };
-            let to = animated(motion_pose(rt, li, a.to.state, a.to.time, &a.to.direct_starts, clips, defaults));
+            let to = animated(playing_pose(rt, li, &a.to, clips, defaults));
             let to_wd = rt.state(li, a.to.state).is_some_and(|s| s.write_defaults);
             let mut out = Vec::new();
             let written: Vec<u32> = if from_wd && to_wd {

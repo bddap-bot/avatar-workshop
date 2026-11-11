@@ -56,8 +56,9 @@ any recording, and `--example physbones_cost -- AVATAR.glb` times a joint step.
 
 `avatar_core::animator` runs the playable layers as VRChat stacks them: Unity's state machines with crossfades,
 offsets, ordered interruption, sub-machines, synced layers and write defaults, every blend-tree algorithm,
-layer masks and additive layers, the expression parameters with their synced clamps and saved values, VRChat's
-built-in parameters as host inputs, the parameter driver (local-only ones on the wearer's copy alone),
+layer masks and additive layers, humanoid clips as whole poses and their mirrors, the expression parameters
+with their synced clamps and saved values, VRChat's built-in parameters as host inputs, the parameter driver
+(local-only ones on the wearer's copy alone),
 tracking, locomotion, layer-control and temporary-pose-space behaviours, and the descriptor's lip sync and
 eyelids. A host sets built-ins (`set_builtin`), menu values (`set`), the PhysBone and contact parameters its
 dynamics produced (`set_dynamic`, read at the next step), the eyelids' blink and look (`set_eyes`) and the head's animated pose

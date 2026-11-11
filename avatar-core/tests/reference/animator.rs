@@ -444,7 +444,8 @@ impl Run {
             worst_binding: 0.0,
         };
         let recorded: BTreeSet<&Target> = keys.iter().filter_map(|(_, k)| if let Key::Binding(t) = k { Some(t) } else { None }).collect();
-        for t in anim.targets() {
+        let curves = self.avatar.model.clips.iter().flat_map(|c| &c.curves).filter_map(|c| avatar_core::animator::motion::target_of(&c.binding));
+        for t in curves.collect::<BTreeSet<_>>().iter() {
             if matches!(t, Target::Muscle(_) | Target::Constraint(..) | Target::ContactSender(..) | Target::ContactReceiver(..)) && !recorded.contains(t) {
                 panic!("the recording holds no value of the curve binding {t:?}");
             }
