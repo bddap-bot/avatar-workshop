@@ -236,7 +236,8 @@ its submenus), then the built-in parameters stepped (gestures, visemes, locomoti
 state flags). `UNITY` names the editor command. With no `SCENE`, it generates the fixture into
 `PROJECT`'s `Assets/AWFixture` and records it, so point it at a scratch project. With `SCENE` `probe`, it generates and
 records the probe there: the fixture's body with one three-bone chain per PhysBone field value (`Fixture.Probes` lists
-them), so each field's effect has a reference trace of its own. The probe rests 15 s before its motion, so even its lightly damped chains start it settled. It restores
+them), so each field's effect has a reference trace of its own. The probe rests 15 s before its motion, so even its lightly damped chains start it settled. With `SCENE` `human`, it generates and records the
+composition probe (`reference/Editor/HumanProbe.cs`), described below, in place of the motion, menu and built-in steps. It restores
 `PROJECT`'s package manifest on exit and refuses an `OUT` that holds something other than an earlier recording.
 `OUT` receives:
 
@@ -257,6 +258,7 @@ them), so each field's effect has a reference trace of its own. The probe rests 
 | `time.tsv` | the time of the emulator's playable graph after each frame's evaluation, every frame from the one the graph is created on, so the first evaluation's delta shows; a recording fails if the graph is gone on a frame |
 | `avatar.glb`, `census.json`, `export.txt` | the exporter's model and census of the build this recording runs, written as the last step of its build preprocess, with the build tools' generated names and ids (and, as the emulator skips the SDK's material locking, unlocked shaders); `cargo run --release --example census -- avatar.glb census.json` in `avatar-core/` checks one; `export.txt` lists what the model does not represent |
 | `coverage.json`, `meta.json` | the avatar's feature counts; versions and totals |
+| `compositions.json` | the composition probe's only: how many states play each humanoid composition it separates |
 
 The fixture (`reference/Editor/Fixture.cs`, licensed as this repository) is a synthetic humanoid
 authored for the harness: PhysBones covering both immobile types, every limit type, gravity with
@@ -270,6 +272,19 @@ body-part and transform masks, additive and synced layers, sub-machine entry and
 transitions with offsets, speed, time, cycle-offset and mirror parameters, a trigger, an animator-parameter curve,
 stepped and weighted keys, Euler rotation curves and material swaps. A fixture recording fails if any of these is
 missing from `coverage.json`.
+
+The composition probe is the fixture's body with controllers that play one humanoid composition at a time, so the
+replay can tell apart how Unity's human stream composes the body and the four IK goals. Its int parameter `Case`
+picks the composition and 0 plays the rest pose; every state mirrors on `Mirror`. The harness plays each case for
+150 frames, first unmirrored and then mirrored, with 20 frames at rest after each. Through each case it ramps
+`BlendX` from 0 to 1, `BlendU` from -1 to 1 and `BlendY` up and back down; in the case the Sitting playable plays it
+toggles `Seated` every 8 frames, so that playable's 0.25 s blend never completes. The cases cover clips with and
+without IK-goal curves, a clip binding `RootT.y` alone, and each root-motion setting changed alone from keeping the
+original rotation, height and XZ on a walking body. They also play such clips in crossfades, in 1D, 2D and direct
+blend trees, under masked override and additive layers, and in the Action, Additive and Sitting playables at partial
+weight. Base holds only one layer, because an idle masked override layer pins the parts it masks in; one case shows
+that on its own. A recording fails if any composition `Coverage.Compositions` lists is missing from
+`compositions.json`.
 `reference/check.sh PROJECT OUT [SCENE] [AVATAR]` records the avatar (the fixture by default) twice and requires every output but the logs (`unity.log`, `export.txt`),
 `tips.tsv` and `poses.tsv` to be byte-identical, and PhysBone tips and every pose value within 1e-5 (`reference/poses.py`, Python 3.10 or later).
 

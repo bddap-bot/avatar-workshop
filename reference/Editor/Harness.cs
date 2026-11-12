@@ -50,6 +50,7 @@ namespace AvatarWorkshop.Reference
             var avatarName = Env("AW_AVATAR");
             var fixture = scenePath == null;
             var probe = scenePath == "probe";
+            var human = scenePath == "human";
             if (fixture)
             {
                 Fixture.Build();
@@ -59,6 +60,11 @@ namespace AvatarWorkshop.Reference
             {
                 Fixture.BuildProbe();
                 scenePath = Fixture.ProbeScenePath;
+            }
+            if (human)
+            {
+                Fixture.BuildHuman();
+                scenePath = Fixture.HumanScenePath;
             }
 
             EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
@@ -82,7 +88,7 @@ namespace AvatarWorkshop.Reference
             playModeSettings = (EditorSettings.enterPlayModeOptionsEnabled, EditorSettings.enterPlayModeOptions);
             EditorSettings.enterPlayModeOptionsEnabled = true;
             EditorSettings.enterPlayModeOptions = EnterPlayModeOptions.DisableDomainReload;
-            recorder = new Recorder(output, avatar.name, fixture, probe, migrated);
+            recorder = new Recorder(output, avatar.name, fixture, probe, human, migrated);
             EditorApplication.playModeStateChanged += OnPlayMode;
             EditorApplication.EnterPlaymode();
         }
@@ -238,6 +244,7 @@ namespace AvatarWorkshop.Reference
         readonly string avatarName;
         readonly bool fixture;
         readonly bool probe;
+        readonly bool human;
         readonly bool migratedDynamicBones;
         bool exported;
         StreamWriter timeOut;
@@ -293,8 +300,9 @@ namespace AvatarWorkshop.Reference
         Camera camera;
         RenderTexture target;
 
-        public Recorder(string output, string avatarName, bool fixture, bool probe, bool migratedDynamicBones)
+        public Recorder(string output, string avatarName, bool fixture, bool probe, bool human, bool migratedDynamicBones)
         {
+            this.human = human;
             this.output = output;
             this.avatarName = avatarName;
             this.fixture = fixture;
@@ -619,6 +627,13 @@ namespace AvatarWorkshop.Reference
             File.WriteAllText(Path.Combine(output, "coverage.json"), Json(coverage) + "\n");
             var missing = Coverage.Required.Where(k => coverage[k] == 0).ToList();
             if (fixture && missing.Count > 0) throw new Exception("fixture lacks " + string.Join(", ", missing));
+            if (human)
+            {
+                var compositions = Coverage.CountCompositions(descriptor);
+                File.WriteAllText(Path.Combine(output, "compositions.json"), Json(compositions) + "\n");
+                var absent = Coverage.Compositions.Where(k => compositions[k] == 0).ToList();
+                if (absent.Count > 0) throw new Exception("the composition probe lacks " + string.Join(", ", absent));
+            }
             SetupCamera();
             Schedule(descriptor);
             File.WriteAllText(Path.Combine(output, "menu.tsv"), menuRows.ToString());
@@ -626,6 +641,7 @@ namespace AvatarWorkshop.Reference
             {
                 ["avatar"] = avatarName,
                 ["fixture"] = fixture,
+                ["human"] = human,
                 ["root_scale"] = new[] { root.lossyScale.x, root.lossyScale.y, root.lossyScale.z },
                 ["unity"] = Application.unityVersion,
                 ["dynamic_bones_migrated"] = migratedDynamicBones,
@@ -956,6 +972,12 @@ namespace AvatarWorkshop.Reference
 
             var rest = S("rest", probe ? 900 : 90, render: true);
             foreach (var (n, v) in Builtins) rest.Set[n] = v;
+            if (human)
+            {
+                Compositions(descriptor);
+                S("final", 60, render: true);
+                return;
+            }
 
             var motion = S("motion", 6 * Harness.Rate);
             motion.Each = (r, k) =>
@@ -1002,6 +1024,32 @@ namespace AvatarWorkshop.Reference
                 S("released EarL", 45);
             }
             S("final", 60, render: true);
+        }
+
+        // Each case of the composition probe, unmirrored then mirrored, with the blend parameters ramped through it
+        // (BlendX 0 to 1, BlendU -1 to 1, BlendY up and back down) and, in a case the Sitting playable plays, Seated
+        // toggled every 8 frames so the playable's 0.25 s blend never completes.
+        void Compositions(VRCAvatarDescriptor descriptor)
+        {
+            var cases = Coverage.Cases(descriptor);
+            if (cases.Count == 0) throw new Exception("the composition probe has no cases");
+            var inputs = new List<string> { Fixture.CaseParameter, Fixture.MirrorParameter, "BlendX", "BlendY", "BlendU", "Seated" };
+            foreach (var c in cases)
+                for (int m = 0; m < 2; m++)
+                {
+                    var st = Add(new Step { Label = $"case {c.Id} mirror={m}: {string.Join("; ", c.States)}", Frames = 150 });
+                    st.Set[Fixture.CaseParameter] = c.Id; st.Set[Fixture.MirrorParameter] = m;
+                    st.Set["BlendX"] = 0; st.Set["BlendU"] = -1; st.Set["BlendY"] = 0; st.Set["Seated"] = 0;
+                    var sitting = c.Sitting;
+                    st.Each = (r, k) =>
+                    {
+                        float t = k / (float)(st.Frames - 1);
+                        r.Apply("BlendX", t); r.Apply("BlendU", 2 * t - 1); r.Apply("BlendY", Mathf.Sin(Mathf.PI * t));
+                        if (sitting) r.Apply("Seated", k / 8 % 2 == 0 ? 1 : 0);
+                    };
+                    var settle = Add(new Step { Label = "reset", Frames = 20 });
+                    foreach (var n in inputs) settle.Set[n] = Rest(n);
+                }
         }
 
         // Grabs the bone nearest a ray at `bone` as the editor's grab helper does, moves the held point by
