@@ -97,14 +97,13 @@ namespace AvatarWorkshop.Reference
             }
             Menu(d.expressionsMenu);
 
-            var custom = d.baseAnimationLayers.Concat(d.specialAnimationLayers ?? new VRCAvatarDescriptor.CustomAnimLayer[0])
-                .Where(l => !l.isDefault && l.animatorController is AnimatorController).ToList();
-            foreach (var l in custom)
+            var custom = Controllers(d).ToList();
+            foreach (var (type, _, mask) in custom)
             {
-                Add("playable." + Playable[l.type]);
-                if (l.mask != null) Mask(l.mask, Add);
+                Add("playable." + Playable[type]);
+                if (mask != null) Mask(mask, Add);
             }
-            foreach (var ctrl in custom.Select(l => (AnimatorController)l.animatorController).Distinct())
+            foreach (var ctrl in custom.Select(l => l.controller).Distinct())
             {
                 var parameters = new HashSet<string>(ctrl.parameters.Select(p => p.name));
                 var triggers = new HashSet<string>(ctrl.parameters.Where(p => p.type == AnimatorControllerParameterType.Trigger).Select(p => p.name));
@@ -131,8 +130,15 @@ namespace AvatarWorkshop.Reference
         static void Mask(AvatarMask m, System.Action<string> add)
         {
             if (Enumerable.Range(0, m.transformCount).Any(i => !m.GetTransformActive(i))) add("mask.transform");
+            if (BodyPartOff(m)) add("mask.body_part");
+        }
+
+        static bool BodyPartOff(AvatarMask m)
+        {
+            if (m == null) return false;
             for (var p = AvatarMaskBodyPart.Root; p < AvatarMaskBodyPart.LastBodyPart; p++)
-                if (!m.GetHumanoidBodyPartActive(p)) { add("mask.body_part"); break; }
+                if (!m.GetHumanoidBodyPartActive(p)) return true;
+            return false;
         }
 
         static void Curves(AnimationClip clip, HashSet<string> parameters, System.Action<string> add)
@@ -173,33 +179,34 @@ namespace AvatarWorkshop.Reference
         // The humanoid compositions the composition probe separates. Clip kinds: with IK-goal curves, without them,
         // and RootT.y alone; each root-motion setting on a clip whose body moves ("moving." and the setting); and
         // each context a clip of each kind plays in ("<context>+<kind>"). Every key also counts ".mirrored" where
-        // its state mirrors. The Sitting playable's weight is partial while the harness toggles Seated through its
-        // case faster than the playable blends.
-        static readonly string[] Kinds = { "goal_curves", "no_goal_curves" };
+        // its state mirrors. Only states a case enters count, and the harness fails a case whose states the
+        // recording never entered or whose partial playable never held a weight strictly between 0 and 1.
+        static readonly string[] Kinds = { "goal_curves", "no_goal_curves", "root_t_y_only" };
         static readonly string[] Contexts =
         {
             "crossfade", "blendtree.1d", "blendtree.2d", "blendtree.direct", "layer.override_masked", "layer.additive_masked",
             "playable.action_partial", "playable.additive_partial", "playable.sitting_partial",
         };
-        static readonly string[] Unmirrored = new[] { "clip.goal_curves", "clip.no_goal_curves", "clip.root_t_y_only",
-                "blendtree.direct+root_t_y_only", "layer.override_masked+root_t_y_only", "blendtree.direct+root_t_y_only+layer.override_masked+under_additive" }
-            .Concat(new[] { "clip.mirror", "clip.loop_pose", "clip.root_rotation.bake", "clip.root_rotation.original", "clip.root_rotation.body", "clip.root_rotation.offset",
-                "clip.root_height.bake", "clip.root_height.original", "clip.root_height.center_of_mass", "clip.root_height.feet", "clip.root_height.offset",
-                "clip.root_xz.bake", "clip.root_xz.original", "clip.root_xz.center_of_mass" }.Select(k => "moving." + k))
+        const string UnderAdditive = "blendtree.direct+root_t_y_only+layer.override_masked+under_additive";
+        static readonly string[] Unmirrored = Kinds.Select(k => "clip." + k)
+            .Concat(Required.Where(k => k == "clip.mirror" || k == "clip.loop_pose" || k.StartsWith("clip.root_")).Select(k => "moving." + k))
             .Concat(Contexts.SelectMany(c => Kinds.Select(k => c + "+" + k)))
+            .Append(UnderAdditive)
             .ToArray();
         public static readonly string[] Compositions = Unmirrored.Concat(Unmirrored.Select(k => k + ".mirrored")).ToArray();
 
         public class ProbeCase
         {
             public int Id;
-            public readonly List<string> States = new List<string>();
-            public bool Sitting;
+            // Each state's label and full-path hash, as the animator reports its current state.
+            public readonly List<(string label, int hash)> States = new List<(string, int)>();
+            public readonly HashSet<VRCAvatarDescriptor.AnimLayerType> Partial = new HashSet<VRCAvatarDescriptor.AnimLayerType>();
+            public bool Sitting => Partial.Contains(VRCAvatarDescriptor.AnimLayerType.Sitting);
         }
 
-        static IEnumerable<(VRCAvatarDescriptor.AnimLayerType type, AnimatorController controller)> Controllers(VRCAvatarDescriptor d) =>
+        static IEnumerable<(VRCAvatarDescriptor.AnimLayerType type, AnimatorController controller, AvatarMask mask)> Controllers(VRCAvatarDescriptor d) =>
             d.baseAnimationLayers.Concat(d.specialAnimationLayers ?? new VRCAvatarDescriptor.CustomAnimLayer[0])
-                .Where(l => !l.isDefault && l.animatorController is AnimatorController).Select(l => (l.type, (AnimatorController)l.animatorController));
+                .Where(l => !l.isDefault && l.animatorController is AnimatorController).Select(l => (l.type, (AnimatorController)l.animatorController, l.mask));
 
         // The Case value each state plays under: the one a transition into it requires, or its source state's.
         static Dictionary<AnimatorState, int> CaseOf(AnimatorStateMachine sm)
@@ -220,32 +227,41 @@ namespace AvatarWorkshop.Reference
             return of;
         }
 
+        static bool Partial(AnimatorState s, VRC_PlayableLayerControl.BlendableLayer layer) =>
+            s.behaviours.OfType<VRC_PlayableLayerControl>().Any(b => b.layer == layer && b.goalWeight > 0 && b.goalWeight < 1);
+
+        // A state in the Action or Additive controller plays at partial weight when it sets its playable's weight
+        // strictly between 0 and 1; the Sitting playable's while the harness toggles Seated faster than it blends.
+        static VRCAvatarDescriptor.AnimLayerType? PartialPlayable(VRCAvatarDescriptor.AnimLayerType type, AnimatorState s)
+        {
+            switch (type)
+            {
+                case VRCAvatarDescriptor.AnimLayerType.Action when Partial(s, VRC_PlayableLayerControl.BlendableLayer.Action):
+                case VRCAvatarDescriptor.AnimLayerType.Additive when Partial(s, VRC_PlayableLayerControl.BlendableLayer.Additive):
+                case VRCAvatarDescriptor.AnimLayerType.Sitting:
+                    return type;
+                default: return null;
+            }
+        }
+
         public static List<ProbeCase> Cases(VRCAvatarDescriptor d)
         {
             var cases = new SortedDictionary<int, ProbeCase>();
-            foreach (var (type, ctrl) in Controllers(d))
+            foreach (var (type, ctrl, _) in Controllers(d))
                 foreach (var layer in ctrl.layers)
                     foreach (var kv in CaseOf(layer.stateMachine))
                     {
                         if (!cases.TryGetValue(kv.Value, out var c)) cases[kv.Value] = c = new ProbeCase { Id = kv.Value };
-                        c.States.Add($"{Playable[type]}/{layer.name}: {kv.Key.name}");
-                        if (type == VRCAvatarDescriptor.AnimLayerType.Sitting) c.Sitting = true;
+                        c.States.Add(($"{Playable[type]}/{layer.name}: {kv.Key.name}", Animator.StringToHash(layer.name + "." + kv.Key.name)));
+                        if (PartialPlayable(type, kv.Key) is VRCAvatarDescriptor.AnimLayerType p) c.Partial.Add(p);
                     }
             return cases.Values.ToList();
-        }
-
-        static bool Masked(AvatarMask m)
-        {
-            if (m == null) return false;
-            for (var p = AvatarMaskBodyPart.Root; p < AvatarMaskBodyPart.LastBodyPart; p++)
-                if (!m.GetHumanoidBodyPartActive(p)) return true;
-            return false;
         }
 
         static IEnumerable<AnimationClip> Leaves(Motion m) =>
             m is AnimationClip c ? new[] { c } : m is BlendTree t ? t.children.SelectMany(ch => Leaves(ch.motion)) : Enumerable.Empty<AnimationClip>();
 
-        static readonly string[] GoalCurves = new[] { "LeftFoot", "RightFoot", "LeftHand", "RightHand" }.SelectMany(g => new[] { g + "T.", g + "Q." }).ToArray();
+        static readonly string[] GoalCurves = Fixture.Goals.SelectMany(g => new[] { g + "T.", g + "Q." }).ToArray();
 
         static string Kind(AnimationClip clip, HashSet<string> parameters)
         {
@@ -264,50 +280,47 @@ namespace AvatarWorkshop.Reference
         {
             var c = new SortedDictionary<string, int>();
             foreach (var k in Compositions) c[k] = 0;
-            foreach (var (type, ctrl) in Controllers(d))
+            foreach (var (type, ctrl, _) in Controllers(d))
             {
                 var parameters = new HashSet<string>(ctrl.parameters.Select(p => p.name));
+                bool Human(Motion m) => Leaves(m).Any(l => Kind(l, parameters) != null);
                 var layers = ctrl.layers;
                 for (int li = 0; li < layers.Length; li++)
                 {
                     var layer = layers[li];
                     var of = CaseOf(layer.stateMachine);
-                    foreach (var s in layer.stateMachine.states.Select(x => x.state))
+                    var all = layer.stateMachine.states.Select(x => x.state).ToList();
+                    foreach (var s in of.Keys)
                     {
                         var leaves = Leaves(s.motion).Select(l => (clip: l, kind: Kind(l, parameters))).Where(l => l.kind != null).ToList();
                         if (leaves.Count == 0) continue;
                         var mirrored = s.mirrorParameterActive && parameters.Contains(s.mirrorParameter);
-                        void Add(string k, bool clipMirror = false)
+                        void Add(string k)
                         {
                             c[k] = c.TryGetValue(k, out var n) ? n + 1 : 1;
-                            if (mirrored || clipMirror) { var m = k + ".mirrored"; c[m] = c.TryGetValue(m, out var n2) ? n2 + 1 : 1; }
+                            if (mirrored) c[k + ".mirrored"] = c.TryGetValue(k + ".mirrored", out var m) ? m + 1 : 1;
                         }
                         var contexts = new List<string>();
                         if (s.motion is BlendTree bt)
                             contexts.Add(bt.blendType == BlendTreeType.Simple1D ? "blendtree.1d" : bt.blendType == BlendTreeType.Direct ? "blendtree.direct" : "blendtree.2d");
-                        var into = layer.stateMachine.states.Select(x => x.state).SelectMany(x => x.transitions.Select(t => (from: x, t)))
-                            .Where(x => x.t.destinationState == s && x.t.duration > 0 && Leaves(x.from.motion).Any(l => Kind(l, parameters) != null));
-                        if (into.Any()) contexts.Add("crossfade");
-                        var masked = li > 0 && Masked(layer.avatarMask);
+                        var fadesIn = all.Any(x => x.transitions.Any(t => t.destinationState == s && t.duration > 0 && Human(x.motion)));
+                        var fadesOut = s.transitions.Any(t => t.duration > 0 && t.destinationState != null && Human(t.destinationState.motion));
+                        if (fadesIn || fadesOut) contexts.Add("crossfade");
+                        var masked = li > 0 && BodyPartOff(layer.avatarMask);
                         if (masked && layer.blendingMode == AnimatorLayerBlendingMode.Override) contexts.Add("layer.override_masked");
                         if (masked && layer.blendingMode == AnimatorLayerBlendingMode.Additive) contexts.Add("layer.additive_masked");
-                        bool Partial(VRCPlayableLayerControl.BlendableLayer target) =>
-                            s.behaviours.OfType<VRC_PlayableLayerControl>().Any(b => (int)b.layer == (int)target && b.goalWeight > 0 && b.goalWeight < 1);
-                        if (type == VRCAvatarDescriptor.AnimLayerType.Action && Partial(VRCPlayableLayerControl.BlendableLayer.Action)) contexts.Add("playable.action_partial");
-                        if (type == VRCAvatarDescriptor.AnimLayerType.Additive && Partial(VRCPlayableLayerControl.BlendableLayer.Additive)) contexts.Add("playable.additive_partial");
-                        if (type == VRCAvatarDescriptor.AnimLayerType.Sitting) contexts.Add("playable.sitting_partial");
+                        var partial = PartialPlayable(type, s);
+                        if (partial.HasValue) contexts.Add("playable." + Playable[partial.Value] + "_partial");
 
                         foreach (var (clip, kind) in leaves)
                         {
-                            var settings = AnimationUtility.GetAnimationClipSettings(clip);
-                            Add("clip." + kind, settings.mirror);
-                            if (MovingBody(clip)) Settings(settings, k => Add("moving." + k, settings.mirror));
-                            foreach (var ctx in contexts) Add(ctx + "+" + kind, settings.mirror);
+                            Add("clip." + kind);
+                            if (MovingBody(clip)) Settings(AnimationUtility.GetAnimationClipSettings(clip), k => Add("moving." + k));
+                            foreach (var ctx in contexts) Add(ctx + "+" + kind);
                         }
-                        if (contexts.Contains("blendtree.direct") && leaves.All(l => l.kind == "root_t_y_only") && contexts.Contains("layer.override_masked")
-                            && of.TryGetValue(s, out var id)
-                            && layers.Skip(li + 1).Any(above => above.blendingMode == AnimatorLayerBlendingMode.Additive && CaseOf(above.stateMachine).ContainsValue(id)))
-                            Add("blendtree.direct+root_t_y_only+layer.override_masked+under_additive");
+                        if (contexts.Contains("blendtree.direct") && contexts.Contains("layer.override_masked") && leaves.All(l => l.kind == "root_t_y_only")
+                            && layers.Skip(li + 1).Any(above => above.blendingMode == AnimatorLayerBlendingMode.Additive && CaseOf(above.stateMachine).ContainsValue(of[s])))
+                            Add(UnderAdditive);
                     }
                 }
             }

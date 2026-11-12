@@ -21,12 +21,6 @@ namespace AvatarWorkshop.Reference
     public static partial class Fixture
     {
         public const string Dir = "Assets/AWFixture";
-        public const string ScenePath = Dir + "/Fixture.unity";
-        public const string RootName = "AWFixture";
-        public const string ProbeScenePath = Dir + "/Probe.unity";
-        public const string ProbeName = "AWProbe";
-        public const string HumanScenePath = Dir + "/Human.unity";
-        public const string HumanName = "AWHuman";
 
         static readonly string[] Visemes = { "vrc.v_sil", "vrc.v_pp", "vrc.v_ff", "vrc.v_th", "vrc.v_dd", "vrc.v_kk", "vrc.v_ch", "vrc.v_ss", "vrc.v_nn", "vrc.v_rr", "vrc.v_aa", "vrc.v_e", "vrc.v_ih", "vrc.v_oh", "vrc.v_ou" };
         static readonly string[] Faces = { "Smile", "Fist", "Open", "Point", "Victory", "Rock", "Gun", "Thumbs", "Wave", "Pout", "TailAngle", "LeanUp", "LeanRight", "LeanDown", "LeanLeft" };
@@ -112,24 +106,20 @@ namespace AvatarWorkshop.Reference
             {"RightUpperLeg","RightUpperLeg"},{"RightLowerLeg","RightLowerLeg"},{"RightFoot","RightFoot"},{"RightToes","RightToes"},
         };
 
-        enum Kind { Fixture, Probe, Human }
+        // Probe: the fixture's body with no menu or controller, and one short chain per PhysBone field value instead of
+        // its PhysBones, so each field's effect has a reference trace of its own. Human: the composition probe.
+        public enum Kind { Fixture, Probe, Human }
 
-        public static void Build() => Build(Kind.Fixture);
-
-        // The probe: the fixture's body with no menu or controller, and one short chain per PhysBone field value
-        // instead of its PhysBones, so each field's effect has a reference trace of its own.
-        public static void BuildProbe() => Build(Kind.Probe);
-
-        public static void BuildHuman() => Build(Kind.Human);
-
-        static void Build(Kind kind)
+        // Generates the avatar into Dir and returns its scene's path.
+        public static string Build(Kind kind)
         {
+            var scenePath = $"{Dir}/{kind}.unity";
             if (AssetDatabase.IsValidFolder(Dir)) AssetDatabase.DeleteAsset(Dir);
             AssetDatabase.CreateFolder("Assets", "AWFixture");
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             DefineSkeleton();
 
-            var root = new GameObject(kind == Kind.Probe ? ProbeName : kind == Kind.Human ? HumanName : RootName);
+            var root = new GameObject("AW" + kind);
             var t = new Dictionary<string, Transform>();
             foreach (var b in Skeleton)
             {
@@ -177,23 +167,15 @@ namespace AvatarWorkshop.Reference
             animator.applyRootMotion = false;
 
             var d = root.AddComponent<VRCAvatarDescriptor>();
-            if (kind == Kind.Human)
+            d.ViewPosition = new Vector3(0, 1.62f, 0.08f);
+            if (kind == Kind.Human) HumanLayers(d);
+            if (kind == Kind.Probe) Probes(t);
+            if (kind != Kind.Fixture)
             {
-                HumanLayers(d);
-                d.ViewPosition = new Vector3(0, 1.62f, 0.08f);
                 AssetDatabase.SaveAssets();
-                EditorSceneManager.SaveScene(scene, HumanScenePath);
+                EditorSceneManager.SaveScene(scene, scenePath);
                 AssetDatabase.Refresh();
-                return;
-            }
-            if (kind == Kind.Probe)
-            {
-                Probes(t);
-                d.ViewPosition = new Vector3(0, 1.62f, 0.08f);
-                AssetDatabase.SaveAssets();
-                EditorSceneManager.SaveScene(scene, ProbeScenePath);
-                AssetDatabase.Refresh();
-                return;
+                return scenePath;
             }
             Orbs(root.transform, t, mats["Orb"]);
             PhysBones(t);
@@ -205,7 +187,6 @@ namespace AvatarWorkshop.Reference
             AssetDatabase.CreateFolder(Dir, "Clips");
             var fx = FxController(clips);
 
-            d.ViewPosition = new Vector3(0, 1.62f, 0.08f);
             d.lipSync = VRC_AvatarDescriptor.LipSyncStyle.VisemeBlendShape;
             d.VisemeSkinnedMesh = smr;
             d.VisemeBlendShapes = Visemes;
@@ -229,9 +210,10 @@ namespace AvatarWorkshop.Reference
             };
 
             AssetDatabase.SaveAssets();
-            EditorSceneManager.SaveScene(scene, ScenePath);
+            EditorSceneManager.SaveScene(scene, scenePath);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
+            return scenePath;
         }
 
         static VRCAvatarDescriptor.CustomAnimLayer Custom(VRCAvatarDescriptor.AnimLayerType type, AnimatorController controller, AvatarMask mask = null) =>

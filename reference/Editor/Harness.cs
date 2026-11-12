@@ -48,24 +48,8 @@ namespace AvatarWorkshop.Reference
             var output = Env("AW_OUT") ?? throw new Exception("AW_OUT is required");
             var scenePath = Env("AW_SCENE");
             var avatarName = Env("AW_AVATAR");
-            var fixture = scenePath == null;
-            var probe = scenePath == "probe";
-            var human = scenePath == "human";
-            if (fixture)
-            {
-                Fixture.Build();
-                scenePath = Fixture.ScenePath;
-            }
-            if (probe)
-            {
-                Fixture.BuildProbe();
-                scenePath = Fixture.ProbeScenePath;
-            }
-            if (human)
-            {
-                Fixture.BuildHuman();
-                scenePath = Fixture.HumanScenePath;
-            }
+            Fixture.Kind? kind = scenePath == null ? Fixture.Kind.Fixture : scenePath == "probe" ? Fixture.Kind.Probe : scenePath == "human" ? Fixture.Kind.Human : (Fixture.Kind?)null;
+            if (kind.HasValue) scenePath = Fixture.Build(kind.Value);
 
             EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
             var descriptors = UnityEngine.Object.FindObjectsOfType<VRCAvatarDescriptor>(true);
@@ -88,7 +72,7 @@ namespace AvatarWorkshop.Reference
             playModeSettings = (EditorSettings.enterPlayModeOptionsEnabled, EditorSettings.enterPlayModeOptions);
             EditorSettings.enterPlayModeOptionsEnabled = true;
             EditorSettings.enterPlayModeOptions = EnterPlayModeOptions.DisableDomainReload;
-            recorder = new Recorder(output, avatar.name, fixture, probe, human, migrated);
+            recorder = new Recorder(output, avatar.name, kind, migrated);
             EditorApplication.playModeStateChanged += OnPlayMode;
             EditorApplication.EnterPlaymode();
         }
@@ -226,6 +210,7 @@ namespace AvatarWorkshop.Reference
         public int Frames;
         public Dictionary<string, float> Set = new Dictionary<string, float>();
         public Action<Recorder, int> Each;
+        public Coverage.ProbeCase Case;
         public bool Render;
     }
 
@@ -242,9 +227,7 @@ namespace AvatarWorkshop.Reference
         public bool Finished;
         readonly string output;
         readonly string avatarName;
-        readonly bool fixture;
-        readonly bool probe;
-        readonly bool human;
+        readonly bool fixture, probe, human;
         readonly bool migratedDynamicBones;
         bool exported;
         StreamWriter timeOut;
@@ -300,13 +283,13 @@ namespace AvatarWorkshop.Reference
         Camera camera;
         RenderTexture target;
 
-        public Recorder(string output, string avatarName, bool fixture, bool probe, bool human, bool migratedDynamicBones)
+        public Recorder(string output, string avatarName, Fixture.Kind? kind, bool migratedDynamicBones)
         {
-            this.human = human;
+            fixture = kind == Fixture.Kind.Fixture;
+            probe = kind == Fixture.Kind.Probe;
+            human = kind == Fixture.Kind.Human;
             this.output = output;
             this.avatarName = avatarName;
-            this.fixture = fixture;
-            this.probe = probe;
             this.migratedDynamicBones = migratedDynamicBones;
         }
 
@@ -549,6 +532,7 @@ namespace AvatarWorkshop.Reference
             lastValues = values;
 
             var step = steps[stepIndex];
+            if (step.Case != null) Played(step);
             if (stepFrame == step.Frames - 1 && step.Render) Render(step);
             stepFrame++;
         }
@@ -1033,23 +1017,54 @@ namespace AvatarWorkshop.Reference
         {
             var cases = Coverage.Cases(descriptor);
             if (cases.Count == 0) throw new Exception("the composition probe has no cases");
-            var inputs = new List<string> { Fixture.CaseParameter, Fixture.MirrorParameter, "BlendX", "BlendY", "BlendU", "Seated" };
+            var inputs = new List<string> { Fixture.CaseParameter, Fixture.MirrorParameter, Fixture.BlendX, Fixture.BlendY, Fixture.BlendU, "Seated" };
             foreach (var c in cases)
                 for (int m = 0; m < 2; m++)
                 {
-                    var st = Add(new Step { Label = $"case {c.Id} mirror={m}: {string.Join("; ", c.States)}", Frames = 150 });
+                    var st = Add(new Step { Label = $"case {c.Id} mirror={m}: {string.Join("; ", c.States.Select(x => x.label))}", Frames = 150, Case = c });
                     st.Set[Fixture.CaseParameter] = c.Id; st.Set[Fixture.MirrorParameter] = m;
-                    st.Set["BlendX"] = 0; st.Set["BlendU"] = -1; st.Set["BlendY"] = 0; st.Set["Seated"] = 0;
-                    var sitting = c.Sitting;
                     st.Each = (r, k) =>
                     {
                         float t = k / (float)(st.Frames - 1);
-                        r.Apply("BlendX", t); r.Apply("BlendU", 2 * t - 1); r.Apply("BlendY", Mathf.Sin(Mathf.PI * t));
-                        if (sitting) r.Apply("Seated", k / 8 % 2 == 0 ? 1 : 0);
+                        r.Apply(Fixture.BlendX, t); r.Apply(Fixture.BlendU, 2 * t - 1); r.Apply(Fixture.BlendY, Mathf.Sin(Mathf.PI * t));
+                        if (c.Sitting) r.Apply("Seated", k / 8 % 2 == 0 ? 1 : 0);
                     };
-                    var settle = Add(new Step { Label = "reset", Frames = 20 });
-                    foreach (var n in inputs) settle.Set[n] = Rest(n);
+                    Reset(inputs, 20);
                 }
+        }
+
+        // Fails a composition-probe case whose states the animators never entered, or whose partial playable never
+        // held a weight strictly between 0 and 1.
+        readonly HashSet<int> caseStates = new HashSet<int>();
+        readonly HashSet<VRCAvatarDescriptor.AnimLayerType> casePartial = new HashSet<VRCAvatarDescriptor.AnimLayerType>();
+
+        void Played(Step step)
+        {
+            if (stepFrame == 0) { caseStates.Clear(); casePartial.Clear(); }
+            foreach (var pl in playables.Where(p => p.IsValid()))
+                for (int l = 0; l < pl.GetLayerCount(); l++)
+                {
+                    caseStates.Add(pl.GetCurrentAnimatorStateInfo(l).fullPathHash);
+                    if (pl.IsInTransition(l)) caseStates.Add(pl.GetNextAnimatorStateInfo(l).fullPathHash);
+                }
+            foreach (var type in step.Case.Partial)
+            {
+                var w = mixer.GetInputWeight(PlayableIndex(type) + 1);
+                if (w > 0 && w < 1) casePartial.Add(type);
+            }
+            if (stepFrame < step.Frames - 1) return;
+            var unplayed = step.Case.States.Where(x => !caseStates.Contains(x.hash)).Select(x => x.label).ToList();
+            if (unplayed.Count > 0) throw new Exception($"{step.Label}: never entered {string.Join(", ", unplayed)}");
+            var full = step.Case.Partial.Except(casePartial).ToList();
+            if (full.Count > 0) throw new Exception($"{step.Label}: the {string.Join(", ", full)} playable never held a partial weight");
+        }
+
+        int PlayableIndex(VRCAvatarDescriptor.AnimLayerType type)
+        {
+            var field = type == VRCAvatarDescriptor.AnimLayerType.Action ? "actionIndex" : type == VRCAvatarDescriptor.AnimLayerType.Additive ? "additiveIndex" : "sittingIndex";
+            var i = (int)typeof(LyumaAv3Runtime).GetField(field, BindingFlags.NonPublic | BindingFlags.Instance).GetValue(runtime);
+            if (i < 0) throw new Exception($"the emulator has no {type} playable");
+            return i;
         }
 
         // Grabs the bone nearest a ray at `bone` as the editor's grab helper does, moves the held point by
@@ -1088,9 +1103,9 @@ namespace AvatarWorkshop.Reference
 
         Step Add(Step s) { steps.Add(s); return s; }
 
-        void Reset(List<string> names)
+        void Reset(List<string> names, int frames = 45)
         {
-            var st = Add(new Step { Label = "reset", Frames = 45 });
+            var st = Add(new Step { Label = "reset", Frames = frames });
             foreach (var n in names) st.Set[n] = Rest(n);
         }
 

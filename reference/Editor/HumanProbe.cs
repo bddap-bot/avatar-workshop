@@ -12,14 +12,15 @@ namespace AvatarWorkshop.Reference
 {
     // The humanoid composition probe: the fixture's body, whose controllers play one composition of humanoid clips
     // at a time, chosen by the int parameter Case (0 plays the rest pose), so each way Unity's human stream composes
-    // the body and the IK goals has a reference trace of its own. Every state that plays a clip mirrors on Mirror;
+    // the body and the IK goals has a reference trace of its own. Every state a case enters mirrors on Mirror;
     // blend trees and crossfades read BlendX, BlendY and BlendU, which the harness ramps through each case.
     public static partial class Fixture
     {
         public const string CaseParameter = "Case";
         public const string MirrorParameter = "Mirror";
+        public const string BlendX = "BlendX", BlendY = "BlendY", BlendU = "BlendU";
 
-        static readonly string[] Goals = { "LeftFoot", "RightFoot", "LeftHand", "RightHand" };
+        internal static readonly string[] Goals = { "LeftFoot", "RightFoot", "LeftHand", "RightHand" };
 
         static void HumanLayers(VRCAvatarDescriptor d)
         {
@@ -31,7 +32,7 @@ namespace AvatarWorkshop.Reference
             parameters.parameters = new[]
             {
                 P(CaseParameter, I, 0, saved: false), P(MirrorParameter, B, 0, saved: false),
-                P("BlendX", F, 0, saved: false, synced: false), P("BlendY", F, 0, saved: false, synced: false), P("BlendU", F, 0, saved: false, synced: false),
+                P(BlendX, F, 0, saved: false, synced: false), P(BlendY, F, 0, saved: false, synced: false), P(BlendU, F, 0, saved: false, synced: false),
             };
             AssetDatabase.CreateAsset(parameters, $"{Dir}/Parameters.asset");
 
@@ -150,6 +151,8 @@ namespace AvatarWorkshop.Reference
         // an idle override layer with a mask pins the parts it masks in. Layered cases play in the Action
         // controller at full weight, whose override and additive layers rest at weight 0 until a case raises them;
         // each playable but Base rests at weight 0.
+        static readonly AvatarMaskBodyPart[] GoalParts = { AvatarMaskBodyPart.LeftFootIK, AvatarMaskBodyPart.RightFootIK, AvatarMaskBodyPart.LeftHandIK, AvatarMaskBodyPart.RightHandIK };
+
         sealed class Probe
         {
             public readonly Ctl Base, Additive, Action, Sitting;
@@ -158,7 +161,7 @@ namespace AvatarWorkshop.Reference
             int next = 1;
 
             static Ctl Controller(string name) => new Ctl(name, (CaseParameter, AnimatorControllerParameterType.Int), (MirrorParameter, AnimatorControllerParameterType.Bool),
-                ("BlendX", AnimatorControllerParameterType.Float), ("BlendY", AnimatorControllerParameterType.Float), ("BlendU", AnimatorControllerParameterType.Float));
+                (BlendX, AnimatorControllerParameterType.Float), (BlendY, AnimatorControllerParameterType.Float), (BlendU, AnimatorControllerParameterType.Float));
 
             static AnimatorState Off(AnimatorStateMachine sm, Motion rest)
             {
@@ -178,11 +181,11 @@ namespace AvatarWorkshop.Reference
             {
                 Base = Controller("HumanBase");
                 body = Base.Layer("Body").stateMachine;
-                bodyOff = Off(body, k.Rest); bodyOff.writeDefaultValues = true;
+                bodyOff = Off(body, k.Rest);
                 Action = Controller("HumanAction");
                 action = Action.Layer("Action").stateMachine;
-                over = Action.Layer("Override", mask: Mask("HumanUpper", new[] { AvatarMaskBodyPart.Root, AvatarMaskBodyPart.Body, AvatarMaskBodyPart.Head, AvatarMaskBodyPart.LeftArm, AvatarMaskBodyPart.LeftFingers })).stateMachine;
-                add = Action.Layer("Additive", AnimatorLayerBlendingMode.Additive, Mask("HumanTorso", new[] { AvatarMaskBodyPart.Root, AvatarMaskBodyPart.Body, AvatarMaskBodyPart.LeftArm })).stateMachine;
+                over = Action.Layer("Override", mask: Mask("HumanUpper", new[] { AvatarMaskBodyPart.Root, AvatarMaskBodyPart.Body, AvatarMaskBodyPart.Head, AvatarMaskBodyPart.LeftArm, AvatarMaskBodyPart.LeftFingers }.Concat(GoalParts).ToArray())).stateMachine;
+                add = Action.Layer("Additive", AnimatorLayerBlendingMode.Additive, Mask("HumanTorso", new[] { AvatarMaskBodyPart.Root, AvatarMaskBodyPart.Body, AvatarMaskBodyPart.LeftArm }.Concat(GoalParts).ToArray())).stateMachine;
                 Weights(Action, 1, 0, 0);
                 actionOff = Off(action, null); overOff = Off(over, null); addOff = Off(add, null);
                 PlayableControl(actionOff, VRCPlayableLayerControl.BlendableLayer.Action, 0, 0);
@@ -209,24 +212,27 @@ namespace AvatarWorkshop.Reference
                 Crossfade("goals to goals", k.Goals, k.GoalsB);
                 Crossfade("plain to plain", k.Plain, k.PlainB);
                 Crossfade("plain to goals", k.Plain, k.Goals);
+                Crossfade("goals to plain", k.Goals, k.Plain);
                 Crossfade("goals to RootT.y only", k.Goals, k.RootY);
 
                 Case((body, bodyOff, "1D plain", Tree1D(Base, k.Plain, k.PlainB)));
                 Case((body, bodyOff, "1D goals", Tree1D(Base, k.Goals, k.GoalsB)));
                 Case((body, bodyOff, "1D plain and goals", Tree1D(Base, k.Plain, k.Goals)));
+                Case((body, bodyOff, "1D RootT.y only", Tree1D(Base, k.RootY, k.RootYB)));
                 foreach (var type in new[] { BlendTreeType.SimpleDirectional2D, BlendTreeType.FreeformDirectional2D, BlendTreeType.FreeformCartesian2D })
                     Case((body, bodyOff, type.ToString(), Tree2D(type, k)));
                 Case((body, bodyOff, "direct plain", Direct(Base, k.Plain, k.PlainB)));
                 Case((body, bodyOff, "direct goals", Direct(Base, k.Goals, k.GoalsB)));
                 Case((body, bodyOff, "direct RootT.y only", Direct(Base, k.RootY, k.RootYB)));
 
-                Layered(k.Plain);
+                Layered(k.Plain, idleOverride: true);
                 Layered(k.Plain, overMotion: ("goals over plain", k.GoalsB));
                 Layered(k.Goals, overMotion: ("plain over goals", k.PlainB));
                 Layered(k.Goals, overMotion: ("RootT.y only over goals", k.RootY));
                 Layered(k.Plain, addMotion: ("bob on plain", k.Bob));
                 Layered(k.Plain, addMotion: ("goals on plain", k.GoalsB));
                 Layered(k.Goals, addMotion: ("bob on goals", k.Bob));
+                Layered(k.Plain, addMotion: ("RootT.y only on plain", k.RootY));
                 // A locomotion system's play-space state: RootT.y-only clips in a direct tree under an override
                 // layer, with an additive layer above it.
                 Layered(k.Rest, overMotion: ("direct RootT.y only", Direct(Action, k.RootY, k.RootYB)), addMotion: ("bob", k.Bob));
@@ -236,24 +242,29 @@ namespace AvatarWorkshop.Reference
                 PlayableControl(a[1], VRCPlayableLayerControl.BlendableLayer.Action, 0.5f, 0);
                 a = Case((body, bodyOff, "goals", k.Goals), (action, actionOff, "plain half", k.PlainB));
                 PlayableControl(a[1], VRCPlayableLayerControl.BlendableLayer.Action, 0.5f, 0);
+                a = Case((body, bodyOff, "plain", k.Plain), (action, actionOff, "RootT.y only half", k.RootY));
+                PlayableControl(a[1], VRCPlayableLayerControl.BlendableLayer.Action, 0.5f, 0);
                 a = Case((body, bodyOff, "plain", k.Plain), (additive, additiveOff, "bob half", k.Bob));
                 PlayableControl(a[1], VRCPlayableLayerControl.BlendableLayer.Additive, 0.5f, 0);
                 a = Case((body, bodyOff, "plain", k.Plain), (additive, additiveOff, "goals half", k.GoalsB));
                 PlayableControl(a[1], VRCPlayableLayerControl.BlendableLayer.Additive, 0.5f, 0);
+                a = Case((body, bodyOff, "plain", k.Plain), (additive, additiveOff, "RootT.y only half", k.RootY));
+                PlayableControl(a[1], VRCPlayableLayerControl.BlendableLayer.Additive, 0.5f, 0);
                 Case((body, bodyOff, "plain", k.Plain), (sitting, sittingOff, "goals", k.Goals), (sittingHalf, sittingHalfOff, "plain half", k.PlainB));
+                Case((body, bodyOff, "goals", k.Goals), (sitting, sittingOff, "RootT.y only", k.RootY), (sittingHalf, sittingHalfOff, "plain half", k.PlainB));
             }
 
             // A case in the Action controller at full weight: `under` in its first layer, and the override and
-            // additive layers raised to full weight, each playing its motion if given and idle if not.
-            void Layered(Motion under, (string name, Motion m)? overMotion = null, (string name, Motion m)? addMotion = null)
+            // additive layers each raised to full weight while it plays a motion, or idle if `idleOverride`.
+            void Layered(Motion under, (string name, Motion m)? overMotion = null, (string name, Motion m)? addMotion = null, bool idleOverride = false)
             {
-                var parts = new List<(AnimatorStateMachine, AnimatorState, string, Motion)> { (action, actionOff, overMotion == null && addMotion == null ? "under an idle override" : "under", under) };
+                var parts = new List<(AnimatorStateMachine, AnimatorState, string, Motion)> { (action, actionOff, idleOverride ? "under an idle override" : "under", under) };
                 if (overMotion.HasValue) parts.Add((over, overOff, overMotion.Value.name, overMotion.Value.m));
                 if (addMotion.HasValue) parts.Add((add, addOff, addMotion.Value.name, addMotion.Value.m));
                 var first = Case(parts.ToArray())[0];
                 PlayableControl(first, VRCPlayableLayerControl.BlendableLayer.Action, 1, 0);
-                LayerControl(first, VRCAnimatorLayerControl.BlendableLayer.Action, 1, 1, 0);
-                LayerControl(first, VRCAnimatorLayerControl.BlendableLayer.Action, 2, 1, 0);
+                if (overMotion.HasValue || idleOverride) LayerControl(first, VRCAnimatorLayerControl.BlendableLayer.Action, 1, 1, 0);
+                if (addMotion.HasValue) LayerControl(first, VRCAnimatorLayerControl.BlendableLayer.Action, 2, 1, 0);
             }
 
             AnimatorState State(AnimatorStateMachine sm, AnimatorState off, string name, Motion m, int id)
@@ -274,37 +285,38 @@ namespace AvatarWorkshop.Reference
 
             void Crossfade(string name, Motion from, Motion to)
             {
-                var a = Case((body, bodyOff, name, from))[0];
+                int id = next++;
+                var a = State(body, bodyOff, name, from, id);
                 var b = body.AddState(a.name + " (to)");
                 b.writeDefaultValues = false; b.motion = to;
                 b.mirrorParameterActive = true; b.mirrorParameter = MirrorParameter;
-                Go(a, b, 0.5f).AddCondition(AnimatorConditionMode.Greater, 0.5f, "BlendX");
-                Go(b, bodyOff, 0).AddCondition(AnimatorConditionMode.NotEqual, next - 1, CaseParameter);
+                Go(a, b, 0.5f).AddCondition(AnimatorConditionMode.Greater, 0.5f, BlendX);
+                Go(b, bodyOff, 0).AddCondition(AnimatorConditionMode.NotEqual, id, CaseParameter);
             }
 
             static BlendTree Tree1D(Ctl c, Motion a, Motion b)
             {
-                var t = c.Tree("1D", BlendTreeType.Simple1D, "BlendX");
+                var t = c.Tree("1D", BlendTreeType.Simple1D, BlendX);
                 t.AddChild(a, 0); t.AddChild(b, 1);
                 return t;
             }
 
             BlendTree Tree2D(BlendTreeType type, HumanClipSet k)
             {
-                var t = Base.Tree(type.ToString(), type, "BlendU", "BlendY");
+                var t = Base.Tree(type.ToString(), type, BlendU, BlendY);
                 t.AddChild(k.Plain, new Vector2(-1, 0)); t.AddChild(k.Goals, new Vector2(1, 0));
                 t.AddChild(k.PlainB, new Vector2(0, 1)); t.AddChild(k.GoalsB, new Vector2(0, -1));
-                if (type != BlendTreeType.SimpleDirectional2D) t.AddChild(k.Rest, Vector2.zero);
+                if (type != BlendTreeType.SimpleDirectional2D) t.AddChild(k.RootY, Vector2.zero);
                 return t;
             }
 
             static BlendTree Direct(Ctl c, Motion a, Motion b)
             {
-                var t = c.Tree("Direct", BlendTreeType.Direct, "BlendX");
+                var t = c.Tree("Direct", BlendTreeType.Direct, BlendX);
                 t.children = new[]
                 {
-                    new ChildMotion { motion = a, timeScale = 1, directBlendParameter = "BlendX" },
-                    new ChildMotion { motion = b, timeScale = 1, directBlendParameter = "BlendY" },
+                    new ChildMotion { motion = a, timeScale = 1, directBlendParameter = BlendX },
+                    new ChildMotion { motion = b, timeScale = 1, directBlendParameter = BlendY },
                 };
                 return t;
             }
