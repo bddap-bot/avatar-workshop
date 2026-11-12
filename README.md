@@ -284,8 +284,10 @@ original rotation, height and XZ on a walking body. They also play such clips in
 blend trees, under masked override and additive layers, and in the Action, Additive and Sitting playables at partial
 weight. The Base controller holds only one layer: an idle override layer holds the body parts its mask lets through
 at a constant pose, so a clip under it would not play alone. Layered cases play in the Action controller at full
-weight, whose override and additive layers stay at weight 0 until a case raises them; one case raises them both
-and leaves them idle over a walking body, showing that effect. A recording fails if any composition `Coverage.Compositions` lists is missing from
+weight, whose override and additive layers stay at weight 0 until a case raises them; one case raises the override
+layer and leaves it idle over a walking body, showing that effect. A recording also fails if a case never entered one
+of its states, or if a playable it plays at partial weight held a weight strictly between 0 and 1 on fewer than 90% of
+the case's frames. A recording fails if any composition `Coverage.Compositions` lists is missing from
 `compositions.json`.
 `reference/check.sh PROJECT OUT [SCENE] [AVATAR]` records the avatar (the fixture by default) twice and requires every output but the logs (`unity.log`, `export.txt`),
 `tips.tsv` and `poses.tsv` to be byte-identical, and PhysBone tips and every pose value within 1e-5 (`reference/poses.py`, Python 3.10 or later).

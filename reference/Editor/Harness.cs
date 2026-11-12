@@ -1033,10 +1033,11 @@ namespace AvatarWorkshop.Reference
                 }
         }
 
-        // Fails a composition-probe case whose states the animators never entered, or whose partial playable never
-        // held a weight strictly between 0 and 1.
+        // Fails a composition-probe case whose states the animators never entered, or whose partial playable held a
+        // weight strictly between 0 and 1 on fewer than 90% of its frames (a playable blending in passes through
+        // partial weights on its way to full).
         readonly HashSet<int> caseStates = new HashSet<int>();
-        readonly HashSet<VRCAvatarDescriptor.AnimLayerType> casePartial = new HashSet<VRCAvatarDescriptor.AnimLayerType>();
+        readonly Dictionary<VRCAvatarDescriptor.AnimLayerType, int> casePartial = new Dictionary<VRCAvatarDescriptor.AnimLayerType, int>();
 
         void Played(Step step)
         {
@@ -1050,13 +1051,13 @@ namespace AvatarWorkshop.Reference
             foreach (var type in step.Case.Partial)
             {
                 var w = mixer.GetInputWeight(PlayableIndex(type) + 1);
-                if (w > 0 && w < 1) casePartial.Add(type);
+                if (w > 0 && w < 1) casePartial[type] = casePartial.TryGetValue(type, out var n) ? n + 1 : 1;
             }
             if (stepFrame < step.Frames - 1) return;
             var unplayed = step.Case.States.Where(x => !caseStates.Contains(x.hash)).Select(x => x.label).ToList();
             if (unplayed.Count > 0) throw new Exception($"{step.Label}: never entered {string.Join(", ", unplayed)}");
-            var full = step.Case.Partial.Except(casePartial).ToList();
-            if (full.Count > 0) throw new Exception($"{step.Label}: the {string.Join(", ", full)} playable never held a partial weight");
+            var full = step.Case.Partial.Where(type => (casePartial.TryGetValue(type, out var n) ? n : 0) < 0.9f * step.Frames).ToList();
+            if (full.Count > 0) throw new Exception($"{step.Label}: the {string.Join(", ", full)} playable held a partial weight on fewer than 90% of its frames");
         }
 
         int PlayableIndex(VRCAvatarDescriptor.AnimLayerType type)
