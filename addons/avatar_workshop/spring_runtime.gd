@@ -218,34 +218,33 @@ func advance(delta: float) -> void:
 
 func _advance_physbones(executions: float) -> void:
 	var placed := {}
+	var reaching: Array = hands.map(func(hand: Dictionary) -> PhysBone.Collider: return PhysBone.sphere(hand.from, hand.to, hand.radius, false))
 	for chain: Dictionary in _physbones:
 		var physbone: PhysBone.Chain = chain.physbone
 		if targets.has(chain.index):
 			if physbone.seeded:
 				physbone.unseed()
 			continue
-		var touching := []
+		var touching: Array[PhysBone.Collider] = []
 		for index: int in chain.colliders:
 			if not placed.has(index):
 				placed[index] = _placed(colliders[index])
-			if not placed[index].is_empty():
+			if placed[index] != null:
 				touching.append(placed[index])
-		for hand: Dictionary in hands:
-			if chain.collide & hand.who:
-				touching.append(PhysBone.sphere(hand.from, hand.to, hand.radius, false))
+		for i in hands.size():
+			if chain.collide & hands[i].who:
+				touching.append(reaching[i])
 		physbone.advance(executions, _place(chain), touching)
 		var inverse := _center(chain).affine_inverse()
 		chain.previous = chain.current
-		chain.current = PackedVector3Array()
-		for tail in physbone.tails:
-			chain.current.append(inverse * tail)
+		chain.current = inverse * physbone.tails
 
 
-## `collider` placed in the world as PhysBone.advance meets it, its extended shape where it has one, or empty for a
+## `collider` placed in the world as PhysBone.advance meets it, its extended shape where it has one, or null for a
 ## collider that names no node.
-static func _placed(collider: Dictionary) -> Array:
+static func _placed(collider: Dictionary) -> PhysBone.Collider:
 	if collider.is_empty():
-		return []
+		return null
 	var world: Transform3D = collider.node.global_transform
 	var shape: Dictionary = collider.get("extended", collider)
 	var at: Vector3 = world * shape.offset
