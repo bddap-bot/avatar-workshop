@@ -29,19 +29,8 @@ fn fixture_follows_the_reference() {
         assert!(rep.seen.keys().any(|k| k.starts_with(kind)), "no {kind} binding was compared");
     }
     assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
-    let wrong: Vec<(&str, usize)> = rep.bindings.keys.iter().map(|(k, v)| (k.as_str(), v.0)).collect();
-    assert_eq!(wrong, ROOT_MOTION_NOT_YET_EVALUATED, "bindings: {}", rep.bindings.summary(20));
+    assert_eq!(rep.bindings.wrong, 0, "bindings: {}", rep.bindings.summary(20));
 }
-
-/// The body under the fixture's root-motion settings (Walk's bakes, bases and offsets, Sit's centre-of-mass height),
-/// which the core does not evaluate yet.
-const ROOT_MOTION_NOT_YET_EVALUATED: &[(&str, usize)] = &[
-    ("muscle:RootQ.w", 53),
-    ("muscle:RootQ.y", 92),
-    ("muscle:RootT.x", 92),
-    ("muscle:RootT.y", 117),
-    ("muscle:RootT.z", 92),
-];
 
 /// A copy of the fixture's recording with one of its files rewritten.
 fn edited_recording(name: &str, file: &str, edit: impl Fn(&str) -> bool) -> std::path::PathBuf {
@@ -116,6 +105,11 @@ const SEMANTICS: &[(&str, &[&str])] = &[
     ("clip cycle offset", &["muscle:Left Upper Leg Front-Back", "muscle:Right Upper Leg Front-Back"]),
     ("additive reference pose", &["=7:12:Additive", "xform:Orbs/Puppet"]),
     ("humanoid layer mask", &["muscle:Left Arm Down-Up", "muscle:Spine Front-Back"]),
+    (
+        "root motion: loop pose, baked rotation and height, the feet basis, both offsets, unbaked XZ",
+        &["muscle:RootQ.y", "muscle:RootQ.w", "muscle:RootT.y"],
+    ),
+    ("root motion: an unbaked centre-of-mass height under the sitting playable", &["muscle:RootT.y", "playable:2"]),
     (
         "curve binding: constraint field",
         &["constraint:Probe#0:GlobalWeight", "constraint:Probe#0:Sources.source0.Weight", "constraint:Probe#0:PositionOffset.x"],
@@ -340,4 +334,63 @@ fn a_reference_pose_subtracts_only_what_its_clip_animates() {
         b.step(1.0 / 60.0);
         assert_eq!(a.values(), b.values());
     }
+}
+
+/// A layer starts in its machine's default state; the entry node's transitions apply only when a transition enters
+/// the machine.
+#[test]
+fn a_layer_starts_in_its_default_state() {
+    use avatar_core::model::{Destination, EntryTransition, LayerContent, PlayableLayerType};
+    let mut avatar = fixture();
+    let gesture = avatar.model.layers.get_mut(&PlayableLayerType::Gesture).unwrap();
+    let LayerContent::StateMachine { state_machine } = &mut gesture.controller.as_mut().unwrap().layers[0].content else { panic!() };
+    let default = state_machine.default_state.unwrap();
+    let other = state_machine.states.iter().find(|s| s.id != default).unwrap();
+    let (default_name, other_name) = (state_machine.states.iter().find(|s| s.id == default).unwrap().name.clone(), other.name.clone());
+    state_machine.entry_transitions.push(EntryTransition { destination: Destination::State { id: other.id }, conditions: vec![], mute: false, solo: false });
+    let mut a = Animator::new(&avatar);
+    a.step(1.0 / 60.0);
+    let gesture = a.playable_kinds().iter().position(|k| *k == PlayableLayerType::Gesture).unwrap();
+    let state = a.states().into_iter().find(|s| s.playable == gesture && s.layer == 0).unwrap().current;
+    assert!(state.ends_with(&format!(".{default_name}")), "started in {state}, not {default_name} (the entry node leads to {other_name})");
+}
+
+/// A 1D blend weights each end by its own distance, (b - x) / (b - a) and (x - a) / (b - a), and a state's clock
+/// advances by dt · speed / duration: one corpus state, whose duration is the weight of a 1/60 s clip as its
+/// parameter nears the other end, reaches the recorded clock bit for bit only so.
+#[test]
+fn one_dimensional_weights_and_state_clocks_round_as_unity_does() {
+    use avatar_core::animator::motion::weights_1d;
+    let w = weights_1d(&[0.251, 1.0], 0.9999943);
+    let (near, far) = (w[0].unwrap(), w[1].unwrap());
+    assert_eq!(near, (1.0f32 - 0.9999943) / (1.0 - 0.251));
+    assert_eq!(far, (0.9999943f32 - 0.251) / (1.0 - 0.251));
+    let dt = 1.0f32 / 60.0;
+    let duration = near * (1.0 / 60.0);
+    assert_eq!(309838.563f32 + dt * 1.0 / duration, 440735.781f32);
+}
+
+/// A goal a humanoid clip has no curve for sits at its rest offset from the clip's body; a mirrored clip takes the
+/// mirror of the other side's offset and turns the goal's frame half a revolution, about Y for a foot.
+#[test]
+fn an_uncurved_goal_follows_the_body_and_mirrors_with_its_clip() {
+    let mut avatar = fixture();
+    let walk = clip_mut(&mut avatar, "Walk");
+    walk.curves.extend(["LeftFootT.x", "LeftFootT.y", "LeftFootT.z", "LeftFootQ.x", "LeftFootQ.y", "LeftFootQ.z"].map(|n| muscle(n, 0.0)));
+    walk.curves.push(muscle("LeftFootQ.w", 1.0));
+    let rest = avatar.model.humanoid.rest.as_mut().unwrap();
+    rest.left_foot.position[0] = -0.06;
+    rest.right_foot.position[0] = 0.07;
+    // Stand mirrors its clip, and the Flip parameter mirrors the state, undoing it.
+    let standing = |mirrored: bool| {
+        let mut a = Animator::new(&avatar);
+        a.set("Flip", !mirrored as u8 as f32);
+        run(&mut a, 10);
+        ["RootT.x", "LeftFootT.x", "LeftFootQ.y", "LeftFootQ.w"].map(|n| value(&a, n))
+    };
+    let (plain, mirrored) = (standing(false), standing(true));
+    assert_eq!(plain[1] - plain[0], -0.06, "{plain:?}");
+    assert_eq!((plain[2].abs(), plain[3].abs()), (0.0, 1.0), "{plain:?}");
+    assert_eq!(mirrored[1] - mirrored[0], -0.07, "{mirrored:?}");
+    assert_eq!((mirrored[2].abs(), mirrored[3].abs()), (1.0, 0.0), "{mirrored:?}");
 }

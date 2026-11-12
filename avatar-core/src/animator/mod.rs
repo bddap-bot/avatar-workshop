@@ -348,7 +348,7 @@ impl Animator {
         let muscle_targets: Vec<u32> =
             (0..targets.len() as u32).filter(|&t| matches!(&targets.list[t as usize], Target::Muscle(n) if human::goal(n).is_none())).collect();
         for c in &mut clips {
-            c.complete_human_pose(&muscle_targets, &targets);
+            c.complete_human_pose(&muscle_targets, &targets, m.humanoid.rest.as_ref());
         }
         let face = face::Face::new(&m.descriptor, &mut targets);
         let anim_params = |c: u32| -> Vec<String> {

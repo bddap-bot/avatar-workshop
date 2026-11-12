@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use glam::{EulerRot, Quat, Vec2};
 
 use crate::model::{
-    AnimationCurve, Axis, BlendAlgorithm, Binding, Clip, Motion, NodeIndex, TransformProperty,
+    AnimationCurve, Axis, Binding, BlendAlgorithm, BodyPart, Clip, HeightBasis, HumanRest, HumanTransform, HumanoidClip,
+    Motion, NodeIndex, RotationBasis, TransformProperty, XzBasis,
 };
 
 /// A property the animator writes. Rotations are always quaternion components: Euler curves are
@@ -100,6 +101,9 @@ pub struct CompiledClip {
     pub mirrored: Option<Box<CompiledClip>>,
     /// Muscles a humanoid clip has no curve for: Unity evaluates its whole human pose, these at rest.
     rest_muscles: Vec<u32>,
+    /// The humanoid clip settings, until `complete_human_pose` hands them to `human`.
+    settings: Option<HumanoidClip>,
+    human: Option<Box<Human>>,
     /// The clip's own mirror, combined with the state's and the blend tree's.
     pub mirror: bool,
     pub cycle_offset: f32,
@@ -242,22 +246,42 @@ impl CompiledClip {
             rotations,
             mirrored: None,
             rest_muscles: Vec::new(),
+            settings: clip.humanoid.clone(),
+            human: None,
             mirror: clip.humanoid.as_ref().is_some_and(|h| h.mirror),
             cycle_offset: clip.cycle_offset,
             reference: clip.additive_reference_pose.as_ref().map(|r| (r.clip.0, r.time)),
         }
     }
 
-    /// Gives a humanoid clip, and its mirror, every muscle of `muscles` it has no curve for at rest.
-    pub fn complete_human_pose(&mut self, muscles: &[u32], targets: &Targets) {
+    /// Gives a humanoid clip, and its mirror, every muscle of `muscles` it has no curve for at rest, and the body
+    /// and IK goals Unity's human pose holds for it.
+    pub fn complete_human_pose(&mut self, muscles: &[u32], targets: &Targets, rest: Option<&HumanRest>) {
         let human = |c: &CompiledClip| c.curves.iter().any(|(t, _)| matches!(targets.list[*t as usize], Target::Muscle(_)));
         if !human(self) {
             return;
         }
         self.rest_unbound_muscles(muscles);
+        self.complete_goals(targets, rest, false);
         if let Some(m) = self.mirrored.as_deref_mut() {
             m.rest_unbound_muscles(muscles);
+            m.complete_goals(targets, rest, true);
         }
+    }
+
+    fn complete_goals(&mut self, targets: &Targets, rest: Option<&HumanRest>, mirrored: bool) {
+        let Some(settings) = self.settings.take() else { return };
+        let Some(h) = Human::new(self, settings, targets, rest, mirrored) else { return };
+        self.writes.extend(h.slots.iter().copied());
+        self.writes.sort_unstable();
+        self.writes.dedup();
+        for ids in std::iter::once(&h.body).chain(h.goals.iter().map(|g| &g.ids)) {
+            let q = [ids[3], ids[4], ids[5], ids[6]];
+            if !self.rotations.contains(&q) {
+                self.rotations.push(q);
+            }
+        }
+        self.human = Some(Box::new(h));
     }
 
     fn rest_unbound_muscles(&mut self, muscles: &[u32]) {
@@ -289,6 +313,20 @@ impl CompiledClip {
     }
 
     pub fn sample(&self, normalized: f32, defaults: &[f32], out: &mut impl FnMut(u32, f32)) {
+        match &self.human {
+            Some(h) => {
+                let mut pose = Vec::with_capacity(h.slots.len());
+                self.sample_curves(normalized, defaults, &mut |t, v| match h.slots.binary_search(&t) {
+                    Ok(_) => pose.push((t, v)),
+                    Err(_) => out(t, v),
+                });
+                h.apply(self.time(normalized), self.length, &pose, defaults, out);
+            }
+            None => self.sample_curves(normalized, defaults, out),
+        }
+    }
+
+    fn sample_curves(&self, normalized: f32, defaults: &[f32], out: &mut impl FnMut(u32, f32)) {
         let t = self.time(normalized);
         for (target, curve) in &self.curves {
             out(*target, curve.evaluate(t));
@@ -317,6 +355,158 @@ impl CompiledClip {
         for s in self.stepped.iter().filter(|s| !s.keys.is_empty()) {
             let i = s.keys.partition_point(|k| k.0 <= t).max(1);
             out(s.target, s.keys[i - 1].1);
+        }
+    }
+}
+
+/// Target ids of the body or an IK goal: position x, y, z, then rotation x, y, z, w.
+type GoalIds = [u32; 7];
+
+struct Goal {
+    ids: GoalIds,
+    /// The goal's offset and rotation from the body at rest, where the clip has no curves for it.
+    rest: Option<(glam::Vec3, Quat)>,
+    /// The half turn a mirrored clip gives the goal's frame.
+    side: Quat,
+}
+
+/// The body and IK goals of a humanoid clip, which Unity's human pose holds whole: the body under the clip's
+/// root-motion settings, and each goal the clip has no curve for at its rest offset from that body.
+struct Human {
+    body: GoalIds,
+    goals: Vec<Goal>,
+    /// Every target above, sorted for `sample`'s lookup.
+    slots: Vec<u32>,
+    settings: HumanoidClip,
+    start: glam::Vec3,
+    /// Change over the clip's length, which Loop Pose removes from what it bakes into the pose.
+    drift: glam::Vec3,
+    yaw_drift: f32,
+    /// The lower foot's height at the clip's start, which the Feet height basis measures the body from.
+    feet: f32,
+}
+
+fn yaw(q: Quat) -> f32 {
+    (2.0 * (q.w * q.y + q.x * q.z)).atan2(1.0 - 2.0 * (q.x * q.x + q.y * q.y))
+}
+
+fn wrapped(angle: f32) -> f32 {
+    let a = angle.rem_euclid(std::f32::consts::TAU);
+    if a > std::f32::consts::PI { a - std::f32::consts::TAU } else { a }
+}
+
+impl Human {
+    /// A mirrored clip's pose is the mirror image of the clip's own, goals it has no curve for included: a goal takes
+    /// the mirror of the other side's rest, and its frame turns half a revolution, about Y for a foot and Z for a
+    /// hand.
+    fn new(clip: &CompiledClip, settings: HumanoidClip, targets: &Targets, rest: Option<&HumanRest>, mirrored: bool) -> Option<Human> {
+        let ids = |g: &str| -> Option<GoalIds> {
+            let id = |c: &str| targets.index_of(&Target::Muscle(format!("{g}{c}"))).map(|i| i as u32);
+            Some([id("T.x")?, id("T.y")?, id("T.z")?, id("Q.x")?, id("Q.y")?, id("Q.z")?, id("Q.w")?])
+        };
+        let body = ids("Root")?;
+        let at = |id: u32, t: f32, or: f32| clip.curves.iter().find(|c| c.0 == id).map_or(or, |c| c.1.evaluate(t));
+        let pos = |g: &GoalIds, t: f32| glam::Vec3::new(at(g[0], t, 0.0), at(g[1], t, 0.0), at(g[2], t, 0.0));
+        let rot = |g: &GoalIds, t: f32| Quat::from_xyzw(at(g[3], t, 0.0), at(g[4], t, 0.0), at(g[5], t, 0.0), at(g[6], t, 1.0)).normalize();
+        let local = |r: &HumanTransform| {
+            let b = rest.map_or(Quat::IDENTITY, |r| Quat::from_array(r.body.rotation)).inverse();
+            let o = rest.map_or(glam::Vec3::ZERO, |r| glam::Vec3::from_array(r.body.position));
+            (b * (glam::Vec3::from_array(r.position) - o), b * Quat::from_array(r.rotation))
+        };
+        let rests = rest.map(|r| [&r.left_foot, &r.right_foot, &r.left_hand, &r.right_hand]);
+        let (start, start_q) = (pos(&body, 0.0), rot(&body, 0.0));
+        let mut goals = Vec::new();
+        let mut feet = f32::INFINITY;
+        for (k, (g, part)) in super::human::GOALS.iter().filter(|(_, p)| *p != BodyPart::Root).enumerate() {
+            let foot = matches!(part, BodyPart::LeftFootIK | BodyPart::RightFootIK);
+            let (mut offset, mut turn) = rests.map_or((glam::Vec3::ZERO, Quat::IDENTITY), |r| local(r[if mirrored { k ^ 1 } else { k }]));
+            if mirrored {
+                offset.x = -offset.x;
+                turn = Quat::from_xyzw(turn.x, -turn.y, -turn.z, turn.w);
+            }
+            let ids = ids(g);
+            let curved = ids.filter(|ids| clip.curves.iter().any(|c| ids.contains(&c.0)));
+            if foot {
+                feet = feet.min(curved.map_or(start.y + (start_q * offset).y, |ids| pos(&ids, 0.0).y));
+            }
+            let Some(ids) = ids else { continue };
+            let curved = curved.is_some();
+            let side = match (mirrored, foot) {
+                (false, _) => Quat::IDENTITY,
+                (true, true) => Quat::from_xyzw(0.0, 1.0, 0.0, 0.0),
+                (true, false) => Quat::from_xyzw(0.0, 0.0, 1.0, 0.0),
+            };
+            goals.push(Goal { ids, rest: (!curved).then_some((offset, turn)), side });
+        }
+        let mut slots: Vec<u32> = body.iter().chain(goals.iter().flat_map(|g| g.ids.iter())).copied().collect();
+        slots.sort_unstable();
+        Some(Human {
+            body,
+            goals,
+            slots,
+            settings,
+            start,
+            drift: pos(&body, clip.length) - start,
+            yaw_drift: wrapped(yaw(rot(&body, clip.length)) - yaw(start_q)),
+            feet,
+        })
+    }
+
+    fn apply(&self, time: f32, length: f32, pose: &[(u32, f32)], defaults: &[f32], out: &mut impl FnMut(u32, f32)) {
+        let get = |id: u32| pose.iter().find(|p| p.0 == id).map_or(defaults[id as usize], |p| p.1);
+        let s = &self.settings;
+        let frac = if length > 0.0 { time / length } else { 0.0 };
+        let t = glam::Vec3::new(get(self.body[0]), get(self.body[1]), get(self.body[2]));
+        let q = Quat::from_xyzw(get(self.body[3]), get(self.body[4]), get(self.body[5]), get(self.body[6])).normalize();
+        let mut turn = Quat::from_rotation_y(s.rotation.offset_degrees.to_radians());
+        if s.rotation.bake_into_pose && s.loop_pose {
+            turn *= Quat::from_rotation_y(self.yaw_drift * frac);
+        }
+        if !s.rotation.bake_into_pose || s.rotation.based_upon == RotationBasis::BodyOrientation {
+            let twist = Quat::from_xyzw(0.0, q.y, 0.0, q.w);
+            if twist.length_squared() > 0.0 {
+                turn *= twist.normalize();
+            }
+        }
+        let mut at = glam::Vec3::new(0.0, s.height.offset, 0.0);
+        if s.height.bake_into_pose {
+            if s.loop_pose {
+                at.y += self.drift.y * frac;
+            }
+            if s.height.based_upon == HeightBasis::Feet {
+                at.y += self.feet;
+            }
+        } else if s.height.based_upon == HeightBasis::CenterOfMass {
+            at.y += t.y;
+        }
+        if s.xz.bake_into_pose {
+            if s.loop_pose {
+                at += glam::Vec3::new(self.drift.x, 0.0, self.drift.z) * frac;
+            }
+            if s.xz.based_upon == XzBasis::CenterOfMass {
+                at += glam::Vec3::new(self.start.x, 0.0, self.start.z);
+            }
+        } else {
+            at += glam::Vec3::new(t.x, 0.0, t.z);
+        }
+        let root = turn.inverse();
+        let local = |p: glam::Vec3| root * (p - at);
+        let (t, q) = (local(t), root * q);
+        let write = |ids: &GoalIds, t: glam::Vec3, q: Quat, out: &mut dyn FnMut(u32, f32)| {
+            for (id, v) in ids.iter().zip([t.x, t.y, t.z, q.x, q.y, q.z, q.w]) {
+                out(*id, v);
+            }
+        };
+        write(&self.body, t, q, out);
+        for g in &self.goals {
+            let ids = &g.ids;
+            match g.rest {
+                Some((offset, rotation)) => write(ids, t + q * offset, q * rotation * g.side, out),
+                None => {
+                    let gq = Quat::from_xyzw(get(ids[3]), get(ids[4]), get(ids[5]), get(ids[6])).normalize();
+                    write(ids, local(glam::Vec3::new(get(ids[0]), get(ids[1]), get(ids[2]))), root * gq * g.side, out);
+                }
+            }
         }
     }
 }
@@ -381,9 +571,9 @@ pub fn weights_1d(thresholds: &[f32], x: f32) -> Vec<Option<f32>> {
         let (a, b) = (order[k], order[k + 1]);
         let (ta, tb) = (thresholds[a], thresholds[b]);
         if x >= ta && x <= tb {
-            let s = if tb > ta { (x - ta) / (tb - ta) } else { 0.0 };
-            w[a] = Some(1.0 - s);
-            w[b] = Some(s);
+            let (wa, wb) = if tb > ta { ((tb - x) / (tb - ta), (x - ta) / (tb - ta)) } else { (1.0, 0.0) };
+            w[a] = Some(wa);
+            w[b] = Some(wb);
             return w;
         }
     }

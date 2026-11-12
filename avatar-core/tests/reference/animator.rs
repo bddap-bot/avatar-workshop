@@ -485,6 +485,11 @@ impl Run {
                     clock = t;
                 }
             }
+            if let Ok(k) = std::env::var("AW_CLOCK") {
+                for s in anim.states().iter().filter(|s| format!("{}:{}", order[s.playable], s.layer) == k) {
+                    eprintln!("{f}\t{k}\t{} {} {:?} {:?}", s.current, s.current_time, s.next, s.next_time);
+                }
+            }
             if f < first {
                 continue;
             }

@@ -2,6 +2,8 @@
 //! states and values differ from the recording's.
 //!
 //! usage: animator RECORDING AVATAR.glb [--frames N] [--limit N]
+//! AW_TRACE=<part of a key> prints each wrong sample of matching keys; AW_CLOCK=<playable>:<layer> prints that layer's
+//! states and clocks every frame.
 
 #[path = "../tests/reference/mod.rs"]
 mod reference;

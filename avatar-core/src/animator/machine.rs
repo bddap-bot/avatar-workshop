@@ -320,23 +320,22 @@ impl ControllerRt {
         }
     }
 
-    fn rate(&self, layer: usize, id: StateId, clips: &[CompiledClip]) -> f32 {
+    fn speed(&self, layer: usize, id: StateId) -> f32 {
         let Some(s) = self.state(layer, id) else { return 0.0 };
-        let mut speed = s.speed;
-        if let Some(p) = &s.speed_parameter {
-            speed *= self.get(p);
-        }
-        let d = self.duration(layer, id, clips);
-        if d <= 0.0 {
-            0.0
-        } else {
-            speed / d
+        match &s.speed_parameter {
+            Some(p) => s.speed * self.get(p),
+            None => s.speed,
         }
     }
 
-    /// A playing state's normalized time after `dt`, which runs on under a time parameter.
+    fn rate(&self, layer: usize, id: StateId, clips: &[CompiledClip]) -> f32 {
+        self.speed(layer, id) / self.duration(layer, id, clips)
+    }
+
+    /// A playing state's normalized time after `dt`, which runs on under a time parameter. Multiplying by speed before
+    /// dividing by the duration rounds as Unity's clock does; a rate computed first drifts from it by an ulp.
     fn advanced(&self, layer: usize, p: &Playing, dt: f32, clips: &[CompiledClip]) -> f32 {
-        p.time + dt * self.rate(layer, p.state, clips)
+        p.time + dt * self.speed(layer, p.state) / self.duration(layer, p.state, clips)
     }
 
     /// The normalized time a state's motion is sampled at: its time parameter's value when it has one.
@@ -473,7 +472,7 @@ impl ControllerRt {
         if !self.layers[li].started {
             self.layers[li].started = true;
             let flat = self.layers[li].flat.as_ref().unwrap();
-            let start = self.enter_machine(flat, flat.root);
+            let start = flat.machines.get(&flat.root).and_then(|m| m.default_state);
             if let Some(s) = start {
                 self.layers[li].current = Some(Playing { state: s, time: 0.0, direct_starts: Vec::new(), prev_time: 0.0 });
                 entered.push(Entered { layer: li, state: s, behaviours: self.behaviours_of(li, s) });
