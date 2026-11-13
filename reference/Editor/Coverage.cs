@@ -411,7 +411,7 @@ namespace AvatarWorkshop.Reference
                         bool both = zeros.Count > 0 && zeros.Count < t.children.Length;
                         if (both && zero == 0) Add(key + ".zero_length_unweighted");
                         else if (both && other == 0) Add(key + ".length_unweighted");
-                        else Add(key + (Mathf.Approximately(zero + other, 1) ? ".sum_one" : zero + other < 1 ? ".sum_below_one" : ".sum_above_one"));
+                        else Add(key + "." + SumKey(zero + other));
                         if (!both || zero == 0 || other == 0) continue;
                         if (zero != other) Add(key + (zero > other ? ".zero_length_heavier" : ".zero_length_lighter"));
                         if (zeros.Count >= Many) Add(key + ".many_zero_length");
@@ -421,23 +421,39 @@ namespace AvatarWorkshop.Reference
             return c;
         }
 
-        // The write-defaults compositions the layering probe separates, each counted where a case plays it: a
-        // write-defaults state with a clip returning to one without, by what its controller's other layers play in
-        // the same case (alone: none enters a state for it; below or above a layer without write defaults in a state
-        // with or without a motion, also on the controller's first layer); a state without write defaults and with no motion entered from one with a
-        // motion; a zero-length transition from a blend tree into a state with no motion, by the tree's algorithm and
-        // the destination's write defaults; a direct tree without write defaults by which of the targets its layer's
-        // clip states animate its leaves write, and its weight sum; and a direct tree with normalized blend values
-        // whose weights sum below one, by its clips.
+        // "above" and "below" name the layer without write defaults' side by layer order: a layer above it is
+        // later in the controller and blends over it.
         public static readonly string[] LayeringCompositions =
-            new[] { "alone" }.Concat(new[] { "", "first_layer." }.SelectMany(first => new[] { "below", "above" }.Where(side => first == "" || side == "below")
-                .SelectMany(side => new[] { "with_motion", "without_motion" }.Select(m => $"{first}{side}_write_defaults_off.{m}")))).Select(k => "toggle_return." + k)
-            .Append("write_defaults_off.empty_after_motion")
-            .Concat(new[] { "direct", "simple_1d", "direct.nested", "freeform_cartesian_2d" }.Select(t => $"zero_length_transition.{t}.into_write_defaults_on"))
-            .Append("zero_length_transition.direct.into_write_defaults_off")
-            .Concat(new[] { "some", "all", "none" }.SelectMany(b => new[] { "below_one", "one", "above_one" }.Select(sum => $"direct.write_defaults_off.binds_{b}.sum_{sum}")))
-            .Concat(new[] { "length_only", "zero_length_only", "mixed", "length_only.write_defaults_off" }.Select(k => "direct.normalized.sum_below_one." + k))
-            .ToArray();
+        {
+            "toggle_return.alone",
+            "toggle_return.below_write_defaults_off.with_motion",
+            "toggle_return.below_write_defaults_off.without_motion",
+            "toggle_return.above_write_defaults_off.with_motion",
+            "toggle_return.above_write_defaults_off.without_motion",
+            "toggle_return.first_layer.below_write_defaults_off.with_motion",
+            "toggle_return.first_layer.below_write_defaults_off.without_motion",
+            "write_defaults_off.empty_after_motion",
+            "zero_length_transition.direct.into_write_defaults_on",
+            "zero_length_transition.simple_1d.into_write_defaults_on",
+            "zero_length_transition.direct.nested.into_write_defaults_on",
+            "zero_length_transition.freeform_cartesian_2d.into_write_defaults_on",
+            "zero_length_transition.direct.into_write_defaults_off",
+            "direct.write_defaults_off.binds_some.sum_below_one",
+            "direct.write_defaults_off.binds_some.sum_one",
+            "direct.write_defaults_off.binds_some.sum_above_one",
+            "direct.write_defaults_off.binds_all.sum_below_one",
+            "direct.write_defaults_off.binds_all.sum_one",
+            "direct.write_defaults_off.binds_all.sum_above_one",
+            "direct.write_defaults_off.binds_none.sum_below_one",
+            "direct.write_defaults_off.binds_none.sum_one",
+            "direct.write_defaults_off.binds_none.sum_above_one",
+            "direct.normalized.sum_below_one.length_only",
+            "direct.normalized.sum_below_one.zero_length_only",
+            "direct.normalized.sum_below_one.mixed",
+            "direct.normalized.sum_below_one.length_only.write_defaults_off",
+        };
+
+        static string SumKey(float sum) => Mathf.Approximately(sum, 1) ? "sum_one" : sum < 1 ? "sum_below_one" : "sum_above_one";
 
         static IEnumerable<EditorCurveBinding> Bindings(Motion m) =>
             Leaves(m).SelectMany(c => AnimationUtility.GetCurveBindings(c).Concat(AnimationUtility.GetObjectReferenceCurveBindings(c)));
@@ -475,17 +491,16 @@ namespace AvatarWorkshop.Reference
                                 Add($"zero_length_transition.{Algorithm(bt).Substring("blendtree.".Length)}{(bt.children.Any(ch => ch.motion is BlendTree) ? ".nested" : "")}.into_write_defaults_{(to.writeDefaultValues ? "on" : "off")}");
                         }
                         if (!(s.motion is BlendTree tree) || tree.blendType != BlendTreeType.Direct || tree.children.Any(ch => ch.motion is BlendTree)) continue;
-                        var sum = tree.children.Sum(ch => defaults[ch.directBlendParameter]);
-                        var below = sum < 1 && !Mathf.Approximately(sum, 1);
+                        var sum = SumKey(tree.children.Sum(ch => defaults[ch.directBlendParameter]));
                         if (AvatarWorkshop.Exporter.Exporter.NormalizedBlendValues(tree))
                         {
-                            if (below) Add($"direct.normalized.sum_below_one.{Content(tree)}{(s.writeDefaultValues ? "" : ".write_defaults_off")}");
+                            if (sum == "sum_below_one") Add($"direct.normalized.sum_below_one.{Content(tree)}{(s.writeDefaultValues ? "" : ".write_defaults_off")}");
                             continue;
                         }
                         if (s.writeDefaultValues) continue;
                         var written = new HashSet<EditorCurveBinding>(Bindings(tree));
                         var bound = targets.Count(written.Contains);
-                        Add($"direct.write_defaults_off.binds_{(bound == 0 ? "none" : bound == targets.Count ? "all" : "some")}.sum_{(below ? "below_one" : Mathf.Approximately(sum, 1) ? "one" : "above_one")}");
+                        Add($"direct.write_defaults_off.binds_{(bound == 0 ? "none" : bound == targets.Count ? "all" : "some")}.{sum}");
                     }
                 }
             }

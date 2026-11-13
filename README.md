@@ -327,24 +327,29 @@ default state, so from the first frame and throughout: six zero-length clips at 
 with normalized blend values and one without, both with write defaults. A recording fails if a case never entered its state, or if
 `compositions.json` counts no state for a composition `Coverage.BlendCompositions` lists.
 
-The write-defaults layering probe is the fixture's body with one FX controller for separating how Unity writes
-defaults across layers. Its clips hold blendshapes, each layer its own, and every layer rests in a state with write
-defaults and no motion. An int expression parameter `Case` picks the states a case plays and a bool `Pulse`, which
-the harness sets on frames 30 to 89 of each case's 150, moves a layer into its second state and back; the harness
-otherwise plays the cases as in the blend duration probe. The cases:
-- A write-defaults toggle holding its shape while `Pulse` is set and returning to its state with no motion: alone,
-  above and below a layer without write defaults that holds a shape through the case, or sits in a state with no
-  motion, and below such a layer on the controller's first layer.
-- A state without write defaults and with no motion, entered from one that held a shape.
-- Zero-length transitions into a state with no motion from a direct tree, a 1D tree, a direct tree of a 1D tree
-  and a 2D tree, and from a direct tree into a state without write defaults.
-- Direct trees without write defaults whose leaves write some, all or none of the shapes their layer's other state
-  sets, with weights summing to 0.5, 1 and 1.25; that state sets them before and after the tree's 60 frames.
-- Direct trees with normalized blend values whose weights sum below one, over clips with length, zero-length clips
-  and both, and one in a state without write defaults.
+The write-defaults layering probe is the fixture's body with one FX controller whose cases each isolate one way
+write defaults act across layers or within one. Its clips hold blendshapes, each layer its own, and no tree feeds an
+earlier case's value back into a shape it writes: Unity plays a shape's last value, from any earlier case, back into a
+state without write defaults, even after its layer rested in one with write defaults.
+Every layer rests in a state with write defaults and no motion. An int expression parameter `Case` picks the states a
+case plays, and a bool `Pulse`, which the harness sets on frames 30 to 89 of each case's 150, starts and ends the part
+of a case each item below names; the harness otherwise plays each case as the blend duration probe does (150 frames,
+then 20 of `Case` 0, with the blend parameters ramped). The cases:
+- A write-defaults toggle holding its shape while `Pulse` is set and returning to its state with no motion: alone; on
+  a layer above or below one without write defaults, which through the case either holds a shape or sits in a state
+  with no motion; and on the controller's first layer, below such a layer.
+- A state without write defaults holding a shape until `Pulse` clears, then one without write defaults and with no
+  motion.
+- Zero-length transitions, when `Pulse` clears, into a state with no motion from a direct tree, a 1D tree, a direct
+  tree of a 1D tree and a 2D tree, and from a direct tree into a state without write defaults.
+- Direct trees without write defaults, playing while `Pulse` is set, whose leaves write some, all or none of the
+  shapes the case's `Set` state, also without write defaults, sets before and after the tree; their weights sum to
+  0.5, 1 and 1.25.
+- Direct trees with normalized blend values whose weights sum below one, through the case, over clips with length,
+  zero-length clips and both, and one such tree over clips with length in a state without write defaults.
 
-A recording fails if a case never entered its states, or if `compositions.json` counts none of a composition
-`Coverage.LayeringCompositions` lists. Its recording is a reference trace of the core
+A recording fails if a case never entered its states, or if `compositions.json` counts zero for a composition
+`Coverage.LayeringCompositions` lists. The probe's recording is a reference trace of the core
 (`avatar-core/fixtures/reference/layering-animator`).
 
 `reference/check.sh PROJECT OUT [SCENE] [AVATAR]` records the avatar (the fixture by default) twice and requires every output but the logs (`unity.log`, `export.txt`),

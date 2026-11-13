@@ -39,8 +39,7 @@ namespace AvatarWorkshop.Reference
 
             var fx = new Ctl("BlendFX", (CaseParameter, AnimatorControllerParameterType.Int),
                 (BlendX, AnimatorControllerParameterType.Float), (BlendY, AnimatorControllerParameterType.Float), (BlendU, AnimatorControllerParameterType.Float));
-            foreach (var (name, value) in Weights)
-                fx.C.AddParameter(new AnimatorControllerParameter { name = name, type = AnimatorControllerParameterType.Float, defaultFloat = value });
+            AddWeights(fx);
             const string O = "W0", Q = "W25", H = "W50", W = "W100";
 
             (AnimatorStateMachine sm, AnimatorState off) Layer(string name, bool writeDefaults)
@@ -59,14 +58,7 @@ namespace AvatarWorkshop.Reference
                 CaseState(sm, off, name, m, next++, off.writeDefaultValues);
             }
             BlendTree D(params (Motion m, string weight)[] children) => Direct(fx, children);
-            BlendTree N(params (Motion m, string weight)[] children)
-            {
-                var t = D(children);
-                var o = new SerializedObject(t);
-                o.FindProperty("m_NormalizedBlendValues").boolValue = true;
-                o.ApplyModifiedPropertiesWithoutUndo();
-                return t;
-            }
+            BlendTree N(params (Motion m, string weight)[] children) => Normalized(fx, children);
             var many = z.Select(c => ((Motion)c, W)).Append((one, W)).Append((two, W)).ToArray();
 
             Case("below one", D((one, Q), (two, Q)));
@@ -169,6 +161,26 @@ namespace AvatarWorkshop.Reference
                 always.defaultState = held;
             }
 
+            InstallFx(d, parameters, fx);
+        }
+
+        static void AddWeights(Ctl fx)
+        {
+            foreach (var (name, value) in Weights)
+                fx.C.AddParameter(new AnimatorControllerParameter { name = name, type = AnimatorControllerParameterType.Float, defaultFloat = value });
+        }
+
+        static BlendTree Normalized(Ctl fx, params (Motion m, string weight)[] children)
+        {
+            var t = Direct(fx, children);
+            var o = new SerializedObject(t);
+            o.FindProperty("m_NormalizedBlendValues").boolValue = true;
+            o.ApplyModifiedPropertiesWithoutUndo();
+            return t;
+        }
+
+        static void InstallFx(VRCAvatarDescriptor d, VRCExpressionParameters parameters, Ctl fx)
+        {
             d.customExpressions = true;
             d.expressionParameters = parameters;
             d.customizeAnimationLayers = true;

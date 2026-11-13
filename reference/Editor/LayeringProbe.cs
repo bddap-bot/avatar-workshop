@@ -10,9 +10,11 @@ namespace AvatarWorkshop.Reference
     public static partial class Fixture
     {
         public const string PulseParameter = "Pulse";
+        public const int PulseOn = 30, PulseOff = 90;
 
-        // Each layer animates blendshapes no other layer binds, and every layer rests in a write-defaults state with
-        // no motion, so the layers a case does not enter are the same for every case.
+        // Each layer animates blendshapes no other layer binds, and no tree feeds an earlier case's value back into a
+        // shape it writes: Unity plays a shape's last value, from any earlier case, back into a state without write
+        // defaults.
         static void LayeringLayers(VRCAvatarDescriptor d)
         {
             AssetDatabase.CreateFolder(Dir, "Clips");
@@ -39,8 +41,7 @@ namespace AvatarWorkshop.Reference
             // Gesture showed nothing.
             var fx = new Ctl("LayeringFX", (CaseParameter, AnimatorControllerParameterType.Int), (PulseParameter, AnimatorControllerParameterType.Bool),
                 (BlendX, AnimatorControllerParameterType.Float), (BlendY, AnimatorControllerParameterType.Float), (BlendU, AnimatorControllerParameterType.Float));
-            foreach (var (n, value) in Weights)
-                fx.C.AddParameter(new AnimatorControllerParameter { name = n, type = AnimatorControllerParameterType.Float, defaultFloat = value });
+            AddWeights(fx);
             const string O = "W0", Q = "W25", H = "W50", W = "W100";
             int next = 1;
 
@@ -114,7 +115,7 @@ namespace AvatarWorkshop.Reference
             {
                 var sm = fx.Layer("TreeToEmpty").stateMachine;
                 var off = Rest(sm, "Off", true);
-                var bare = Rest(sm, "OffNoDefaults", false);
+                var bare = sm.AddState("OffNoDefaults"); bare.writeDefaultValues = false;
                 var shape = Faces[11];
                 AnimationClip At(float v) => Held((shape, v));
                 void Leave(string name, Motion tree, AnimatorState into)
@@ -133,18 +134,24 @@ namespace AvatarWorkshop.Reference
             }
 
             // Without write defaults a direct tree feeds back each target its leaves leave unwritten, scaled by those
-            // leaves' weights; above one that grows each frame, so its trees play 60 frames between states that set
-            // the layer's other targets.
-            foreach (var (bound, a, b, c) in new[] { ("Some", Faces[12], Faces[13], Faces[14]), ("All", Visemes[0], Visemes[1], (string)null), ("None", Visemes[2], Visemes[3], Visemes[4]) })
+            // leaves' weights; above one that grows each frame, so its trees play only while Pulse is set, between
+            // states that set the layer's other targets.
+            var sums = new[] { ("below one", Q, Q), ("one", H, H), ("above one", W, Q) };
+            foreach (var (bound, a, b, cs) in new[]
+            {
+                ("Some", Faces[12], Faces[13], new[] { Faces[14], Visemes[7], Visemes[8] }),
+                ("All", Visemes[0], Visemes[1], new string[3]),
+                ("None", Visemes[2], Visemes[3], new[] { Visemes[4], Visemes[4], Visemes[4] }),
+            })
             {
                 var sm = fx.Layer("DirectNoDefaults" + bound).stateMachine;
                 var off = Rest(sm, "Off", true);
                 var set = Held((a, 60), (b, 60));
-                (Motion, Motion) leaves = bound == "Some" ? (Held((a, 100)), Held((c, 100)))
-                    : bound == "All" ? (Held((a, 100), (b, 20)), Held((a, 30), (b, 100)))
-                    : (Held((c, 100)), Held((c, 40)));
-                foreach (var (sum, x, y) in new[] { ("below one", Q, Q), ("one", H, H), ("above one", W, Q) })
+                foreach (var ((sum, x, y), c) in sums.Zip(cs, (w, c) => (w, c)))
                 {
+                    (Motion, Motion) leaves = bound == "Some" ? (Held((a, 100)), Held((c, 100)))
+                        : bound == "All" ? (Held((a, 100), (b, 20)), Held((a, 30), (b, 100)))
+                        : (Held((c, 100)), Held((c, 40)));
                     var id = next++;
                     var s = State(sm, id, "Set", false, set);
                     var t = State(sm, id, $"{bound}, {sum}", false, Direct(fx, (leaves.Item1, x), (leaves.Item2, y)));
@@ -158,14 +165,7 @@ namespace AvatarWorkshop.Reference
             {
                 var sm = fx.Layer("NormalizedBelowOne").stateMachine;
                 var off = Rest(sm, "Off", true);
-                BlendTree N(params (Motion m, string weight)[] children)
-                {
-                    var t = Direct(fx, children);
-                    var o = new SerializedObject(t);
-                    o.FindProperty("m_NormalizedBlendValues").boolValue = true;
-                    o.ApplyModifiedPropertiesWithoutUndo();
-                    return t;
-                }
+                BlendTree N(params (Motion m, string weight)[] children) => Normalized(fx, children);
                 string x = Visemes[5], y = Visemes[6];
                 var lx = Long(x, 1); var ly = Long(y, 2);
                 var hx = Held((x, 100)); var hy = Held((y, 100));
@@ -177,19 +177,12 @@ namespace AvatarWorkshop.Reference
                     ("zero-length", true, N((hx, Q), (hy, Q))),
                     ("zero-length, one unweighted", true, N((hx, O), (hy, H))),
                     ("mixed", true, N((hx, Q), (ly, Q))),
-                    ("length, no defaults", false, N((lx, Q), (ly, Q))),
+                    ("length, no defaults", false, N((Long(Visemes[11], 1), Q), (Long(Visemes[12], 2), Q))),
                 })
                     CaseState(sm, off, name, tree, next++, wd);
             }
 
-            d.customExpressions = true;
-            d.expressionParameters = parameters;
-            d.customizeAnimationLayers = true;
-            d.baseAnimationLayers = new[] { VRCAvatarDescriptor.AnimLayerType.Base, VRCAvatarDescriptor.AnimLayerType.Additive, VRCAvatarDescriptor.AnimLayerType.Gesture, VRCAvatarDescriptor.AnimLayerType.Action }
-                .Select(type => new VRCAvatarDescriptor.CustomAnimLayer { type = type, isDefault = true, isEnabled = true })
-                .Append(Custom(VRCAvatarDescriptor.AnimLayerType.FX, fx.C)).ToArray();
-            d.specialAnimationLayers = new[] { VRCAvatarDescriptor.AnimLayerType.Sitting, VRCAvatarDescriptor.AnimLayerType.TPose, VRCAvatarDescriptor.AnimLayerType.IKPose }
-                .Select(type => new VRCAvatarDescriptor.CustomAnimLayer { type = type, isDefault = true, isEnabled = true }).ToArray();
+            InstallFx(d, parameters, fx);
         }
     }
 }

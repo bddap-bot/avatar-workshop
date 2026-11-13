@@ -1083,7 +1083,7 @@ namespace AvatarWorkshop.Reference
                         float t = k / (float)(st.Frames - 1);
                         r.Apply(Fixture.BlendX, t); r.Apply(Fixture.BlendU, 2 * t - 1); r.Apply(Fixture.BlendY, Mathf.Sin(Mathf.PI * t));
                         if (c.Sitting) r.Apply("Seated", k / 8 % 2 == 0 ? 1 : 0);
-                        if (pulses && (k == 30 || k == 90)) r.Apply(Fixture.PulseParameter, k == 30 ? 1 : 0);
+                        if (pulses && (k == Fixture.PulseOn || k == Fixture.PulseOff)) r.Apply(Fixture.PulseParameter, k == Fixture.PulseOn ? 1 : 0);
                     };
                     Reset(inputs, 20);
                 }
