@@ -855,7 +855,7 @@ fn walk(motion: &Motion, param: &dyn Fn(&str) -> f32, scale: Leaf, next: &mut u3
                 }
                 BlendAlgorithm::Direct { normalized_blend_values, children } => {
                     let mut w: Vec<f32> = children.iter().map(|c| param(&c.direct_blend_parameter)).collect();
-                    if *normalized_blend_values {
+                    if *normalized_blend_values && w.iter().map(|w| w.max(0.0)).sum::<f32>() > 1.0 {
                         let mut positive: Vec<f32> = w.iter().map(|w| w.max(0.0)).collect();
                         normalize(&mut positive);
                         for (w, p) in w.iter_mut().zip(positive) {

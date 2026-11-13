@@ -55,9 +55,9 @@ fn each_humanoid_composition_follows_its_reference_trace() {
     assert!(rep.bindings.wrong <= 187, "bindings: {}", rep.bindings.summary(20));
 }
 
-/// The blend duration probe plays one blend tree at a time; the core keeps every state's time. The values of the
-/// cases before the first normalized tree whose weights sum below one, and of those after the first tree without
-/// write defaults, follow the reference but for the visemes, whose long-running clocks Unity samples an ulp apart.
+/// The blend duration probe plays one blend tree at a time; the core keeps every state's time. The values of every
+/// case before the first direct tree of 2D trees follow the reference but for the visemes, whose long-running clocks
+/// Unity samples an ulp apart.
 #[test]
 fn each_blend_tree_follows_its_reference_trace() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -73,17 +73,18 @@ fn each_blend_tree_follows_its_reference_trace() {
     assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
     for s in cases {
         let n: u32 = s.label["case ".len()..].split(':').next().unwrap().parse().unwrap();
-        if (36..=75).contains(&n) {
+        if (65..=75).contains(&n) {
             continue;
         }
         let wrong: Vec<_> = rep.values.samples.range((s.frame, String::new())..(s.frame + s.frames, String::new())).filter(|(_, k)| !k.contains(":vrc.v_")).collect();
         assert!(wrong.is_empty(), "{} differs: {wrong:?}", s.label);
     }
-    assert!(rep.values.wrong <= 17_862, "values: {}", rep.values.summary(20));
+    assert!(rep.values.wrong <= 15_818, "values: {}", rep.values.summary(20));
 }
 
-/// The write-defaults layering probe plays one composition of write defaults across layers at a time. The core keeps
-/// every parameter, state and state time; its values are not yet Unity's in any case.
+/// The write-defaults layering probe plays one composition of write defaults across layers at a time. Every value
+/// follows the reference but one: Unity resets the first layer's toggle a frame late when the layer beneath it sits
+/// in a state with neither a motion nor write defaults.
 #[test]
 fn each_write_defaults_layering_follows_its_reference_trace() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -94,10 +95,16 @@ fn each_write_defaults_layering_follows_its_reference_trace() {
     assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
     assert!(rep.clocks.compared > 110_000, "{} state times compared", rep.clocks.compared);
     assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
-    let cases = reference::animator::steps(&dir).iter().filter(|s| s.label.starts_with("case ")).count();
-    assert_eq!(cases, 29);
+    let steps = reference::animator::steps(&dir);
+    let cases: Vec<_> = steps.iter().filter(|s| s.label.starts_with("case ")).collect();
+    assert_eq!(cases.len(), 29);
     assert!(rep.values.compared > 770_000, "{} values compared", rep.values.compared);
-    assert!(rep.values.wrong <= 13_625, "values: {}", rep.values.summary(20));
+    for s in cases {
+        let wrong: Vec<_> = rep.values.samples.range((s.frame, String::new())..(s.frame + s.frames, String::new())).collect();
+        let late = s.label.starts_with("case 2:") && wrong.iter().all(|w| w.0 == s.frame + 90 && w.1 == "shape:Body:Open");
+        assert!(wrong.is_empty() || late, "{} differs: {wrong:?}", s.label);
+    }
+    assert!(rep.values.wrong <= 1, "values: {}", rep.values.summary(20));
 }
 
 /// A copy of the fixture's recording with one of its files rewritten.
