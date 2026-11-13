@@ -1,0 +1,234 @@
+0	5	90	-	rest	GestureLeft=0,GestureRight=0,GestureLeftWeight=0,GestureRightWeight=0,Viseme=0,Voice=0,Grounded=1,Seated=0,AFK=0,VelocityX=0,VelocityY=0,VelocityZ=0,AngularY=0,Upright=1,TrackingType=3,VRMode=1,InStation=0,IsOnFriendsList=0
+1	95	150	-	case 1 mirror=0: base/Body: 1 goals original	Case=1,Mirror=0
+2	245	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+3	265	150	-	case 1 mirror=1: base/Body: 1 goals original	Case=1,Mirror=1
+4	415	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+5	435	150	-	case 2 mirror=0: base/Body: 2 plain original	Case=2,Mirror=0
+6	585	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+7	605	150	-	case 2 mirror=1: base/Body: 2 plain original	Case=2,Mirror=1
+8	755	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+9	775	150	-	case 3 mirror=0: base/Body: 3 goals loop pose	Case=3,Mirror=0
+10	925	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+11	945	150	-	case 3 mirror=1: base/Body: 3 goals loop pose	Case=3,Mirror=1
+12	1095	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+13	1115	150	-	case 4 mirror=0: base/Body: 4 plain loop pose	Case=4,Mirror=0
+14	1265	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+15	1285	150	-	case 4 mirror=1: base/Body: 4 plain loop pose	Case=4,Mirror=1
+16	1435	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+17	1455	150	-	case 5 mirror=0: base/Body: 5 goals mirror	Case=5,Mirror=0
+18	1605	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+19	1625	150	-	case 5 mirror=1: base/Body: 5 goals mirror	Case=5,Mirror=1
+20	1775	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+21	1795	150	-	case 6 mirror=0: base/Body: 6 plain mirror	Case=6,Mirror=0
+22	1945	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+23	1965	150	-	case 6 mirror=1: base/Body: 6 plain mirror	Case=6,Mirror=1
+24	2115	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+25	2135	150	-	case 7 mirror=0: base/Body: 7 goals rotation baked	Case=7,Mirror=0
+26	2285	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+27	2305	150	-	case 7 mirror=1: base/Body: 7 goals rotation baked	Case=7,Mirror=1
+28	2455	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+29	2475	150	-	case 8 mirror=0: base/Body: 8 plain rotation baked	Case=8,Mirror=0
+30	2625	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+31	2645	150	-	case 8 mirror=1: base/Body: 8 plain rotation baked	Case=8,Mirror=1
+32	2795	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+33	2815	150	-	case 9 mirror=0: base/Body: 9 goals rotation body	Case=9,Mirror=0
+34	2965	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+35	2985	150	-	case 9 mirror=1: base/Body: 9 goals rotation body	Case=9,Mirror=1
+36	3135	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+37	3155	150	-	case 10 mirror=0: base/Body: 10 plain rotation body	Case=10,Mirror=0
+38	3305	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+39	3325	150	-	case 10 mirror=1: base/Body: 10 plain rotation body	Case=10,Mirror=1
+40	3475	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+41	3495	150	-	case 11 mirror=0: base/Body: 11 goals rotation offset	Case=11,Mirror=0
+42	3645	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+43	3665	150	-	case 11 mirror=1: base/Body: 11 goals rotation offset	Case=11,Mirror=1
+44	3815	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+45	3835	150	-	case 12 mirror=0: base/Body: 12 plain rotation offset	Case=12,Mirror=0
+46	3985	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+47	4005	150	-	case 12 mirror=1: base/Body: 12 plain rotation offset	Case=12,Mirror=1
+48	4155	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+49	4175	150	-	case 13 mirror=0: base/Body: 13 goals height baked	Case=13,Mirror=0
+50	4325	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+51	4345	150	-	case 13 mirror=1: base/Body: 13 goals height baked	Case=13,Mirror=1
+52	4495	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+53	4515	150	-	case 14 mirror=0: base/Body: 14 plain height baked	Case=14,Mirror=0
+54	4665	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+55	4685	150	-	case 14 mirror=1: base/Body: 14 plain height baked	Case=14,Mirror=1
+56	4835	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+57	4855	150	-	case 15 mirror=0: base/Body: 15 goals height centre of mass	Case=15,Mirror=0
+58	5005	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+59	5025	150	-	case 15 mirror=1: base/Body: 15 goals height centre of mass	Case=15,Mirror=1
+60	5175	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+61	5195	150	-	case 16 mirror=0: base/Body: 16 plain height centre of mass	Case=16,Mirror=0
+62	5345	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+63	5365	150	-	case 16 mirror=1: base/Body: 16 plain height centre of mass	Case=16,Mirror=1
+64	5515	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+65	5535	150	-	case 17 mirror=0: base/Body: 17 goals height feet	Case=17,Mirror=0
+66	5685	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+67	5705	150	-	case 17 mirror=1: base/Body: 17 goals height feet	Case=17,Mirror=1
+68	5855	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+69	5875	150	-	case 18 mirror=0: base/Body: 18 plain height feet	Case=18,Mirror=0
+70	6025	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+71	6045	150	-	case 18 mirror=1: base/Body: 18 plain height feet	Case=18,Mirror=1
+72	6195	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+73	6215	150	-	case 19 mirror=0: base/Body: 19 goals height offset	Case=19,Mirror=0
+74	6365	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+75	6385	150	-	case 19 mirror=1: base/Body: 19 goals height offset	Case=19,Mirror=1
+76	6535	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+77	6555	150	-	case 20 mirror=0: base/Body: 20 plain height offset	Case=20,Mirror=0
+78	6705	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+79	6725	150	-	case 20 mirror=1: base/Body: 20 plain height offset	Case=20,Mirror=1
+80	6875	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+81	6895	150	-	case 21 mirror=0: base/Body: 21 goals xz baked	Case=21,Mirror=0
+82	7045	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+83	7065	150	-	case 21 mirror=1: base/Body: 21 goals xz baked	Case=21,Mirror=1
+84	7215	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+85	7235	150	-	case 22 mirror=0: base/Body: 22 plain xz baked	Case=22,Mirror=0
+86	7385	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+87	7405	150	-	case 22 mirror=1: base/Body: 22 plain xz baked	Case=22,Mirror=1
+88	7555	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+89	7575	150	-	case 23 mirror=0: base/Body: 23 goals xz centre of mass	Case=23,Mirror=0
+90	7725	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+91	7745	150	-	case 23 mirror=1: base/Body: 23 goals xz centre of mass	Case=23,Mirror=1
+92	7895	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+93	7915	150	-	case 24 mirror=0: base/Body: 24 plain xz centre of mass	Case=24,Mirror=0
+94	8065	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+95	8085	150	-	case 24 mirror=1: base/Body: 24 plain xz centre of mass	Case=24,Mirror=1
+96	8235	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+97	8255	150	-	case 25 mirror=0: base/Body: 25 RootT_y only	Case=25,Mirror=0
+98	8405	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+99	8425	150	-	case 25 mirror=1: base/Body: 25 RootT_y only	Case=25,Mirror=1
+100	8575	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+101	8595	150	-	case 26 mirror=0: base/Body: 26 goals to goals; base/Body: 26 goals to goals (to)	Case=26,Mirror=0
+102	8745	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+103	8765	150	-	case 26 mirror=1: base/Body: 26 goals to goals; base/Body: 26 goals to goals (to)	Case=26,Mirror=1
+104	8915	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+105	8935	150	-	case 27 mirror=0: base/Body: 27 plain to plain; base/Body: 27 plain to plain (to)	Case=27,Mirror=0
+106	9085	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+107	9105	150	-	case 27 mirror=1: base/Body: 27 plain to plain; base/Body: 27 plain to plain (to)	Case=27,Mirror=1
+108	9255	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+109	9275	150	-	case 28 mirror=0: base/Body: 28 plain to goals; base/Body: 28 plain to goals (to)	Case=28,Mirror=0
+110	9425	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+111	9445	150	-	case 28 mirror=1: base/Body: 28 plain to goals; base/Body: 28 plain to goals (to)	Case=28,Mirror=1
+112	9595	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+113	9615	150	-	case 29 mirror=0: base/Body: 29 goals to plain; base/Body: 29 goals to plain (to)	Case=29,Mirror=0
+114	9765	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+115	9785	150	-	case 29 mirror=1: base/Body: 29 goals to plain; base/Body: 29 goals to plain (to)	Case=29,Mirror=1
+116	9935	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+117	9955	150	-	case 30 mirror=0: base/Body: 30 goals to RootT_y only; base/Body: 30 goals to RootT_y only (to)	Case=30,Mirror=0
+118	10105	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+119	10125	150	-	case 30 mirror=1: base/Body: 30 goals to RootT_y only; base/Body: 30 goals to RootT_y only (to)	Case=30,Mirror=1
+120	10275	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+121	10295	150	-	case 31 mirror=0: base/Body: 31 1D plain	Case=31,Mirror=0
+122	10445	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+123	10465	150	-	case 31 mirror=1: base/Body: 31 1D plain	Case=31,Mirror=1
+124	10615	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+125	10635	150	-	case 32 mirror=0: base/Body: 32 1D goals	Case=32,Mirror=0
+126	10785	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+127	10805	150	-	case 32 mirror=1: base/Body: 32 1D goals	Case=32,Mirror=1
+128	10955	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+129	10975	150	-	case 33 mirror=0: base/Body: 33 1D plain and goals	Case=33,Mirror=0
+130	11125	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+131	11145	150	-	case 33 mirror=1: base/Body: 33 1D plain and goals	Case=33,Mirror=1
+132	11295	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+133	11315	150	-	case 34 mirror=0: base/Body: 34 1D RootT_y only	Case=34,Mirror=0
+134	11465	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+135	11485	150	-	case 34 mirror=1: base/Body: 34 1D RootT_y only	Case=34,Mirror=1
+136	11635	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+137	11655	150	-	case 35 mirror=0: base/Body: 35 SimpleDirectional2D	Case=35,Mirror=0
+138	11805	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+139	11825	150	-	case 35 mirror=1: base/Body: 35 SimpleDirectional2D	Case=35,Mirror=1
+140	11975	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+141	11995	150	-	case 36 mirror=0: base/Body: 36 FreeformDirectional2D	Case=36,Mirror=0
+142	12145	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+143	12165	150	-	case 36 mirror=1: base/Body: 36 FreeformDirectional2D	Case=36,Mirror=1
+144	12315	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+145	12335	150	-	case 37 mirror=0: base/Body: 37 FreeformCartesian2D	Case=37,Mirror=0
+146	12485	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+147	12505	150	-	case 37 mirror=1: base/Body: 37 FreeformCartesian2D	Case=37,Mirror=1
+148	12655	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+149	12675	150	-	case 38 mirror=0: base/Body: 38 direct plain	Case=38,Mirror=0
+150	12825	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+151	12845	150	-	case 38 mirror=1: base/Body: 38 direct plain	Case=38,Mirror=1
+152	12995	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+153	13015	150	-	case 39 mirror=0: base/Body: 39 direct goals	Case=39,Mirror=0
+154	13165	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+155	13185	150	-	case 39 mirror=1: base/Body: 39 direct goals	Case=39,Mirror=1
+156	13335	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+157	13355	150	-	case 40 mirror=0: base/Body: 40 direct RootT_y only	Case=40,Mirror=0
+158	13505	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+159	13525	150	-	case 40 mirror=1: base/Body: 40 direct RootT_y only	Case=40,Mirror=1
+160	13675	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+161	13695	150	-	case 41 mirror=0: action/Action: 41 under an idle override	Case=41,Mirror=0
+162	13845	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+163	13865	150	-	case 41 mirror=1: action/Action: 41 under an idle override	Case=41,Mirror=1
+164	14015	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+165	14035	150	-	case 42 mirror=0: action/Action: 42 under; action/Override: 42 goals over plain	Case=42,Mirror=0
+166	14185	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+167	14205	150	-	case 42 mirror=1: action/Action: 42 under; action/Override: 42 goals over plain	Case=42,Mirror=1
+168	14355	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+169	14375	150	-	case 43 mirror=0: action/Action: 43 under; action/Override: 43 plain over goals	Case=43,Mirror=0
+170	14525	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+171	14545	150	-	case 43 mirror=1: action/Action: 43 under; action/Override: 43 plain over goals	Case=43,Mirror=1
+172	14695	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+173	14715	150	-	case 44 mirror=0: action/Action: 44 under; action/Override: 44 RootT_y only over goals	Case=44,Mirror=0
+174	14865	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+175	14885	150	-	case 44 mirror=1: action/Action: 44 under; action/Override: 44 RootT_y only over goals	Case=44,Mirror=1
+176	15035	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+177	15055	150	-	case 45 mirror=0: action/Action: 45 under; action/Additive: 45 bob on plain	Case=45,Mirror=0
+178	15205	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+179	15225	150	-	case 45 mirror=1: action/Action: 45 under; action/Additive: 45 bob on plain	Case=45,Mirror=1
+180	15375	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+181	15395	150	-	case 46 mirror=0: action/Action: 46 under; action/Additive: 46 goals on plain	Case=46,Mirror=0
+182	15545	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+183	15565	150	-	case 46 mirror=1: action/Action: 46 under; action/Additive: 46 goals on plain	Case=46,Mirror=1
+184	15715	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+185	15735	150	-	case 47 mirror=0: action/Action: 47 under; action/Additive: 47 bob on goals	Case=47,Mirror=0
+186	15885	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+187	15905	150	-	case 47 mirror=1: action/Action: 47 under; action/Additive: 47 bob on goals	Case=47,Mirror=1
+188	16055	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+189	16075	150	-	case 48 mirror=0: action/Action: 48 under; action/Additive: 48 RootT_y only on plain	Case=48,Mirror=0
+190	16225	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+191	16245	150	-	case 48 mirror=1: action/Action: 48 under; action/Additive: 48 RootT_y only on plain	Case=48,Mirror=1
+192	16395	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+193	16415	150	-	case 49 mirror=0: action/Action: 49 under; action/Override: 49 direct RootT_y only; action/Additive: 49 bob	Case=49,Mirror=0
+194	16565	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+195	16585	150	-	case 49 mirror=1: action/Action: 49 under; action/Override: 49 direct RootT_y only; action/Additive: 49 bob	Case=49,Mirror=1
+196	16735	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+197	16755	150	-	case 50 mirror=0: action/Action: 50 under; action/Override: 50 direct RootT_y only; action/Additive: 50 bob	Case=50,Mirror=0
+198	16905	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+199	16925	150	-	case 50 mirror=1: action/Action: 50 under; action/Override: 50 direct RootT_y only; action/Additive: 50 bob	Case=50,Mirror=1
+200	17075	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+201	17095	150	-	case 51 mirror=0: base/Body: 51 plain; action/Action: 51 goals half	Case=51,Mirror=0
+202	17245	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+203	17265	150	-	case 51 mirror=1: base/Body: 51 plain; action/Action: 51 goals half	Case=51,Mirror=1
+204	17415	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+205	17435	150	-	case 52 mirror=0: base/Body: 52 goals; action/Action: 52 plain half	Case=52,Mirror=0
+206	17585	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+207	17605	150	-	case 52 mirror=1: base/Body: 52 goals; action/Action: 52 plain half	Case=52,Mirror=1
+208	17755	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+209	17775	150	-	case 53 mirror=0: base/Body: 53 plain; action/Action: 53 RootT_y only half	Case=53,Mirror=0
+210	17925	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+211	17945	150	-	case 53 mirror=1: base/Body: 53 plain; action/Action: 53 RootT_y only half	Case=53,Mirror=1
+212	18095	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+213	18115	150	-	case 54 mirror=0: base/Body: 54 plain; additive/Additive: 54 bob half	Case=54,Mirror=0
+214	18265	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+215	18285	150	-	case 54 mirror=1: base/Body: 54 plain; additive/Additive: 54 bob half	Case=54,Mirror=1
+216	18435	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+217	18455	150	-	case 55 mirror=0: base/Body: 55 plain; additive/Additive: 55 goals half	Case=55,Mirror=0
+218	18605	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+219	18625	150	-	case 55 mirror=1: base/Body: 55 plain; additive/Additive: 55 goals half	Case=55,Mirror=1
+220	18775	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+221	18795	150	-	case 56 mirror=0: base/Body: 56 plain; additive/Additive: 56 RootT_y only half	Case=56,Mirror=0
+222	18945	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+223	18965	150	-	case 56 mirror=1: base/Body: 56 plain; additive/Additive: 56 RootT_y only half	Case=56,Mirror=1
+224	19115	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+225	19135	150	-	case 57 mirror=0: base/Body: 57 plain; sitting/Sit: 57 goals; sitting/Half: 57 plain half	Case=57,Mirror=0
+226	19285	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+227	19305	150	-	case 57 mirror=1: base/Body: 57 plain; sitting/Sit: 57 goals; sitting/Half: 57 plain half	Case=57,Mirror=1
+228	19455	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+229	19475	150	-	case 58 mirror=0: base/Body: 58 goals; sitting/Sit: 58 RootT_y only; sitting/Half: 58 plain half	Case=58,Mirror=0
+230	19625	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+231	19645	150	-	case 58 mirror=1: base/Body: 58 goals; sitting/Sit: 58 RootT_y only; sitting/Half: 58 plain half	Case=58,Mirror=1
+232	19795	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0,Seated=0
+233	19815	60	-	final	

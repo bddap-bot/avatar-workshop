@@ -298,9 +298,13 @@ impl ControllerRt {
     /// The leaves of a state's motion with the state's own time settings applied.
     pub fn state_leaves(&self, layer: usize, id: StateId, out: &mut Vec<Leaf>) {
         let Some(m) = self.motion(layer, id) else { return };
-        let mirror = self.state(layer, id).is_some_and(|s| s.mirror_parameter.as_ref().map_or(s.mirror, |n| self.get(n) != 0.0));
+        let mirror = self.state_mirrors(layer, id);
         let get = |n: &str| self.get(n);
         leaves(&m, &get, Leaf { clip: 0, weight: 1.0, time_scale: 1.0, cycle_offset: 0.0, direct: false, id: 0, mirror }, out);
+    }
+
+    pub fn state_mirrors(&self, layer: usize, id: StateId) -> bool {
+        self.state(layer, id).is_some_and(|s| s.mirror_parameter.as_ref().map_or(s.mirror, |n| self.get(n) != 0.0))
     }
 
     /// Seconds of the state's motion at speed 1.
@@ -313,8 +317,9 @@ impl ControllerRt {
                 d += l.weight * clips[l.clip as usize].length / l.time_scale.abs();
             }
         }
+        let total: f32 = ls.iter().map(|l| l.weight).sum();
         if d > 0.0 {
-            d
+            if total > 0.0 && total < 1.0 { d / total } else { d }
         } else {
             1.0
         }

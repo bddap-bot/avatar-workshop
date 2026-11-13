@@ -133,6 +133,7 @@ fn emulator_blink(frame: usize) -> bool {
 
 pub struct Step {
     pub frame: usize,
+    pub frames: usize,
     pub control: String,
     pub label: String,
     pub sets: Vec<(String, f32)>,
@@ -152,7 +153,7 @@ pub fn steps(dir: &Path) -> Vec<Step> {
                     .filter_map(|kv| kv.rsplit_once('=').map(|(k, v)| (canonical(k), v.parse().unwrap())))
                     .collect()
             });
-            Some(Step { frame: f[1].parse().unwrap(), control: f[3].to_string(), label: f[4].to_string(), sets })
+            Some(Step { frame: f[1].parse().unwrap(), frames: f[2].parse().unwrap(), control: f[3].to_string(), label: f[4].to_string(), sets })
         })
         .collect()
 }
@@ -426,6 +427,8 @@ impl Run {
             .map(|a| a.iter().map(|m| m["name"].as_str().unwrap_or("").to_string()).collect())
             .unwrap_or_default();
         let index: HashMap<Target, usize> = anim.targets().iter().enumerate().map(|(i, t)| (t.clone(), i)).collect();
+        let probe = self.dir.join("compositions.json").exists();
+        let ramped: &[&str] = if probe { &["BlendX", "BlendY", "BlendU"] } else { &[] };
         let mut by_frame: BTreeMap<usize, Vec<&Step>> = BTreeMap::new();
         for s in &steps {
             by_frame.entry(s.frame).or_default().push(s);
@@ -462,6 +465,20 @@ impl Run {
                     } else {
                         anim.set(raw.get(n).map_or(n.as_str(), String::as_str), *v);
                     }
+                }
+            }
+            // The recording does not log Seated, which the composition probe's script toggles every eight frames of
+            // a case its Sitting playable plays.
+            if let Some(s) = steps.iter().find(|s| probe && (s.frame..s.frame + s.frames).contains(&f) && s.label.starts_with("case ") && s.label.contains("sitting/")) {
+                anim.set_builtin("Seated", ((f - s.frame) / 8 % 2 == 0) as u8 as f32);
+            }
+            for n in ramped {
+                let Some(v) = params.get(*n).and_then(|l| at(l, f)) else { continue };
+                let v: f32 = v.parse().unwrap();
+                if builtin.contains(n) {
+                    anim.set_builtin(n, v);
+                } else {
+                    anim.set(n, v);
                 }
             }
             for (n, logs) in &dynamic {

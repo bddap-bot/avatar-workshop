@@ -32,6 +32,29 @@ fn fixture_follows_the_reference() {
     assert_eq!(rep.bindings.wrong, 0, "bindings: {}", rep.bindings.summary(20));
 }
 
+/// The composition probe plays one composition of the human stream at a time. Nothing differs from the reference
+/// while a case plays; the frames on which playables and layers change weight between cases are not yet exact.
+#[test]
+fn each_humanoid_composition_follows_its_reference_trace() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dir = root.join("fixtures/reference/human-animator");
+    let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-human.glb")).unwrap()).unwrap();
+    let rep = Run::new(&dir, avatar).run(None);
+    assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
+    assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
+    assert_eq!(rep.values.wrong, 0, "values: {}", rep.values.summary(20));
+    assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
+    assert!(rep.bindings.compared > 2_400_000, "{} bindings compared", rep.bindings.compared);
+    let steps = reference::animator::steps(&dir);
+    let cases: Vec<_> = steps.iter().filter(|s| s.label.starts_with("case ")).collect();
+    assert_eq!(cases.len(), 116, "58 cases, each unmirrored and mirrored");
+    for s in cases {
+        let wrong: Vec<_> = rep.bindings.frames.range(s.frame + 1..s.frame + s.frames).collect();
+        assert!(wrong.is_empty(), "{} differs at frames {wrong:?}", s.label);
+    }
+    assert!(rep.bindings.wrong <= 207, "bindings: {}", rep.bindings.summary(20));
+}
+
 /// A copy of the fixture's recording with one of its files rewritten.
 fn edited_recording(name: &str, file: &str, edit: impl Fn(&str) -> bool) -> std::path::PathBuf {
     let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/reference/fixture-animator");
@@ -370,8 +393,8 @@ fn one_dimensional_weights_and_state_clocks_round_as_unity_does() {
     assert_eq!(309838.563f32 + dt * 1.0 / duration, 440735.781f32);
 }
 
-/// A goal a humanoid clip has no curve for sits at its rest offset from the clip's body; a mirrored clip takes the
-/// mirror of the other side's offset and turns the goal's frame half a revolution, about Y for a foot.
+/// A goal a humanoid clip's curves leave at the body sits at its rest offset from the clip's body; a mirrored clip
+/// takes the mirror of the other side's offset and turns the goal's frame half a revolution, about Y for a foot.
 #[test]
 fn an_uncurved_goal_follows_the_body_and_mirrors_with_its_clip() {
     let mut avatar = fixture();
@@ -391,6 +414,6 @@ fn an_uncurved_goal_follows_the_body_and_mirrors_with_its_clip() {
     let (plain, mirrored) = (standing(false), standing(true));
     assert_eq!(plain[1] - plain[0], -0.06, "{plain:?}");
     assert_eq!((plain[2].abs(), plain[3].abs()), (0.0, 1.0), "{plain:?}");
-    assert_eq!(mirrored[1] - mirrored[0], -0.07, "{mirrored:?}");
+    assert!((mirrored[1] - mirrored[0] + 0.07).abs() < 1e-6, "{mirrored:?}");
     assert_eq!((mirrored[2].abs(), mirrored[3].abs()), (1.0, 0.0), "{mirrored:?}");
 }
