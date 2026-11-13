@@ -155,6 +155,10 @@ pub fn target_of(binding: &Binding) -> Option<Target> {
     })
 }
 
+fn resting(writes: &[u32], targets: &Targets) -> Vec<u32> {
+    writes.iter().copied().filter(|&t| targets.list[t as usize].rests_at_default()).collect()
+}
+
 impl CompiledClip {
     pub fn compile(clip: &Clip, targets: &mut Targets) -> CompiledClip {
         let mut c = Self::compile_as_is(clip, targets);
@@ -237,7 +241,7 @@ impl CompiledClip {
                 }
             }
         }
-        let resting = writes.iter().copied().filter(|&t| targets.list[t as usize].rests_at_default()).collect();
+        let resting = resting(&writes, targets);
         CompiledClip {
             length: clip.length,
             looping: clip.looping,
@@ -267,9 +271,11 @@ impl CompiledClip {
         }
         self.rest_unbound_muscles(muscles);
         self.complete_goals(targets, rest, false);
+        self.resting = resting(&self.writes, targets);
         if let Some(m) = self.mirrored.as_deref_mut() {
             m.rest_unbound_muscles(muscles);
             m.complete_goals(targets, rest, true);
+            m.resting = resting(&m.writes, targets);
         }
     }
 

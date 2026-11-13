@@ -76,7 +76,7 @@ fn each_blend_tree_follows_its_reference_trace() {
         if (36..=75).contains(&n) {
             continue;
         }
-        let wrong: Vec<_> = rep.values.samples.range((s.frame, String::new())..(s.frame + s.frames, String::new())).filter(|(f, k)| !k.contains(":vrc.v_")).collect();
+        let wrong: Vec<_> = rep.values.samples.range((s.frame, String::new())..(s.frame + s.frames, String::new())).filter(|(_, k)| !k.contains(":vrc.v_")).collect();
         assert!(wrong.is_empty(), "{} differs: {wrong:?}", s.label);
     }
     assert!(rep.values.wrong <= 17_862, "values: {}", rep.values.summary(20));
