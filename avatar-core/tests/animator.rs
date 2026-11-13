@@ -56,8 +56,8 @@ fn each_humanoid_composition_follows_its_reference_trace() {
 }
 
 /// The blend duration probe plays one blend tree at a time; the core keeps every state's time. The values of every
-/// case before the first direct tree of 2D trees follow the reference but for the visemes, whose long-running clocks
-/// Unity samples an ulp apart.
+/// case but the 2D trees, direct trees of them and the last tree without write defaults (cases 65 to 75) follow the
+/// reference but for the visemes, whose long-running clocks Unity samples an ulp apart.
 #[test]
 fn each_blend_tree_follows_its_reference_trace() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));

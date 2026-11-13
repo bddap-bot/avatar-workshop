@@ -104,7 +104,7 @@ struct Playable {
     layer_human: Vec<HashMap<u32, f32>>,
     /// What each layer last said while a state with a motion played in it, which a state without write defaults
     /// and without a motion repeats; a state without a motion that writes defaults clears it.
-    said: Vec<Option<Vec<(u32, f32)>>>,
+    said: Vec<Vec<(u32, f32)>>,
     kind: PlayableLayerType,
     rt: ControllerRt,
     weight: f32,
@@ -136,6 +136,8 @@ struct Accum {
     sum: Vec<f32>,
     cov: Vec<f32>,
     touched: Vec<bool>,
+    /// Whether a layer wrote the target this frame, with some weight.
+    wrote: Vec<bool>,
 }
 
 /// The parts a tracking-control behaviour sets, in the order of its fields.
@@ -448,7 +450,7 @@ impl Animator {
                 bound,
                 slots,
                 layer_human: vec![HashMap::new(); c.layers.len()],
-                said: vec![None; c.layers.len()],
+                said: vec![Vec::new(); c.layers.len()],
                 layer_masks,
             });
         }
@@ -601,6 +603,7 @@ impl Animator {
         if let Some(i) = self.targets.index_of(target) {
             self.defaults[i] = value;
             self.blended[i] = value;
+            self.kept[i] = value;
             self.place_goals();
         }
     }
@@ -850,7 +853,8 @@ impl Animator {
                 let slots = self.playables[pi].slots.clone();
                 let targets = &self.targets.list;
                 let beneath = |t: u32| prev_ref[t as usize];
-                let frozen = |rt: &ControllerRt, li: usize| layer_pose(rt, li, clips_ref, defaults, &bound, &slots[li], targets, &beneath, &beneath, &beneath, &beneath);
+                let kept = |t: u32| self.kept[t as usize];
+                let frozen = |rt: &ControllerRt, li: usize| layer_pose(rt, li, clips_ref, defaults, &bound, &slots[li], targets, &beneath, &kept, &beneath, &beneath);
                 self.playables[pi].rt.update(dt, &clips, &mut entered, &frozen);
             }
             all_entered.extend(entered.into_iter().map(|e| (pi, e)));
@@ -858,7 +862,7 @@ impl Animator {
         let n = self.targets.len();
         let cov: Vec<f32> = (0..n).map(|i| (!self.targets.list[i].rests_at_default() || self.curved[i]) as u8 as f32).collect();
         let sum = (0..n).map(|i| cov[i] * self.defaults[i]).collect();
-        let mut acc = Accum { sum, cov, touched: vec![false; n] };
+        let mut acc = Accum { sum, cov, touched: vec![false; n], wrote: vec![false; n] };
         for pi in 0..self.playables.len() {
             let pw = self.playables[pi].weight;
             let below: Vec<(f32, f32, bool)> = self.playables[pi]
@@ -926,6 +930,9 @@ impl Animator {
             }
             out[i] = acc.sum[i] + (1.0 - acc.cov[i]) * self.defaults[i];
         }
+        for i in (0..n).filter(|&i| acc.wrote[i]) {
+            self.kept[i] = out[i];
+        }
         if self.tracking[MOUTH] != TrackingType::Animation {
             self.face.speak(self.builtins["Viseme"].max(0.0) as usize, &mut out);
         }
@@ -945,25 +952,16 @@ impl Animator {
         self.blended = out;
         self.place_goals();
         self.head = None;
-        for i in 0..n {
-            if acc.touched[i] {
-                self.kept[i] = self.blended[i];
-            }
-        }
     }
 
     /// Blends one playable's layers into the frame's accumulation, returning the values its animator-parameter
     /// curves give its own parameters.
-    fn evaluate(&self, pi: usize, clips: &[CompiledClip], prev: &[f32], acc: &mut Accum, layer_human: &mut [HashMap<u32, f32>], said: &mut [Option<Vec<(u32, f32)>>]) -> Vec<(usize, f32)> {
+    fn evaluate(&self, pi: usize, clips: &[CompiledClip], prev: &[f32], acc: &mut Accum, layer_human: &mut [HashMap<u32, f32>], said: &mut [Vec<(u32, f32)>]) -> Vec<(usize, f32)> {
         let p = &self.playables[pi];
         let mut own: HashMap<u32, (f32, f32)> = HashMap::new();
-        let holder = (0..p.rt.layers.len()).find(|&li| {
-            let lw = if li == 0 { 1.0 } else { p.rt.layers[li].weight };
-            lw * p.weight > 0.0
-                && p.rt.layers[li].current.as_ref().is_some_and(|c| p.rt.motion(li, c.state).is_some() && p.rt.state(li, c.state).is_some_and(|s| !s.write_defaults))
-        });
         let mut written = vec![false; self.targets.len()];
-        let keeps = |i: usize| !(self.targets.list[i].rests_at_default() && !self.curved[i]) && !matches!(self.targets.list[i], Target::AnimatorParameter(_)) && !p.whole[i];
+        let mut held = false;
+        let holdable = |i: usize| !(self.targets.list[i].rests_at_default() && !self.curved[i]) && !matches!(self.targets.list[i], Target::AnimatorParameter(_)) && !p.whole[i];
         for li in 0..p.rt.layers.len() {
             let lw = if li == 0 { 1.0 } else { p.rt.layers[li].weight };
             let wl = lw * p.weight;
@@ -990,18 +988,20 @@ impl Animator {
                     },
                 }
             };
-            if holder == Some(li) {
-                let c = p.rt.layers[li].current.as_ref().unwrap();
+            let holding = p.rt.layers[li].current.as_ref().filter(|c| !held && p.rt.motion(li, c.state).is_some() && p.rt.state(li, c.state).is_some_and(|s| !s.write_defaults));
+            if let Some(c) = holding {
+                held = true;
                 let own_keys = playing_pose(&p.rt, li, c, clips, &self.defaults, false);
                 for &t in &p.bound {
                     let i = t as usize;
-                    if written[i] || own_keys.contains_key(&t) || !keeps(i) || !passes(i) {
+                    if written[i] || own_keys.contains_key(&t) || !holdable(i) || !passes(i) {
                         continue;
                     }
                     if self.targets.list[i].discrete() {
-                        if wl >= 0.5 {
-                            acc.sum[i] = self.kept[i];
+                        if wl < 0.5 {
+                            continue;
                         }
+                        acc.sum[i] = self.kept[i];
                     } else {
                         acc.sum[i] = acc.sum[i] * (1.0 - wl) + self.kept[i] * wl;
                         acc.cov[i] = acc.cov[i] * (1.0 - wl) + wl;
@@ -1022,17 +1022,17 @@ impl Animator {
                 }
                 acc.sum[i] + (1.0 - acc.cov[i]) * self.defaults[i]
             };
-            let held = |t: u32| self.kept[t as usize];
+            let kept = |t: u32| self.kept[t as usize];
             let through = |t: u32| if acc.touched[t as usize] { beneath(t) } else { prev[t as usize] };
             let reset = |t: u32| match (acc.touched[t as usize], p.binders[t as usize] > 1) {
                 (true, _) => beneath(t),
                 (false, true) => prev[t as usize],
                 (false, false) => self.defaults[t as usize],
             };
-            let whole_pose = (!additive || stacked).then(|| layer_pose(&p.rt, li, clips, &self.defaults, &p.bound, &p.slots[li], &self.targets.list, &beneath, &held, &through, &reset));
+            let whole_pose = (!additive || stacked).then(|| layer_pose(&p.rt, li, clips, &self.defaults, &p.bound, &p.slots[li], &self.targets.list, &beneath, &kept, &through, &reset));
             if additive {
                 if let Some(mut pose) = whole_pose.clone().filter(|_| p.drives_parameters[li]) {
-                    self.pull_parameters(&p.rt, &pulled(&p.rt, li, clips, &self.defaults, &self.targets.list), &mut pose);
+                    self.pull_parameters(&p.rt, &pulled(&p.rt, li, clips, &self.defaults), &mut pose);
                     for (t, v, c) in pose {
                         if matches!(self.targets.list[t as usize], Target::AnimatorParameter(_)) {
                             let a = wl * c;
@@ -1059,6 +1059,7 @@ impl Animator {
                             let r = reference.get(&t).copied().unwrap_or(self.defaults[i]);
                             acc.sum[i] += (v - r) * if p.whole[i] { lw } else { wl } * c;
                             acc.touched[i] = true;
+                            written[i] = true;
                         }
                         None => {
                             if acc.cov[i] > 0.0 {
@@ -1076,19 +1077,15 @@ impl Animator {
                 let wd = p.rt.state(li, c.state).is_some_and(|s| s.write_defaults);
                 match (p.rt.motion(li, c.state).is_some(), wd) {
                     (true, _) => {
-                        let mut last: Vec<(u32, f32)> = pose.iter().filter(|x| x.2 >= 1.0 && keeps(x.0 as usize)).map(|x| (x.0, x.1)).collect();
+                        let mut last: Vec<(u32, f32)> = pose.iter().filter(|x| holdable(x.0 as usize)).map(|x| (x.0, x.1)).collect();
                         if !wd {
-                            let own: std::collections::HashSet<u32> = last.iter().map(|x| x.0).collect();
-                            last.extend(p.bound.iter().filter(|&&t| keeps(t as usize) && !own.contains(&t)).map(|&t| (t, self.kept[t as usize])));
+                            let animated: std::collections::HashSet<u32> = last.iter().map(|x| x.0).collect();
+                            last.extend(p.bound.iter().filter(|&&t| holdable(t as usize) && !animated.contains(&t)).map(|&t| (t, self.kept[t as usize])));
                         }
-                        said[li] = Some(last);
+                        said[li] = last;
                     }
-                    (false, true) => said[li] = None,
-                    (false, false) => {
-                        if let Some(last) = &said[li] {
-                            pose = last.iter().map(|&(t, v)| (t, v, 1.0)).collect();
-                        }
-                    }
+                    (false, true) => said[li].clear(),
+                    (false, false) => pose = said[li].iter().map(|&(t, v)| (t, v, 1.0)).collect(),
                 }
             }
             // An override layer in a state gives the whole human pose: what the state does not write, or a
@@ -1110,7 +1107,7 @@ impl Animator {
             }
             self.align_rotations(&mut pose, acc);
             if !stacked {
-                self.pull_parameters(&p.rt, &pulled(&p.rt, li, clips, &self.defaults, &self.targets.list), &mut pose);
+                self.pull_parameters(&p.rt, &pulled(&p.rt, li, clips, &self.defaults), &mut pose);
             }
             for (t, v, c) in pose {
                 let i = t as usize;
@@ -1137,6 +1134,9 @@ impl Animator {
                 acc.touched[i] = true;
                 written[i] |= a > 0.0;
             }
+        }
+        for (w, &x) in acc.wrote.iter_mut().zip(&written) {
+            *w |= x;
         }
         own.into_iter()
             .filter_map(|(t, (sum, cov))| {
@@ -1372,7 +1372,7 @@ fn node_of(t: &Target) -> Option<u32> {
 
 /// The animator parameters a zero-length transition from a blend tree into a state with a motion, both writing
 /// defaults, pulls to the controller's defaults: those the source animates and the destination does not.
-fn pulled(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32], targets: &[Target]) -> Vec<u32> {
+fn pulled(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32]) -> Vec<u32> {
     let l = &rt.layers[li];
     let (None, Some(p), Some(to)) = (&l.active, &l.snapped, &l.current) else { return vec![] };
     let wd = |s: crate::model::StateId| rt.state(li, s).is_some_and(|s| s.write_defaults);
@@ -1380,10 +1380,7 @@ fn pulled(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32]
         return vec![];
     }
     let dest = playing_pose(rt, li, to, clips, defaults, false);
-    playing_pose(rt, li, p, clips, defaults, false)
-        .into_keys()
-        .filter(|t| !dest.contains_key(t) && matches!(targets[*t as usize], Target::AnimatorParameter(_)))
-        .collect()
+    playing_pose(rt, li, p, clips, defaults, false).into_keys().filter(|t| !dest.contains_key(t)).collect()
 }
 
 /// A playing state's pose, its motion sampled where its time parameter puts it.
