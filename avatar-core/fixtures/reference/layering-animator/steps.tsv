@@ -1,0 +1,60 @@
+0	5	90	-	rest	GestureLeft=0,GestureRight=0,GestureLeftWeight=0,GestureRightWeight=0,Viseme=0,Voice=0,Grounded=1,Seated=0,AFK=0,VelocityX=0,VelocityY=0,VelocityZ=0,AngularY=0,Upright=1,TrackingType=3,VRMode=1,InStation=0,IsOnFriendsList=0
+1	95	150	-	case 1: fx/ToggleFirst: 1 On; fx/UnderFirst: 1 Held	Case=1
+2	245	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+3	265	150	-	case 2: fx/ToggleFirst: 2 On; fx/UnderFirst: 2 Empty	Case=2
+4	415	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+5	435	150	-	case 3: fx/ToggleAlone: 3 On	Case=3
+6	585	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+7	605	150	-	case 4: fx/BeneathToggle: 4 Held; fx/ToggleAbove: 4 On	Case=4
+8	755	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+9	775	150	-	case 5: fx/BeneathToggle: 5 Empty; fx/ToggleAbove: 5 On	Case=5
+10	925	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+11	945	150	-	case 6: fx/ToggleBelow: 6 On; fx/OverToggle: 6 Held	Case=6
+12	1095	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+13	1115	150	-	case 7: fx/ToggleBelow: 7 On; fx/OverToggle: 7 Empty	Case=7
+14	1265	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+15	1285	150	-	case 8: fx/EmptyAfterMotion: 8 Held; fx/EmptyAfterMotion: 8 Empty	Case=8
+16	1435	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+17	1455	150	-	case 9: fx/TreeToEmpty: 9 Direct	Case=9
+18	1605	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+19	1625	150	-	case 10: fx/TreeToEmpty: 10 1D	Case=10
+20	1775	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+21	1795	150	-	case 11: fx/TreeToEmpty: 11 Direct of 1D	Case=11
+22	1945	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+23	1965	150	-	case 12: fx/TreeToEmpty: 12 2D	Case=12
+24	2115	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+25	2135	150	-	case 13: fx/TreeToEmpty: 13 Direct, into no defaults; fx/TreeToEmpty: OffNoDefaults	Case=13
+26	2285	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+27	2305	150	-	case 14: fx/DirectNoDefaultsSome: 14 Set; fx/DirectNoDefaultsSome: 14 Some, below one	Case=14
+28	2455	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+29	2475	150	-	case 15: fx/DirectNoDefaultsSome: 15 Set; fx/DirectNoDefaultsSome: 15 Some, one	Case=15
+30	2625	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+31	2645	150	-	case 16: fx/DirectNoDefaultsSome: 16 Set; fx/DirectNoDefaultsSome: 16 Some, above one	Case=16
+32	2795	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+33	2815	150	-	case 17: fx/DirectNoDefaultsAll: 17 Set; fx/DirectNoDefaultsAll: 17 All, below one	Case=17
+34	2965	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+35	2985	150	-	case 18: fx/DirectNoDefaultsAll: 18 Set; fx/DirectNoDefaultsAll: 18 All, one	Case=18
+36	3135	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+37	3155	150	-	case 19: fx/DirectNoDefaultsAll: 19 Set; fx/DirectNoDefaultsAll: 19 All, above one	Case=19
+38	3305	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+39	3325	150	-	case 20: fx/DirectNoDefaultsNone: 20 Set; fx/DirectNoDefaultsNone: 20 None, below one	Case=20
+40	3475	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+41	3495	150	-	case 21: fx/DirectNoDefaultsNone: 21 Set; fx/DirectNoDefaultsNone: 21 None, one	Case=21
+42	3645	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+43	3665	150	-	case 22: fx/DirectNoDefaultsNone: 22 Set; fx/DirectNoDefaultsNone: 22 None, above one	Case=22
+44	3815	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+45	3835	150	-	case 23: fx/NormalizedBelowOne: 23 length	Case=23
+46	3985	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+47	4005	150	-	case 24: fx/NormalizedBelowOne: 24 length, uneven	Case=24
+48	4155	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+49	4175	150	-	case 25: fx/NormalizedBelowOne: 25 length, single	Case=25
+50	4325	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+51	4345	150	-	case 26: fx/NormalizedBelowOne: 26 zero-length	Case=26
+52	4495	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+53	4515	150	-	case 27: fx/NormalizedBelowOne: 27 zero-length, one unweighted	Case=27
+54	4665	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+55	4685	150	-	case 28: fx/NormalizedBelowOne: 28 mixed	Case=28
+56	4835	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+57	4855	150	-	case 29: fx/NormalizedBelowOne: 29 length, no defaults	Case=29
+58	5005	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+59	5025	60	-	final	

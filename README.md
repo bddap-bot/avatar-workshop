@@ -237,7 +237,7 @@ state flags). `UNITY` names the editor command. With no `SCENE`, it generates th
 `PROJECT`'s `Assets/AWFixture` and records it, so point it at a scratch project. With `SCENE` `probe`, it generates and
 records the probe there: the fixture's body with one three-bone chain per PhysBone field value (`Fixture.Probes` lists
 them), so each field's effect has a reference trace of its own. The probe rests 15 s before its motion, so even its lightly damped chains start it settled. With `SCENE` `human`, it generates and records the
-composition probe (`reference/Editor/HumanProbe.cs`), and with `SCENE` `blend` the blend duration probe (`reference/Editor/BlendProbe.cs`), both described below, in place of the motion, menu and built-in steps. With `SCENE` `writedefaults`, it generates and records the write-defaults fixture: the fixture's body under animator controllers built from the environment variable `AW_WD`, which lists each layer's controller, weight, transition time and states, and for each state whether it writes defaults and what it animates (`reference/Editor/WriteDefaults.cs` gives the grammar; `AW_WD='T:de|dHat=1;K:fSmile=50'` is a write-defaults-on toggle of the hat beside a layer that keeps none). The environment variable `AW_STEPS` (`Name=value,...;...`, each step setting those animator parameters and held `AW_STEP_FRAMES` frames, 20 unless set, with a render on its last) replaces the motion, menu and built-in steps after the rest; the write-defaults fixture, which has no menu, requires it, and the composition and blend duration probes refuse it. It restores
+composition probe (`reference/Editor/HumanProbe.cs`), with `SCENE` `blend` the blend duration probe (`reference/Editor/BlendProbe.cs`) and with `SCENE` `layering` the write-defaults layering probe (`reference/Editor/LayeringProbe.cs`), all described below, in place of the motion, menu and built-in steps. With `SCENE` `writedefaults`, it generates and records the write-defaults fixture: the fixture's body under animator controllers built from the environment variable `AW_WD`, which lists each layer's controller, weight, transition time and states, and for each state whether it writes defaults and what it animates (`reference/Editor/WriteDefaults.cs` gives the grammar; `AW_WD='T:de|dHat=1;K:fSmile=50'` is a write-defaults-on toggle of the hat beside a layer that keeps none). The environment variable `AW_STEPS` (`Name=value,...;...`, each step setting those animator parameters and held `AW_STEP_FRAMES` frames, 20 unless set, with a render on its last) replaces the motion, menu and built-in steps after the rest; the write-defaults fixture, which has no menu, requires it, and the composition, blend duration and layering probes refuse it. It restores
 `PROJECT`'s package manifest on exit and refuses an `OUT` that holds something other than an earlier recording.
 `OUT` receives:
 
@@ -259,7 +259,7 @@ composition probe (`reference/Editor/HumanProbe.cs`), and with `SCENE` `blend` t
 | `time.tsv` | the time of the emulator's playable graph after each frame's evaluation, every frame from the one the graph is created on, so the first evaluation's delta shows; a recording fails if the graph is gone on a frame |
 | `avatar.glb`, `census.json`, `export.txt` | the exporter's model and census of the build this recording runs, written as the last step of its build preprocess, with the build tools' generated names and ids (and, as the emulator skips the SDK's material locking, unlocked shaders); `cargo run --release --example census -- avatar.glb census.json` in `avatar-core/` checks one; `export.txt` lists what the model does not represent |
 | `coverage.json`, `meta.json` | the avatar's feature counts; versions and totals |
-| `compositions.json` | the composition and blend duration probes' only: for each composition the probe is authored to play on its own, how many clips (composition probe) or states (blend duration probe) are authored to play it |
+| `compositions.json` | the composition, blend duration and layering probes' only: for each composition the probe is authored to play on its own, how many clips (composition probe) or states and transitions (the others) are authored to play it |
 
 The fixture (`reference/Editor/Fixture.cs`, licensed as this repository) is a synthetic humanoid
 authored for the harness: PhysBones covering both immobile types, every limit type, gravity with
@@ -326,6 +326,27 @@ at a sum of two the recorded values doubled every frame to infinity. Two more la
 default state, so from the first frame and throughout: six zero-length clips at weight one beside a 0.4 s clip, one
 with normalized blend values and one without, both with write defaults. A recording fails if a case never entered its state, or if
 `compositions.json` counts no state for a composition `Coverage.BlendCompositions` lists.
+
+The write-defaults layering probe is the fixture's body with one FX controller for separating how Unity writes
+defaults across layers. Its clips hold blendshapes, each layer its own, and every layer rests in a state with write
+defaults and no motion. An int expression parameter `Case` picks the states a case plays and a bool `Pulse`, which
+the harness sets on frames 30 to 89 of each case's 150, moves a layer into its second state and back; the harness
+otherwise plays the cases as in the blend duration probe. The cases:
+- A write-defaults toggle holding its shape while `Pulse` is set and returning to its state with no motion: alone,
+  above and below a layer without write defaults that holds a shape through the case, or sits in a state with no
+  motion, and below such a layer on the controller's first layer.
+- A state without write defaults and with no motion, entered from one that held a shape.
+- Zero-length transitions into a state with no motion from a direct tree, a 1D tree, a direct tree of a 1D tree
+  and a 2D tree, and from a direct tree into a state without write defaults.
+- Direct trees without write defaults whose leaves write some, all or none of the shapes their layer's other state
+  sets, with weights summing to 0.5, 1 and 1.25; that state sets them before and after the tree's 60 frames.
+- Direct trees with normalized blend values whose weights sum below one, over clips with length, zero-length clips
+  and both, and one in a state without write defaults.
+
+A recording fails if a case never entered its states, or if `compositions.json` counts none of a composition
+`Coverage.LayeringCompositions` lists. Its recording is a reference trace of the core
+(`avatar-core/fixtures/reference/layering-animator`).
+
 `reference/check.sh PROJECT OUT [SCENE] [AVATAR]` records the avatar (the fixture by default) twice and requires every output but the logs (`unity.log`, `export.txt`),
 `tips.tsv` and `poses.tsv` to be byte-identical, and PhysBone tips and every pose value within 1e-5 (`reference/poses.py`, Python 3.10 or later).
 

@@ -49,7 +49,8 @@ namespace AvatarWorkshop.Reference
             var scenePath = Env("AW_SCENE");
             var avatarName = Env("AW_AVATAR");
             Fixture.Kind? kind = scenePath == null ? Fixture.Kind.Fixture : scenePath == "probe" ? Fixture.Kind.Probe : scenePath == "human" ? Fixture.Kind.Human
-                : scenePath == "blend" ? Fixture.Kind.Blend : scenePath == "writedefaults" ? Fixture.Kind.WriteDefaults : (Fixture.Kind?)null;
+                : scenePath == "blend" ? Fixture.Kind.Blend : scenePath == "writedefaults" ? Fixture.Kind.WriteDefaults
+                : scenePath == "layering" ? Fixture.Kind.Layering : (Fixture.Kind?)null;
             if (kind.HasValue) scenePath = Fixture.Build(kind.Value);
 
             EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
@@ -229,7 +230,8 @@ namespace AvatarWorkshop.Reference
         public bool Finished;
         readonly string output;
         readonly string avatarName;
-        readonly bool fixture, probe, human, blend;
+        readonly bool fixture, probe, human, blend, layering;
+        bool Cased => human || blend || layering;
         readonly bool migratedDynamicBones;
         bool exported;
         StreamWriter timeOut;
@@ -293,6 +295,7 @@ namespace AvatarWorkshop.Reference
             probe = kind == Fixture.Kind.Probe;
             human = kind == Fixture.Kind.Human;
             blend = kind == Fixture.Kind.Blend;
+            layering = kind == Fixture.Kind.Layering;
             this.output = output;
             this.avatarName = avatarName;
             this.migratedDynamicBones = migratedDynamicBones;
@@ -623,12 +626,14 @@ namespace AvatarWorkshop.Reference
             File.WriteAllText(Path.Combine(output, "coverage.json"), Json(coverage) + "\n");
             var missing = Coverage.Required.Where(k => coverage[k] == 0).ToList();
             if (fixture && missing.Count > 0) throw new Exception("fixture lacks " + string.Join(", ", missing));
-            if (human || blend)
+            if (Cased)
             {
-                var compositions = human ? Coverage.CountCompositions(descriptor) : Coverage.CountBlendCompositions(descriptor);
+                var (name, listed, compositions) = human ? ("composition", Coverage.Compositions, Coverage.CountCompositions(descriptor))
+                    : blend ? ("blend duration", Coverage.BlendCompositions, Coverage.CountBlendCompositions(descriptor))
+                    : ("layering", Coverage.LayeringCompositions, Coverage.CountLayeringCompositions(descriptor));
                 File.WriteAllText(Path.Combine(output, "compositions.json"), Json(compositions) + "\n");
-                var absent = (human ? Coverage.Compositions : Coverage.BlendCompositions).Where(k => compositions[k] == 0).ToList();
-                if (absent.Count > 0) throw new Exception($"the {(human ? "composition" : "blend duration")} probe lacks {string.Join(", ", absent)}");
+                var absent = listed.Where(k => compositions[k] == 0).ToList();
+                if (absent.Count > 0) throw new Exception($"the {name} probe lacks {string.Join(", ", absent)}");
             }
             SetupCamera();
             Schedule(descriptor);
@@ -639,6 +644,7 @@ namespace AvatarWorkshop.Reference
                 ["fixture"] = fixture,
                 ["human"] = human,
                 ["blend"] = blend,
+                ["layering"] = layering,
                 ["root_scale"] = new[] { root.lossyScale.x, root.lossyScale.y, root.lossyScale.z },
                 ["unity"] = Application.unityVersion,
                 ["dynamic_bones_migrated"] = migratedDynamicBones,
@@ -985,7 +991,7 @@ namespace AvatarWorkshop.Reference
             var script = Harness.Env("AW_STEPS");
             if (script != null)
             {
-                if (human || blend) throw new Exception("AW_STEPS cannot replace a probe's cases");
+                if (Cased) throw new Exception("AW_STEPS cannot replace a probe's cases");
                 int hold = int.Parse(Harness.Env("AW_STEP_FRAMES") ?? "20", inv);
                 foreach (var text in script.Split(';'))
                 {
@@ -999,7 +1005,7 @@ namespace AvatarWorkshop.Reference
                 }
                 return;
             }
-            if (human || blend)
+            if (Cased)
             {
                 Compositions(descriptor);
                 S("final", 60, render: true);
@@ -1060,9 +1066,10 @@ namespace AvatarWorkshop.Reference
         {
             var cases = Coverage.Cases(descriptor);
             if (cases.Count == 0) throw new Exception("the probe has no cases");
-            bool mirrors = defaults.ContainsKey(Fixture.MirrorParameter);
+            bool mirrors = defaults.ContainsKey(Fixture.MirrorParameter), pulses = defaults.ContainsKey(Fixture.PulseParameter);
             var inputs = new List<string> { Fixture.CaseParameter };
             if (mirrors) inputs.Add(Fixture.MirrorParameter);
+            if (pulses) inputs.Add(Fixture.PulseParameter);
             inputs.AddRange(Fixture.Ramps);
             if (cases.Any(c => c.Sitting)) inputs.Add("Seated");
             foreach (var c in cases)
@@ -1076,6 +1083,7 @@ namespace AvatarWorkshop.Reference
                         float t = k / (float)(st.Frames - 1);
                         r.Apply(Fixture.BlendX, t); r.Apply(Fixture.BlendU, 2 * t - 1); r.Apply(Fixture.BlendY, Mathf.Sin(Mathf.PI * t));
                         if (c.Sitting) r.Apply("Seated", k / 8 % 2 == 0 ? 1 : 0);
+                        if (pulses && (k == 30 || k == 90)) r.Apply(Fixture.PulseParameter, k == 30 ? 1 : 0);
                     };
                     Reset(inputs, 20);
                 }

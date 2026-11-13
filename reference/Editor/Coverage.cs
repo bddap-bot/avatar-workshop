@@ -421,6 +421,77 @@ namespace AvatarWorkshop.Reference
             return c;
         }
 
+        // The write-defaults compositions the layering probe separates, each counted where a case plays it: a
+        // write-defaults state with a clip returning to one without, by what its controller's other layers play in
+        // the same case (alone: none enters a state for it; below or above a layer without write defaults in a state
+        // with or without a motion, also on the controller's first layer); a state without write defaults and with no motion entered from one with a
+        // motion; a zero-length transition from a blend tree into a state with no motion, by the tree's algorithm and
+        // the destination's write defaults; a direct tree without write defaults by which of the targets its layer's
+        // clip states animate its leaves write, and its weight sum; and a direct tree with normalized blend values
+        // whose weights sum below one, by its clips.
+        public static readonly string[] LayeringCompositions =
+            new[] { "alone" }.Concat(new[] { "", "first_layer." }.SelectMany(first => new[] { "below", "above" }.Where(side => first == "" || side == "below")
+                .SelectMany(side => new[] { "with_motion", "without_motion" }.Select(m => $"{first}{side}_write_defaults_off.{m}")))).Select(k => "toggle_return." + k)
+            .Append("write_defaults_off.empty_after_motion")
+            .Concat(new[] { "direct", "simple_1d", "direct.nested", "freeform_cartesian_2d" }.Select(t => $"zero_length_transition.{t}.into_write_defaults_on"))
+            .Append("zero_length_transition.direct.into_write_defaults_off")
+            .Concat(new[] { "some", "all", "none" }.SelectMany(b => new[] { "below_one", "one", "above_one" }.Select(sum => $"direct.write_defaults_off.binds_{b}.sum_{sum}")))
+            .Concat(new[] { "length_only", "zero_length_only", "mixed", "length_only.write_defaults_off" }.Select(k => "direct.normalized.sum_below_one." + k))
+            .ToArray();
+
+        static IEnumerable<EditorCurveBinding> Bindings(Motion m) =>
+            Leaves(m).SelectMany(c => AnimationUtility.GetCurveBindings(c).Concat(AnimationUtility.GetObjectReferenceCurveBindings(c)));
+
+        public static SortedDictionary<string, int> CountLayeringCompositions(VRCAvatarDescriptor d)
+        {
+            var c = new SortedDictionary<string, int>();
+            foreach (var k in LayeringCompositions) c[k] = 0;
+            void Add(string k) => c[k] = c.TryGetValue(k, out var n) ? n + 1 : 1;
+            foreach (var (_, ctrl, _) in Controllers(d))
+            {
+                var defaults = ctrl.parameters.ToDictionary(p => p.name, p => p.defaultFloat);
+                var layers = ctrl.layers;
+                var cases = layers.Select(l => CaseOf(l.stateMachine)).ToArray();
+                for (int i = 0; i < layers.Length; i++)
+                {
+                    var sm = layers[i].stateMachine;
+                    var states = sm.states.Select(x => x.state).ToList();
+                    var targets = new HashSet<EditorCurveBinding>(states.Where(s => s.motion is AnimationClip).SelectMany(s => Bindings(s.motion)));
+                    foreach (var s in states.Where(cases[i].ContainsKey))
+                    {
+                        var id = cases[i][s];
+                        foreach (var t in s.transitions.Where(t => t.destinationState != null && t.destinationState.motion == null))
+                        {
+                            var to = t.destinationState;
+                            if (s.motion is AnimationClip && s.writeDefaultValues && to.writeDefaultValues)
+                            {
+                                if (!cases.Where((of, j) => j != i && of.ContainsValue(id)).Any()) Add("toggle_return.alone");
+                                for (int j = 0; j < layers.Length; j++)
+                                    foreach (var other in cases[j].Where(kv => j != i && kv.Value == id && !kv.Key.writeDefaultValues).Select(kv => kv.Key))
+                                        Add($"toggle_return.{(i == 0 ? "first_layer." : "")}{(j < i ? "above" : "below")}_write_defaults_off.{(other.motion != null ? "with_motion" : "without_motion")}");
+                            }
+                            if (s.motion is AnimationClip && !s.writeDefaultValues && !to.writeDefaultValues) Add("write_defaults_off.empty_after_motion");
+                            if (s.motion is BlendTree bt && t.duration == 0)
+                                Add($"zero_length_transition.{Algorithm(bt).Substring("blendtree.".Length)}{(bt.children.Any(ch => ch.motion is BlendTree) ? ".nested" : "")}.into_write_defaults_{(to.writeDefaultValues ? "on" : "off")}");
+                        }
+                        if (!(s.motion is BlendTree tree) || tree.blendType != BlendTreeType.Direct || tree.children.Any(ch => ch.motion is BlendTree)) continue;
+                        var sum = tree.children.Sum(ch => defaults[ch.directBlendParameter]);
+                        var below = sum < 1 && !Mathf.Approximately(sum, 1);
+                        if (AvatarWorkshop.Exporter.Exporter.NormalizedBlendValues(tree))
+                        {
+                            if (below) Add($"direct.normalized.sum_below_one.{Content(tree)}{(s.writeDefaultValues ? "" : ".write_defaults_off")}");
+                            continue;
+                        }
+                        if (s.writeDefaultValues) continue;
+                        var written = new HashSet<EditorCurveBinding>(Bindings(tree));
+                        var bound = targets.Count(written.Contains);
+                        Add($"direct.write_defaults_off.binds_{(bound == 0 ? "none" : bound == targets.Count ? "all" : "some")}.sum_{(below ? "below_one" : Mathf.Approximately(sum, 1) ? "one" : "above_one")}");
+                    }
+                }
+            }
+            return c;
+        }
+
         static void Machine(AnimatorStateMachine sm, AnimatorStateMachine parent, HashSet<string> parameters, HashSet<string> triggers, System.Action<string> add)
         {
             var transitions = sm.anyStateTransitions.Cast<AnimatorStateTransition>().Concat(sm.states.SelectMany(s => s.state.transitions)).ToList();

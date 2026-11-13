@@ -82,6 +82,24 @@ fn each_blend_tree_follows_its_reference_trace() {
     assert!(rep.values.wrong <= 17_862, "values: {}", rep.values.summary(20));
 }
 
+/// The write-defaults layering probe plays one composition of write defaults across layers at a time. The core keeps
+/// every parameter, state and state time; its values are not yet Unity's in any case.
+#[test]
+fn each_write_defaults_layering_follows_its_reference_trace() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dir = root.join("fixtures/reference/layering-animator");
+    let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-layering.glb")).unwrap()).unwrap();
+    let rep = Run::new(&dir, avatar).run(None);
+    assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
+    assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
+    assert!(rep.clocks.compared > 110_000, "{} state times compared", rep.clocks.compared);
+    assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
+    let cases = reference::animator::steps(&dir).iter().filter(|s| s.label.starts_with("case ")).count();
+    assert_eq!(cases, 29);
+    assert!(rep.values.compared > 770_000, "{} values compared", rep.values.compared);
+    assert!(rep.values.wrong <= 13_625, "values: {}", rep.values.summary(20));
+}
+
 /// A copy of the fixture's recording with one of its files rewritten.
 fn edited_recording(name: &str, file: &str, edit: impl Fn(&str) -> bool) -> std::path::PathBuf {
     let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/reference/fixture-animator");
