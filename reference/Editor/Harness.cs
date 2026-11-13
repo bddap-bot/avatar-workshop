@@ -37,7 +37,7 @@ namespace AvatarWorkshop.Reference
             catch (Exception e) { Fail(e); }
         }
 
-        static string Env(string name)
+        internal static string Env(string name)
         {
             var v = Environment.GetEnvironmentVariable(name);
             return string.IsNullOrEmpty(v) ? null : v;
@@ -48,7 +48,7 @@ namespace AvatarWorkshop.Reference
             var output = Env("AW_OUT") ?? throw new Exception("AW_OUT is required");
             var scenePath = Env("AW_SCENE");
             var avatarName = Env("AW_AVATAR");
-            Fixture.Kind? kind = scenePath == null ? Fixture.Kind.Fixture : scenePath == "probe" ? Fixture.Kind.Probe : scenePath == "human" ? Fixture.Kind.Human : (Fixture.Kind?)null;
+            Fixture.Kind? kind = scenePath == null ? Fixture.Kind.Fixture : scenePath == "probe" ? Fixture.Kind.Probe : scenePath == "human" ? Fixture.Kind.Human : scenePath == "writedefaults" ? Fixture.Kind.WriteDefaults : (Fixture.Kind?)null;
             if (kind.HasValue) scenePath = Fixture.Build(kind.Value);
 
             EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
@@ -956,6 +956,23 @@ namespace AvatarWorkshop.Reference
 
             var rest = S("rest", probe ? 900 : 90, render: true);
             foreach (var (n, v) in Builtins) rest.Set[n] = v;
+            var script = Harness.Env("AW_STEPS");
+            if (script != null)
+            {
+                if (human) throw new Exception("AW_STEPS cannot replace the composition probe's steps");
+                int hold = int.Parse(Harness.Env("AW_STEP_FRAMES") ?? "20", inv);
+                foreach (var text in script.Split(';'))
+                {
+                    var st = S(text.Trim(), hold, render: true);
+                    foreach (var set in text.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        var pair = set.Split('=');
+                        if (pair.Length != 2) throw new Exception("bad AW_STEPS entry: " + set);
+                        st.Set[pair[0].Trim()] = float.Parse(pair[1], inv);
+                    }
+                }
+                return;
+            }
             if (human)
             {
                 Compositions(descriptor);

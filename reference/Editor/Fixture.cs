@@ -108,7 +108,8 @@ namespace AvatarWorkshop.Reference
 
         // Probe: the fixture's body with no menu or controller, and one short chain per PhysBone field value instead of
         // its PhysBones, so each field's effect has a reference trace of its own. Human: the composition probe.
-        public enum Kind { Fixture, Probe, Human }
+        // WriteDefaults: the body under the controllers AW_WD describes.
+        public enum Kind { Fixture, Probe, Human, WriteDefaults }
 
         // Generates the avatar into Dir and returns its scene's path.
         public static string Build(Kind kind)
@@ -170,6 +171,7 @@ namespace AvatarWorkshop.Reference
             d.ViewPosition = new Vector3(0, 1.62f, 0.08f);
             if (kind == Kind.Human) HumanLayers(d);
             if (kind == Kind.Probe) Probes(t);
+            if (kind == Kind.WriteDefaults) WriteDefaults(d);
             if (kind != Kind.Fixture)
             {
                 AssetDatabase.SaveAssets();
