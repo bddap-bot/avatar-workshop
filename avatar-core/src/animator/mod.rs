@@ -1370,8 +1370,8 @@ fn node_of(t: &Target) -> Option<u32> {
     }
 }
 
-/// The animator parameters a zero-length transition from a blend tree into a state with a motion, both writing
-/// defaults, pulls to the controller's defaults: those the source animates and the destination does not.
+/// What a zero-length transition from a blend tree into a state with a motion, both writing defaults, pulls to the
+/// controller's defaults: the animator parameters among what the source animates and the destination does not.
 fn pulled(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32]) -> Vec<u32> {
     let l = &rt.layers[li];
     let (None, Some(p), Some(to)) = (&l.active, &l.snapped, &l.current) else { return vec![] };
