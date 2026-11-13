@@ -1405,7 +1405,7 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, sa
     rotations.dedup();
     let mut started = false;
     let mut weighted = std::collections::HashSet::new();
-    for l in ls.iter().filter(|l| l.weight != 0.0) {
+    for l in ls.iter().filter(|l| l.weight != 0.0 || l.direct) {
         let c = clips[l.clip as usize].variant(l.mirror);
         let mut own: HashMap<u32, f32> = HashMap::new();
         let began = starts.iter().find(|(id, _)| *id == l.id).map_or(0.0, |&(_, t)| t);
@@ -1478,7 +1478,9 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, sa
 /// other bound target at its rest value. What a write-defaults state's motion binds but does not write this frame
 /// takes the value beneath, else last frame's (`through`); under a direct blend tree, else last frame's only when
 /// another layer binds it, else its default (`reset`): the traces show a lone direct-tree toggle returning to its
-/// default where a 2D tree's released child holds.
+/// default where a 2D tree's released child holds. Without write defaults a direct tree feeds back every bound
+/// target: what its leaves do not write it takes from last frame, scaled by those leaves' weight, and what its weights
+/// leave short of one from the default.
 #[allow(clippy::too_many_arguments)]
 fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32], bound: &[u32], slots: &[u32], targets: &[Target], beneath: &dyn Fn(u32) -> f32, held: &dyn Fn(u32) -> f32, through: &dyn Fn(u32) -> f32, reset: &dyn Fn(u32) -> f32) -> Vec<(u32, f32, f32)> {
     let l = &rt.layers[li];
@@ -1509,6 +1511,16 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
                 let direct = matches!(&m, Motion::BlendTree(b) if matches!(b.algorithm, BlendAlgorithm::Direct { .. }));
                 let mut ids = Vec::new();
                 machine::clip_ids(&m, &mut ids);
+                if direct && !wd {
+                    let mut ls = Vec::new();
+                    rt.state_leaves(li, cur.state, &mut ls);
+                    let sum: f32 = ls.iter().map(|l| l.weight).sum();
+                    for &t in bound.iter().filter(|&&t| !targets[t as usize].rests_at_default()) {
+                        let covered: f32 = ls.iter().filter(|l| clips[l.clip as usize].variant(l.mirror).writes.binary_search(&t).is_ok()).map(|l| l.weight).sum();
+                        let own = pose.get(&t).copied().unwrap_or(0.0);
+                        pose.insert(t, own + (sum - covered) * held(t) + (1.0 - sum).max(0.0) * defaults[t as usize]);
+                    }
+                }
                 for c in ids {
                     for &t in &clips[c as usize].writes {
                         if !targets[t as usize].rests_at_default() {

@@ -844,12 +844,13 @@ fn walk(motion: &Motion, param: &dyn Fn(&str) -> f32, scale: Leaf, next: &mut u3
                     }
                 }
                 BlendAlgorithm::Direct { normalized_blend_values, children } => {
-                    let mut w: Vec<f32> = children.iter().map(|c| param(&c.direct_blend_parameter).max(0.0)).collect();
+                    let raw: Vec<f32> = children.iter().map(|c| param(&c.direct_blend_parameter)).collect();
+                    let mut w: Vec<f32> = raw.iter().map(|w| w.max(0.0)).collect();
                     if *normalized_blend_values {
                         normalize(&mut w);
                     }
-                    for (c, w) in children.iter().zip(w) {
-                        push(&c.motion, (w != 0.0).then_some(w), c.time_scale, c.cycle_offset, c.mirror, out);
+                    for ((c, w), raw) in children.iter().zip(w).zip(raw) {
+                        push(&c.motion, (raw != 0.0).then_some(w), c.time_scale, c.cycle_offset, c.mirror, out);
                     }
                 }
             }

@@ -208,6 +208,8 @@ pub struct Mismatches {
     pub wrong: usize,
     pub keys: BTreeMap<String, (usize, usize, String)>,
     pub frames: BTreeSet<usize>,
+    /// Each wrong sample's frame and key.
+    pub samples: BTreeSet<(usize, String)>,
 }
 
 impl Mismatches {
@@ -217,6 +219,7 @@ impl Mismatches {
         }
         self.wrong += 1;
         self.frames.insert(frame);
+        self.samples.insert((frame, key.to_string()));
         let e = self.keys.entry(key.to_string()).or_insert((0, frame, detail));
         e.0 += 1;
     }
