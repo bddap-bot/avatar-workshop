@@ -108,8 +108,8 @@ namespace AvatarWorkshop.Reference
 
         // Probe: the fixture's body with no menu or controller, and one short chain per PhysBone field value instead of
         // its PhysBones, so each field's effect has a reference trace of its own. Human: the composition probe.
-        // WriteDefaults: the body under the controllers AW_WD describes.
-        public enum Kind { Fixture, Probe, Human, WriteDefaults }
+        // Blend: the blend duration probe. WriteDefaults: the body under the controllers AW_WD describes.
+        public enum Kind { Fixture, Probe, Human, Blend, WriteDefaults }
 
         // Generates the avatar into Dir and returns its scene's path.
         public static string Build(Kind kind)
@@ -170,6 +170,7 @@ namespace AvatarWorkshop.Reference
             var d = root.AddComponent<VRCAvatarDescriptor>();
             d.ViewPosition = new Vector3(0, 1.62f, 0.08f);
             if (kind == Kind.Human) HumanLayers(d);
+            if (kind == Kind.Blend) BlendLayers(d);
             if (kind == Kind.Probe) Probes(t);
             if (kind == Kind.WriteDefaults) WriteDefaults(d);
             if (kind != Kind.Fixture)
@@ -761,6 +762,38 @@ namespace AvatarWorkshop.Reference
                 AssetDatabase.AddObjectToAsset(bt, C);
                 return bt;
             }
+        }
+
+        static AnimatorState CaseState(AnimatorStateMachine sm, AnimatorState off, string name, Motion m, int id, bool writeDefaults)
+        {
+            var s = sm.AddState($"{id} {name}");
+            s.writeDefaultValues = writeDefaults; s.motion = m;
+            Go(off, s, 0).AddCondition(AnimatorConditionMode.Equals, id, CaseParameter);
+            Go(s, off, 0).AddCondition(AnimatorConditionMode.NotEqual, id, CaseParameter);
+            return s;
+        }
+
+        static BlendTree Tree1D(Ctl c, Motion a, Motion b)
+        {
+            var t = c.Tree("1D", BlendTreeType.Simple1D, BlendX);
+            t.AddChild(a, 0); t.AddChild(b, 1);
+            return t;
+        }
+
+        static BlendTree Tree2D(Ctl c, BlendTreeType type, Motion left, Motion right, Motion up, Motion down, Motion centre)
+        {
+            var t = c.Tree(type.ToString(), type, BlendU, BlendY);
+            t.AddChild(left, new Vector2(-1, 0)); t.AddChild(right, new Vector2(1, 0));
+            t.AddChild(up, new Vector2(0, 1)); t.AddChild(down, new Vector2(0, -1));
+            if (type != BlendTreeType.SimpleDirectional2D) t.AddChild(centre, Vector2.zero);
+            return t;
+        }
+
+        static BlendTree Direct(Ctl c, params (Motion m, string weight)[] children)
+        {
+            var t = c.Tree("Direct", BlendTreeType.Direct, BlendX);
+            t.children = children.Select(ch => new ChildMotion { motion = ch.m, timeScale = 1, directBlendParameter = ch.weight }).ToArray();
+            return t;
         }
 
         static AnimatorStateTransition Go(AnimatorState from, AnimatorState to, float duration, bool fixedDuration = true)

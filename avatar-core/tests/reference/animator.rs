@@ -136,7 +136,6 @@ pub struct Step {
     pub frames: usize,
     pub control: String,
     pub label: String,
-    pub sets: Vec<(String, f32)>,
 }
 
 pub fn steps(dir: &Path) -> Vec<Step> {
@@ -147,13 +146,39 @@ pub fn steps(dir: &Path) -> Vec<Step> {
             if f.len() < 5 {
                 return None;
             }
-            let sets = f.get(5).map_or(vec![], |s| {
-                s.split(',')
-                    .filter(|x| !x.is_empty())
-                    .filter_map(|kv| kv.rsplit_once('=').map(|(k, v)| (canonical(k), v.parse().unwrap())))
-                    .collect()
+            Some(Step { frame: f[1].parse().unwrap(), frames: f[2].parse().unwrap(), control: f[3].to_string(), label: f[4].to_string() })
+        })
+        .collect()
+}
+
+fn unescaped(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut chars = name.chars();
+    while let Some(c) = chars.next() {
+        let escaped = if c == '\\' { chars.next() } else { None };
+        out.push(match escaped {
+            Some('t') => '\t',
+            Some('n') => '\n',
+            Some('r') => '\r',
+            Some(other) => other,
+            None => c,
+        });
+    }
+    out
+}
+
+/// The parameters the harness set on each frame, in the order it applied them.
+pub fn inputs(dir: &Path) -> BTreeMap<usize, Vec<(String, f32)>> {
+    text(&dir.join("inputs.tsv"))
+        .lines()
+        .map(|l| {
+            let mut f = l.split('\t');
+            let frame = f.next().unwrap().parse().unwrap();
+            let set = f.skip(2).map(|kv| {
+                let (k, v) = kv.rsplit_once('=').unwrap_or_else(|| panic!("frame {frame}'s input {kv} is not <name>=<value>"));
+                (canonical(&unescaped(k)), v.parse().unwrap())
             });
-            Some(Step { frame: f[1].parse().unwrap(), frames: f[2].parse().unwrap(), control: f[3].to_string(), label: f[4].to_string(), sets })
+            (frame, set.collect())
         })
         .collect()
 }
@@ -427,11 +452,9 @@ impl Run {
             .map(|a| a.iter().map(|m| m["name"].as_str().unwrap_or("").to_string()).collect())
             .unwrap_or_default();
         let index: HashMap<Target, usize> = anim.targets().iter().enumerate().map(|(i, t)| (t.clone(), i)).collect();
-        let probe = self.dir.join("compositions.json").exists();
-        let ramped: &[&str] = if probe { &["BlendX", "BlendY", "BlendU"] } else { &[] };
-        let mut by_frame: BTreeMap<usize, Vec<&Step>> = BTreeMap::new();
-        for s in &steps {
-            by_frame.entry(s.frame).or_default().push(s);
+        let inputs = inputs(&self.dir);
+        for f in first..end {
+            assert!(inputs.contains_key(&f), "the recording has no scripted inputs at frame {f}");
         }
         let mut rep = Report {
             seen: BTreeMap::new(),
@@ -458,27 +481,11 @@ impl Run {
             assert!(held_clocks.frames.contains_key(&f), "the recording has no state times at frame {f}");
         }
         for f in 0..end {
-            for s in by_frame.get(&f).into_iter().flatten() {
-                for (n, v) in &s.sets {
-                    if builtin.contains(n.as_str()) {
-                        anim.set_builtin(raw.get(n).map_or(n.as_str(), String::as_str), *v);
-                    } else {
-                        anim.set(raw.get(n).map_or(n.as_str(), String::as_str), *v);
-                    }
-                }
-            }
-            // The recording does not log Seated, which the composition probe's script toggles every eight frames of
-            // a case its Sitting playable plays.
-            if let Some(s) = steps.iter().find(|s| probe && (s.frame..s.frame + s.frames).contains(&f) && s.label.starts_with("case ") && s.label.contains("sitting/")) {
-                anim.set_builtin("Seated", ((f - s.frame) / 8 % 2 == 0) as u8 as f32);
-            }
-            for n in ramped {
-                let Some(v) = params.get(*n).and_then(|l| at(l, f)) else { continue };
-                let v: f32 = v.parse().unwrap();
-                if builtin.contains(n) {
-                    anim.set_builtin(n, v);
+            for (n, v) in inputs.get(&f).into_iter().flatten() {
+                if builtin.contains(n.as_str()) {
+                    anim.set_builtin(raw.get(n).map_or(n.as_str(), String::as_str), *v);
                 } else {
-                    anim.set(n, v);
+                    anim.set(raw.get(n).map_or(n.as_str(), String::as_str), *v);
                 }
             }
             for (n, logs) in &dynamic {

@@ -277,8 +277,7 @@ namespace AvatarWorkshop.Exporter
                     algorithm = new Obj { { "type", "simple1D" }, { "blendParameter", tree.blendParameter }, { "children", tree.children.Select(c => (object)Child(c, "1d")).ToList() } };
                     break;
                 case BlendTreeType.Direct:
-                    var normalized = new SerializedObject(tree).FindProperty("m_NormalizedBlendValues")?.boolValue ?? false;
-                    algorithm = new Obj { { "type", "direct" }, { "normalizedBlendValues", normalized }, { "children", tree.children.Select(c => (object)Child(c, "direct")).ToList() } };
+                    algorithm = new Obj { { "type", "direct" }, { "normalizedBlendValues", Exporter.NormalizedBlendValues(tree) }, { "children", tree.children.Select(c => (object)Child(c, "direct")).ToList() } };
                     break;
                 default:
                     var type = tree.blendType switch { BlendTreeType.SimpleDirectional2D => "simpleDirectional2D", BlendTreeType.FreeformDirectional2D => "freeformDirectional2D", _ => "freeformCartesian2D" };

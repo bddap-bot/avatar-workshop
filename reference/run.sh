@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# usage: run.sh <unity project> <output dir> [scene path, "probe", "human" or "writedefaults"] [avatar object name]
+# usage: run.sh <unity project> <output dir> [scene path, "probe", "human", "blend" or "writedefaults"] [avatar object name]
 # UNITY names the editor command (default: Unity on PATH); it needs a display (e.g. Xvfb).
 set -euo pipefail
 project=$(realpath "$1") out=$(realpath -m "$2") scene=${3:-} avatar=${4:-}

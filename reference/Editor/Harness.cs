@@ -48,7 +48,8 @@ namespace AvatarWorkshop.Reference
             var output = Env("AW_OUT") ?? throw new Exception("AW_OUT is required");
             var scenePath = Env("AW_SCENE");
             var avatarName = Env("AW_AVATAR");
-            Fixture.Kind? kind = scenePath == null ? Fixture.Kind.Fixture : scenePath == "probe" ? Fixture.Kind.Probe : scenePath == "human" ? Fixture.Kind.Human : scenePath == "writedefaults" ? Fixture.Kind.WriteDefaults : (Fixture.Kind?)null;
+            Fixture.Kind? kind = scenePath == null ? Fixture.Kind.Fixture : scenePath == "probe" ? Fixture.Kind.Probe : scenePath == "human" ? Fixture.Kind.Human
+                : scenePath == "blend" ? Fixture.Kind.Blend : scenePath == "writedefaults" ? Fixture.Kind.WriteDefaults : (Fixture.Kind?)null;
             if (kind.HasValue) scenePath = Fixture.Build(kind.Value);
 
             EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
@@ -211,6 +212,7 @@ namespace AvatarWorkshop.Reference
         public Dictionary<string, float> Set = new Dictionary<string, float>();
         public Action<Recorder, int> Each;
         public Coverage.ProbeCase Case;
+        public int First;
         public bool Render;
     }
 
@@ -227,7 +229,7 @@ namespace AvatarWorkshop.Reference
         public bool Finished;
         readonly string output;
         readonly string avatarName;
-        readonly bool fixture, probe, human;
+        readonly bool fixture, probe, human, blend;
         readonly bool migratedDynamicBones;
         bool exported;
         StreamWriter timeOut;
@@ -274,7 +276,9 @@ namespace AvatarWorkshop.Reference
         NativeArray<int> humanRuns;
         int humanSeen;
 
-        StreamWriter dynamicsOut, paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, grabsOut;
+        StreamWriter dynamicsOut, paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, grabsOut, inputsOut;
+        readonly List<string> applied = new List<string>();
+        string placed, swung;
         PhysBoneManager.Grab grab;
         readonly Dictionary<string, string> lastParams = new Dictionary<string, string>();
         readonly Dictionary<string, string> lastStates = new Dictionary<string, string>();
@@ -288,6 +292,7 @@ namespace AvatarWorkshop.Reference
             fixture = kind == Fixture.Kind.Fixture;
             probe = kind == Fixture.Kind.Probe;
             human = kind == Fixture.Kind.Human;
+            blend = kind == Fixture.Kind.Blend;
             this.output = output;
             this.avatarName = avatarName;
             this.migratedDynamicBones = migratedDynamicBones;
@@ -348,6 +353,9 @@ namespace AvatarWorkshop.Reference
                 BeginStep(steps[stepIndex]);
             }
             steps[stepIndex].Each?.Invoke(this, stepFrame);
+            inputsOut.Write($"{frame.ToString(inv)}\t{placed ?? "-"}\t{swung ?? "-"}{string.Concat(applied.Select(a => "\t" + a))}\n");
+            applied.Clear();
+            placed = swung = null;
         }
 
         // Put between the emulator's mixer and its output, which only reads what passes through.
@@ -509,6 +517,7 @@ namespace AvatarWorkshop.Reference
             Clocks(f);
             if (root == null || stepIndex < 0) return;
             if (posedFrame != frame) throw new Exception($"no driver poses were taken before the SDK's dynamics at frame {f}");
+            if (applied.Count > 0 || placed != null || swung != null) throw new Exception($"scripted inputs were applied after frame {f}'s were logged");
             foreach (var (t, path) in bones) simulated[path] = LocalPose(t);
             foreach (var (name, value) in Parameters())
                 if (!lastParams.TryGetValue(name, out var old) || old != value) { paramsOut.Write($"{f}\t{name}\t{value}\n"); lastParams[name] = value; }
@@ -542,6 +551,8 @@ namespace AvatarWorkshop.Reference
             root = runtime.transform;
             rootPos = root.position;
             rootRot = root.rotation;
+            placed = Xf(rootPos, rootRot);
+            swung = "0,0";
             var animator = runtime.GetComponent<Animator>();
             if (animator != null && animator.isHuman)
             {
@@ -604,6 +615,7 @@ namespace AvatarWorkshop.Reference
             trackOut = Open("track.tsv");
             posesOut = Open("poses.tsv");
             grabsOut = Open("grabs.tsv");
+            inputsOut = Open("inputs.tsv");
             trackOut.Write("frame\troot (world)\thead\tleft hand\tright hand\thips (each from the root position and rotation, its scale ignored, in metres: px,py,pz,qx,qy,qz,qw)\n");
             File.WriteAllText(Path.Combine(output, "chains.tsv"),
                 "tip\tlength\n" + string.Concat(tips.Select(t => $"{t.Id}\t{F(t.Length)}\n")));
@@ -611,12 +623,12 @@ namespace AvatarWorkshop.Reference
             File.WriteAllText(Path.Combine(output, "coverage.json"), Json(coverage) + "\n");
             var missing = Coverage.Required.Where(k => coverage[k] == 0).ToList();
             if (fixture && missing.Count > 0) throw new Exception("fixture lacks " + string.Join(", ", missing));
-            if (human)
+            if (human || blend)
             {
-                var compositions = Coverage.CountCompositions(descriptor);
+                var compositions = human ? Coverage.CountCompositions(descriptor) : Coverage.CountBlendCompositions(descriptor);
                 File.WriteAllText(Path.Combine(output, "compositions.json"), Json(compositions) + "\n");
-                var absent = Coverage.Compositions.Where(k => compositions[k] == 0).ToList();
-                if (absent.Count > 0) throw new Exception("the composition probe lacks " + string.Join(", ", absent));
+                var absent = (human ? Coverage.Compositions : Coverage.BlendCompositions).Where(k => compositions[k] == 0).ToList();
+                if (absent.Count > 0) throw new Exception($"the {(human ? "composition" : "blend duration")} probe lacks {string.Join(", ", absent)}");
             }
             SetupCamera();
             Schedule(descriptor);
@@ -626,6 +638,7 @@ namespace AvatarWorkshop.Reference
                 ["avatar"] = avatarName,
                 ["fixture"] = fixture,
                 ["human"] = human,
+                ["blend"] = blend,
                 ["root_scale"] = new[] { root.lossyScale.x, root.lossyScale.y, root.lossyScale.z },
                 ["unity"] = Application.unityVersion,
                 ["dynamic_bones_migrated"] = migratedDynamicBones,
@@ -906,6 +919,18 @@ namespace AvatarWorkshop.Reference
             return v;
         }
 
+        void Place(Vector3 position, Quaternion rotation)
+        {
+            placed = Xf(position, rotation);
+            root.SetPositionAndRotation(position, rotation);
+        }
+
+        void Swing(Vector2 arms)
+        {
+            swung = $"{F(arms.x)},{F(arms.y)}";
+            armSwing = arms;
+        }
+
         void Set(string name, float value)
         {
             var i = runtime.Ints.Find(p => p.name == name);
@@ -918,6 +943,7 @@ namespace AvatarWorkshop.Reference
 
         void Apply(string name, float v)
         {
+            applied.Add($"{Escape(name)}={F(v)}");
             switch (name)
             {
                 case "GestureLeft": runtime.GestureLeftIdx = (int)v; runtime.GestureLeft = (LyumaAv3Runtime.GestureIndex)(int)v; break;
@@ -959,7 +985,7 @@ namespace AvatarWorkshop.Reference
             var script = Harness.Env("AW_STEPS");
             if (script != null)
             {
-                if (human) throw new Exception("AW_STEPS cannot replace the composition probe's steps");
+                if (human || blend) throw new Exception("AW_STEPS cannot replace a probe's cases");
                 int hold = int.Parse(Harness.Env("AW_STEP_FRAMES") ?? "20", inv);
                 foreach (var text in script.Split(';'))
                 {
@@ -973,7 +999,7 @@ namespace AvatarWorkshop.Reference
                 }
                 return;
             }
-            if (human)
+            if (human || blend)
             {
                 Compositions(descriptor);
                 S("final", 60, render: true);
@@ -986,11 +1012,11 @@ namespace AvatarWorkshop.Reference
                 float t = k / (float)Harness.Rate;
                 const float tau = Mathf.PI * 2;
                 var offset = new Vector3(0.25f * Mathf.Sin(tau * t / 3), 0.04f * Mathf.Sin(tau * t / 0.75f), 0.4f * Mathf.Sin(tau * t / 2));
-                r.root.SetPositionAndRotation(r.rootPos + r.rootRot * offset, r.rootRot * Quaternion.Euler(0, 45 * Mathf.Sin(tau * t / 6), 0));
-                r.armSwing = new Vector2(40 * Mathf.Sin(tau * t / 1.5f), 70 * Mathf.Sin(tau * t / 2));
+                r.Place(r.rootPos + r.rootRot * offset, r.rootRot * Quaternion.Euler(0, 45 * Mathf.Sin(tau * t / 6), 0));
+                r.Swing(new Vector2(40 * Mathf.Sin(tau * t / 1.5f), 70 * Mathf.Sin(tau * t / 2)));
             };
             var stop = S("settle", 2 * Harness.Rate, render: true);
-            stop.Each = (r, k) => { if (k == 0) { r.root.SetPositionAndRotation(r.rootPos, r.rootRot); r.armSwing = Vector2.zero; } };
+            stop.Each = (r, k) => { if (k == 0) { r.Place(r.rootPos, r.rootRot); r.Swing(Vector2.zero); } };
 
             if (probe) return;
             if (descriptor.expressionsMenu != null) Menu(descriptor.expressionsMenu, "", "", new HashSet<VRCExpressionsMenu>(), new Dictionary<string, float>());
@@ -1027,19 +1053,24 @@ namespace AvatarWorkshop.Reference
             S("final", 60, render: true);
         }
 
-        // Each case of the composition probe, unmirrored then mirrored, with the blend parameters ramped through it
-        // (BlendX 0 to 1, BlendU -1 to 1, BlendY up and back down) and, in a case the Sitting playable plays, Seated
-        // toggled every 8 frames so the playable's 0.25 s blend never completes.
+        // Each case of a probe, with the blend parameters ramped through it (BlendX 0 to 1, BlendU -1 to 1, BlendY up
+        // and back down); a probe with a Mirror parameter plays each unmirrored then mirrored, and a case the Sitting
+        // playable plays toggles Seated every 8 frames so the playable's 0.25 s blend never completes.
         void Compositions(VRCAvatarDescriptor descriptor)
         {
             var cases = Coverage.Cases(descriptor);
-            if (cases.Count == 0) throw new Exception("the composition probe has no cases");
-            var inputs = new List<string> { Fixture.CaseParameter, Fixture.MirrorParameter, Fixture.BlendX, Fixture.BlendY, Fixture.BlendU, "Seated" };
+            if (cases.Count == 0) throw new Exception("the probe has no cases");
+            bool mirrors = defaults.ContainsKey(Fixture.MirrorParameter);
+            var inputs = new List<string> { Fixture.CaseParameter };
+            if (mirrors) inputs.Add(Fixture.MirrorParameter);
+            inputs.AddRange(Fixture.Ramps);
+            if (cases.Any(c => c.Sitting)) inputs.Add("Seated");
             foreach (var c in cases)
-                for (int m = 0; m < 2; m++)
+                for (int m = 0; m < (mirrors ? 2 : 1); m++)
                 {
-                    var st = Add(new Step { Label = $"case {c.Id} mirror={m}: {string.Join("; ", c.States.Select(x => x.label))}", Frames = 150, Case = c });
-                    st.Set[Fixture.CaseParameter] = c.Id; st.Set[Fixture.MirrorParameter] = m;
+                    var st = Add(new Step { Label = $"case {c.Id}{(mirrors ? $" mirror={m}" : "")}: {string.Join("; ", c.States.Select(x => x.label))}", Frames = 150, Case = c });
+                    st.Set[Fixture.CaseParameter] = c.Id;
+                    if (mirrors) st.Set[Fixture.MirrorParameter] = m;
                     st.Each = (r, k) =>
                     {
                         float t = k / (float)(st.Frames - 1);
@@ -1050,7 +1081,7 @@ namespace AvatarWorkshop.Reference
                 }
         }
 
-        // Fails a composition-probe case whose states the animators never entered, or whose partial playable held a
+        // Fails a probe case whose states the animators never entered, or whose partial playable held a
         // weight strictly between 0 and 1 on fewer than 90% of its frames (a playable blending in passes through
         // partial weights on its way to full).
         readonly HashSet<int> caseStates = new HashSet<int>();
@@ -1199,9 +1230,12 @@ namespace AvatarWorkshop.Reference
 
         void BeginStep(Step s)
         {
+            s.First = frame;
             foreach (var kv in s.Set) Apply(kv.Key, kv.Value);
             stepsOut.Write($"{stepIndex}\t{frame}\t{s.Frames}\t{s.Control ?? "-"}\t{Clean(s.Label)}\t{string.Join(",", s.Set.Select(kv => kv.Key + "=" + F(kv.Value)))}\n");
         }
+
+        static string Escape(string s) => s.Replace("\\", "\\\\").Replace("\n", "\\n").Replace("\t", "\\t").Replace("\r", "\\r");
 
         static string Q(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\t", "\\t") + "\"";
 
@@ -1273,10 +1307,26 @@ namespace AvatarWorkshop.Reference
         void Complete()
         {
             Finished = true;
-            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, grabsOut, timeOut, dynamicsOut, clocksOut }) w?.Dispose();
+            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, grabsOut, inputsOut, timeOut, dynamicsOut, clocksOut }) w?.Dispose();
+            CheckInputs();
             File.WriteAllText(Path.Combine(output, "done"), frame.ToString(inv) + "\n");
             Debug.Log($"[aw-reference] recorded {frame} frames, {steps.Count} steps, {tips.Count} tips, {renderCount} renders into {output}");
             Harness.Finish(0);
+        }
+
+        // Reads the log back, so what fails is the file a replay would read.
+        void CheckInputs()
+        {
+            var rows = File.ReadAllLines(Path.Combine(output, "inputs.tsv")).Select(l => l.Split('\t')).ToArray();
+            int first = steps[0].First;
+            for (int f = first; f < frame; f++)
+                if (f - first >= rows.Length || rows[f - first][0] != f.ToString(inv)) throw new Exception($"inputs.tsv lacks the scripted inputs of frame {f}");
+            if (rows.Length != frame - first) throw new Exception($"inputs.tsv holds {rows.Length} rows for {frame - first} frames");
+            foreach (var s in steps)
+            {
+                var missing = s.Set.Select(kv => Escape(kv.Key) + "=" + F(kv.Value)).Except(rows[s.First - first].Skip(3)).ToList();
+                if (missing.Count > 0) throw new Exception($"inputs.tsv lacks {string.Join(", ", missing)} at frame {s.First}, where step '{s.Label}' sets them");
+            }
         }
 
         static string Json(object o)

@@ -327,6 +327,100 @@ namespace AvatarWorkshop.Reference
             return c;
         }
 
+        // The blend-tree compositions the blend duration probe separates, by the tree a state plays: its algorithm
+        // (".normalized" for a direct tree with normalized blend values, ".nested" for a tree with a child tree) and
+        // whether its clips are all zero-length, all with length, all empty (a clip without curves, which reports a
+        // length of one second) or mixed, and beside what an empty clip plays. A flat direct tree also counts its weight
+        // sum, or "ramped" where the harness drives a weight, or which kind of clip a zero weight silences; a mixed one
+        // which kind weighs more and whether its zero-length clips are many. A nested direct tree counts each child
+        // tree's algorithm. Only states a case enters and default states count.
+        const int Many = 8;
+        static readonly string[] Contents = { "length_only", "mixed" };
+        public static readonly string[] BlendCompositions =
+            new[] { "blendtree.direct", "blendtree.direct.normalized" }.SelectMany(t =>
+                Contents.SelectMany(c => new[] { "sum_below_one", "sum_one", "sum_above_one", "ramped" }.Select(sum => $"{t}.{c}.{sum}"))
+                .Concat(new[] { "zero_length_only", "nested.mixed" }.Select(k => $"{t}.{k}"))
+                .Concat(new[] { "default_state", "write_defaults_off", "zero_length_heavier", "zero_length_lighter", "zero_length_unweighted", "length_unweighted", "many_zero_length" }.Select(k => $"{t}.mixed.{k}")))
+            .Concat(new[] { "length_only", "inner_zero_length_only", "many_inner_zero_length_only", "inner_sum_below_one", "outer_sum_below_one", "twice",
+                "inner.direct", "inner.direct.normalized", "inner.simple_1d", "inner.freeform_cartesian_2d" }.Select(k => "blendtree.direct.nested." + k))
+            .Concat(new[] { "inner.direct", "inner.simple_1d" }.Select(k => "blendtree.direct.normalized.nested." + k))
+            .Append("blendtree.simple_1d.nested.mixed")
+            .Concat(new[] { "direct.empty.alone", "direct.empty.beside_length", "direct.empty.beside_zero_length", "direct.normalized.empty.beside_length",
+                "direct.nested.empty.beside_length", "simple_1d.empty.beside_length" }.Select(k => "blendtree." + k))
+            .Concat(new[] { "clip.empty", "clip.zero_length" })
+            .Concat(new[] { "simple_1d", "simple_directional_2d", "freeform_directional_2d", "freeform_cartesian_2d" }.SelectMany(t => new[] { $"blendtree.{t}.zero_length_only", $"blendtree.{t}.mixed" }))
+            .ToArray();
+
+        static string Span(AnimationClip clip) =>
+            AnimationUtility.GetCurveBindings(clip).Length + AnimationUtility.GetObjectReferenceCurveBindings(clip).Length == 0 ? "empty" : clip.length == 0 ? "zero_length" : "length";
+
+        static string Content(Motion m)
+        {
+            var spans = Leaves(m).Select(Span).Distinct().ToList();
+            return spans.Contains("empty") ? spans.Count == 1 ? "empty" : "with_empty" : spans.Count == 1 ? spans[0] + "_only" : "mixed";
+        }
+
+        public static SortedDictionary<string, int> CountBlendCompositions(VRCAvatarDescriptor d)
+        {
+            var c = new SortedDictionary<string, int>();
+            foreach (var k in BlendCompositions) c[k] = 0;
+            void Add(string k) => c[k] = c.TryGetValue(k, out var n) ? n + 1 : 1;
+            foreach (var (_, ctrl, _) in Controllers(d))
+            {
+                var defaults = ctrl.parameters.ToDictionary(p => p.name, p => p.defaultFloat);
+                bool Ramped(BlendTree t) => t.children.Any(ch => Fixture.Ramps.Contains(ch.directBlendParameter));
+                float Weight(BlendTree t, System.Func<ChildMotion, bool> of) => t.children.Where(of).Sum(ch => defaults[ch.directBlendParameter]);
+                foreach (var layer in ctrl.layers)
+                {
+                    var sm = layer.stateMachine;
+                    var cases = CaseOf(sm);
+                    foreach (var s in sm.states.Select(x => x.state))
+                    {
+                        if (!cases.ContainsKey(s) && s != sm.defaultState) continue;
+                        if (s.motion is AnimationClip alone && Span(alone) != "length") Add("clip." + Span(alone));
+                        if (!(s.motion is BlendTree t)) continue;
+                        var content = Content(t);
+                        var direct = t.blendType == BlendTreeType.Direct;
+                        var inner = t.children.Select(ch => ch.motion).OfType<BlendTree>().ToList();
+                        var nested = inner.Count > 0;
+                        var tree = Algorithm(t);
+                        var key = $"{tree}{(nested ? ".nested" : "")}.{content}";
+                        Add(key);
+                        if (!s.writeDefaultValues) Add(key + ".write_defaults_off");
+                        if (s == sm.defaultState) Add(key + ".default_state");
+                        var spans = Leaves(t).Select(Span).Distinct().ToList();
+                        if (spans.Count == 1 && spans[0] == "empty") Add(key + ".alone");
+                        else if (spans.Contains("empty")) foreach (var beside in spans.Where(x => x != "empty")) Add($"{tree}{(nested ? ".nested" : "")}.empty.beside_{beside}");
+                        if (!direct) continue;
+                        if (nested)
+                        {
+                            int still = inner.Count(sub => Content(sub) == "zero_length_only");
+                            if (content == "mixed" && still > 0) Add(tree + ".nested.inner_zero_length_only");
+                            if (content == "mixed" && still >= Many) Add(tree + ".nested.many_inner_zero_length_only");
+                            foreach (var sub in inner.Select(Algorithm).Distinct()) Add($"{tree}.nested.inner.{sub.Substring("blendtree.".Length)}");
+                            if (inner.Any(sub => sub.children.Any(ch => ch.motion is BlendTree))) Add(tree + ".nested.twice");
+                            bool Fixed(BlendTree x) => Algorithm(x) == "blendtree.direct" && !Ramped(x);
+                            if (inner.Any(sub => Fixed(sub) && Weight(sub, _ => true) < 1)) Add(tree + ".nested.inner_sum_below_one");
+                            if (Fixed(t) && Weight(t, _ => true) < 1) Add(tree + ".nested.outer_sum_below_one");
+                            continue;
+                        }
+                        if (Ramped(t)) { Add(key + ".ramped"); continue; }
+                        bool ZeroLength(ChildMotion ch) => Span((AnimationClip)ch.motion) == "zero_length";
+                        var zeros = t.children.Where(ZeroLength).ToList();
+                        float zero = Weight(t, ZeroLength), other = Weight(t, ch => !ZeroLength(ch));
+                        bool both = zeros.Count > 0 && zeros.Count < t.children.Length;
+                        if (both && zero == 0) Add(key + ".zero_length_unweighted");
+                        else if (both && other == 0) Add(key + ".length_unweighted");
+                        else Add(key + (Mathf.Approximately(zero + other, 1) ? ".sum_one" : zero + other < 1 ? ".sum_below_one" : ".sum_above_one"));
+                        if (!both || zero == 0 || other == 0) continue;
+                        if (zero != other) Add(key + (zero > other ? ".zero_length_heavier" : ".zero_length_lighter"));
+                        if (zeros.Count >= Many) Add(key + ".many_zero_length");
+                    }
+                }
+            }
+            return c;
+        }
+
         static void Machine(AnimatorStateMachine sm, AnimatorStateMachine parent, HashSet<string> parameters, HashSet<string> triggers, System.Action<string> add)
         {
             var transitions = sm.anyStateTransitions.Cast<AnimatorStateTransition>().Concat(sm.states.SelectMany(s => s.state.transitions)).ToList();
@@ -377,9 +471,14 @@ namespace AvatarWorkshop.Reference
 
         static void Tree(BlendTree bt, System.Action<string> add)
         {
-            add("blendtree." + Snake(bt.blendType.ToString()).Replace("2_d", "2d").Replace("1_d", "1d"));
+            add(TreeKey(bt));
             foreach (var ch in bt.children) if (ch.motion is BlendTree sub) Tree(sub, add);
         }
+
+        static string Algorithm(BlendTree t) =>
+            TreeKey(t) + (t.blendType == BlendTreeType.Direct && AvatarWorkshop.Exporter.Exporter.NormalizedBlendValues(t) ? ".normalized" : "");
+
+        static string TreeKey(BlendTree bt) => "blendtree." + Snake(bt.blendType.ToString()).Replace("2_d", "2d").Replace("1_d", "1d");
 
         static string Snake(string s) => string.Concat(s.Select((ch, i) => i > 0 && (char.IsUpper(ch) || char.IsDigit(ch) && !char.IsDigit(s[i - 1])) ? "_" + char.ToLowerInvariant(ch) : char.ToLowerInvariant(ch).ToString()));
     }

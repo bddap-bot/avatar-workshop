@@ -1,0 +1,158 @@
+0	5	90	-	rest	GestureLeft=0,GestureRight=0,GestureLeftWeight=0,GestureRightWeight=0,Viseme=0,Voice=0,Grounded=1,Seated=0,AFK=0,VelocityX=0,VelocityY=0,VelocityZ=0,AngularY=0,Upright=1,TrackingType=3,VRMode=1,InStation=0,IsOnFriendsList=0
+1	95	150	-	case 1: fx/Tree: 1 below one	Case=1
+2	245	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+3	265	150	-	case 2: fx/Tree: 2 below one, single	Case=2
+4	415	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+5	435	150	-	case 3: fx/Tree: 3 to one	Case=3
+6	585	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+7	605	150	-	case 4: fx/Tree: 4 to one, single	Case=4
+8	755	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+9	775	150	-	case 5: fx/Tree: 5 above one	Case=5
+10	925	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+11	945	150	-	case 6: fx/Tree: 6 above one, three	Case=6
+12	1095	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+13	1115	150	-	case 7: fx/Tree: 7 above one, uneven	Case=7
+14	1265	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+15	1285	150	-	case 8: fx/Tree: 8 ramped	Case=8
+16	1435	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+17	1455	150	-	case 9: fx/Tree: 9 mixed below one	Case=9
+18	1605	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+19	1625	150	-	case 10: fx/Tree: 10 mixed to one	Case=10
+20	1775	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+21	1795	150	-	case 11: fx/Tree: 11 mixed above one	Case=11
+22	1945	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+23	1965	150	-	case 12: fx/Tree: 12 mixed, zero-length heavier	Case=12
+24	2115	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+25	2135	150	-	case 13: fx/Tree: 13 mixed, zero-length lighter	Case=13
+26	2285	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+27	2305	150	-	case 14: fx/Tree: 14 mixed, zero-length unweighted	Case=14
+28	2455	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+29	2475	150	-	case 15: fx/Tree: 15 mixed, length unweighted	Case=15
+30	2625	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+31	2645	150	-	case 16: fx/Tree: 16 mixed, three zero-length	Case=16
+32	2795	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+33	2815	150	-	case 17: fx/Tree: 17 mixed, many	Case=17
+34	2965	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+35	2985	150	-	case 18: fx/Tree: 18 mixed ramped	Case=18
+36	3135	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+37	3155	150	-	case 19: fx/Tree: 19 zero-length only	Case=19
+38	3305	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+39	3325	150	-	case 20: fx/Tree: 20 zero-length only, below one	Case=20
+40	3475	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+41	3495	150	-	case 21: fx/Tree: 21 nested	Case=21
+42	3645	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+43	3665	150	-	case 22: fx/Tree: 22 nested, inner below one	Case=22
+44	3815	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+45	3835	150	-	case 23: fx/Tree: 23 nested, outer below one	Case=23
+46	3985	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+47	4005	150	-	case 24: fx/Tree: 24 nested, inner mixed	Case=24
+48	4155	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+49	4175	150	-	case 25: fx/Tree: 25 nested, inner zero-length only	Case=25
+50	4325	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+51	4345	150	-	case 26: fx/Tree: 26 nested, zero-length beside inner	Case=26
+52	4495	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+53	4515	150	-	case 27: fx/Tree: 27 nested twice	Case=27
+54	4665	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+55	4685	150	-	case 28: fx/Tree: 28 empty only	Case=28
+56	4835	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+57	4855	150	-	case 29: fx/Tree: 29 empty and length	Case=29
+58	5005	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+59	5025	150	-	case 30: fx/Tree: 30 empty and length, below one	Case=30
+60	5175	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+61	5195	150	-	case 31: fx/Tree: 31 empty and zero-length	Case=31
+62	5345	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+63	5365	150	-	case 32: fx/Tree: 32 empty, zero-length and length	Case=32
+64	5515	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+65	5535	150	-	case 33: fx/Tree: 33 normalized empty and length	Case=33
+66	5685	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+67	5705	150	-	case 34: fx/Tree: 34 empty clip	Case=34
+68	5855	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+69	5875	150	-	case 35: fx/Tree: 35 zero-length clip	Case=35
+70	6025	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+71	6045	150	-	case 36: fx/Tree: 36 normalized below one	Case=36
+72	6195	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+73	6215	150	-	case 37: fx/Tree: 37 normalized to one	Case=37
+74	6365	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+75	6385	150	-	case 38: fx/Tree: 38 normalized above one	Case=38
+76	6535	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+77	6555	150	-	case 39: fx/Tree: 39 normalized above one, uneven	Case=39
+78	6705	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+79	6725	150	-	case 40: fx/Tree: 40 normalized ramped	Case=40
+80	6875	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+81	6895	150	-	case 41: fx/Tree: 41 normalized mixed below one	Case=41
+82	7045	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+83	7065	150	-	case 42: fx/Tree: 42 normalized mixed to one	Case=42
+84	7215	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+85	7235	150	-	case 43: fx/Tree: 43 normalized mixed above one	Case=43
+86	7385	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+87	7405	150	-	case 44: fx/Tree: 44 normalized mixed, zero-length heavier	Case=44
+88	7555	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+89	7575	150	-	case 45: fx/Tree: 45 normalized mixed, zero-length lighter	Case=45
+90	7725	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+91	7745	150	-	case 46: fx/Tree: 46 normalized mixed, zero-length unweighted	Case=46
+92	7895	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+93	7915	150	-	case 47: fx/Tree: 47 normalized mixed, length unweighted	Case=47
+94	8065	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+95	8085	150	-	case 48: fx/Tree: 48 normalized mixed, many	Case=48
+96	8235	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+97	8255	150	-	case 49: fx/Tree: 49 normalized mixed ramped	Case=49
+98	8405	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+99	8425	150	-	case 50: fx/Tree: 50 normalized zero-length only	Case=50
+100	8575	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+101	8595	150	-	case 51: fx/Tree: 51 normalized nested	Case=51
+102	8745	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+103	8765	150	-	case 52: fx/Tree: 52 normalized nested in plain	Case=52
+104	8915	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+105	8935	150	-	case 53: fx/Tree: 53 plain nested in normalized	Case=53
+106	9085	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+107	9105	150	-	case 54: fx/Tree: 54 1D zero-length only	Case=54
+108	9255	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+109	9275	150	-	case 55: fx/Tree: 55 1D mixed	Case=55
+110	9425	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+111	9445	150	-	case 56: fx/Tree: 56 1D of 1D zero-length only and length	Case=56
+112	9595	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+113	9615	150	-	case 57: fx/Tree: 57 1D of 1D mixed and zero-length	Case=57
+114	9765	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+115	9785	150	-	case 58: fx/Tree: 58 direct of 1D zero-length only	Case=58
+116	9935	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+117	9955	150	-	case 59: fx/Tree: 59 direct of 1D zero-length only and length	Case=59
+118	10105	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+119	10125	150	-	case 60: fx/Tree: 60 direct of 1D zero-length only and length, below one	Case=60
+120	10275	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+121	10295	150	-	case 61: fx/Tree: 61 direct of three 1D zero-length only and length	Case=61
+122	10445	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+123	10465	150	-	case 62: fx/Tree: 62 direct of many 1D zero-length only and length	Case=62
+124	10615	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+125	10635	150	-	case 63: fx/Tree: 63 direct of 1D mixed	Case=63
+126	10785	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+127	10805	150	-	case 64: fx/Tree: 64 direct of 1D mixed and 1D zero-length only	Case=64
+128	10955	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+129	10975	150	-	case 65: fx/Tree: 65 direct of 2D zero-length only and length	Case=65
+130	11125	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+131	11145	150	-	case 66: fx/Tree: 66 normalized of 1D zero-length only and length	Case=66
+132	11295	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+133	11315	150	-	case 67: fx/Tree: 67 1D empty and length	Case=67
+134	11465	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+135	11485	150	-	case 68: fx/Tree: 68 direct of 1D empty and length, 1D zero-length only and length	Case=68
+136	11635	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+137	11655	150	-	case 69: fx/Tree: 69 SimpleDirectional2D zero-length only	Case=69
+138	11805	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+139	11825	150	-	case 70: fx/Tree: 70 SimpleDirectional2D mixed	Case=70
+140	11975	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+141	11995	150	-	case 71: fx/Tree: 71 FreeformDirectional2D zero-length only	Case=71
+142	12145	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+143	12165	150	-	case 72: fx/Tree: 72 FreeformDirectional2D mixed	Case=72
+144	12315	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+145	12335	150	-	case 73: fx/Tree: 73 FreeformCartesian2D zero-length only	Case=73
+146	12485	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+147	12505	150	-	case 74: fx/Tree: 74 FreeformCartesian2D mixed	Case=74
+148	12655	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+149	12675	150	-	case 75: fx/TreeNoDefaults: 75 mixed below one	Case=75
+150	12825	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+151	12845	150	-	case 76: fx/TreeNoDefaults: 76 mixed to one	Case=76
+152	12995	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+153	13015	150	-	case 77: fx/TreeNoDefaults: 77 zero-length only	Case=77
+154	13165	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+155	13185	150	-	case 78: fx/TreeNoDefaults: 78 normalized mixed, many	Case=78
+156	13335	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+157	13355	60	-	final	

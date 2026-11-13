@@ -11,6 +11,9 @@ namespace AvatarWorkshop.Exporter
 {
     public static class Exporter
     {
+        public static bool NormalizedBlendValues(UnityEditor.Animations.BlendTree tree) =>
+            new UnityEditor.SerializedObject(tree).FindProperty("m_NormalizedBlendValues")?.boolValue ?? false;
+
         // An animated component field is mirrored as its static value is: the x of a position, direction or
         // vector, the y and z of a rotation, and a roll.
         public static bool MirroredField(string prop)

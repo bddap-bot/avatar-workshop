@@ -55,6 +55,27 @@ fn each_humanoid_composition_follows_its_reference_trace() {
     assert!(rep.bindings.wrong <= 187, "bindings: {}", rep.bindings.summary(20));
 }
 
+/// The blend duration probe plays one blend tree at a time. The core keeps every state's time but where a tree holds
+/// an empty clip, which Unity reports as a second long and counts as none in a blend.
+#[test]
+fn each_blend_tree_keeps_its_reference_state_time() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dir = root.join("fixtures/reference/blend-animator");
+    let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-blend.glb")).unwrap()).unwrap();
+    let rep = Run::new(&dir, avatar).run(None);
+    assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
+    assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
+    assert!(rep.clocks.compared > 170_000, "{} state times compared", rep.clocks.compared);
+    let steps = reference::animator::steps(&dir);
+    let cases: Vec<_> = steps.iter().filter(|s| s.label.starts_with("case ")).collect();
+    assert_eq!(cases.len(), 78);
+    for s in cases.iter().filter(|s| !s.label.contains("empty")) {
+        let wrong: Vec<_> = rep.clocks.frames.range(s.frame..s.frame + s.frames).collect();
+        assert!(wrong.is_empty(), "{} differs at frames {wrong:?}", s.label);
+    }
+    assert!(rep.clocks.wrong <= 1043, "state times: {}", rep.clocks.summary(20));
+}
+
 /// A copy of the fixture's recording with one of its files rewritten.
 fn edited_recording(name: &str, file: &str, edit: impl Fn(&str) -> bool) -> std::path::PathBuf {
     let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/reference/fixture-animator");
@@ -75,6 +96,23 @@ fn edited_recording(name: &str, file: &str, edit: impl Fn(&str) -> bool) -> std:
 fn a_recording_missing_a_frames_state_times_fails() {
     let dir = edited_recording("clocks", "clocks.tsv", |l| !l.starts_with("500\t"));
     Run::new(&dir, fixture()).run(None);
+}
+
+#[test]
+#[should_panic(expected = "no scripted inputs at frame 500")]
+fn a_recording_missing_a_frames_inputs_fails() {
+    let dir = edited_recording("inputs", "inputs.tsv", |l| !l.starts_with("500\t"));
+    Run::new(&dir, fixture()).run(None);
+}
+
+#[test]
+fn an_input_keeps_a_name_with_tabs_line_breaks_and_equals_signs() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("input-names");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("inputs.tsv"), "7\t0,0,0,0,0,0,1\t-\tA\\tB\\nC\\\\D=E=0.5\tPlain=1\n8\t-\t-\n").unwrap();
+    let inputs = reference::animator::inputs(&dir);
+    assert_eq!(inputs[&7], vec![("A\tB\nC\\D=E".to_string(), 0.5), ("Plain".to_string(), 1.0)]);
+    assert!(inputs[&8].is_empty());
 }
 
 #[test]

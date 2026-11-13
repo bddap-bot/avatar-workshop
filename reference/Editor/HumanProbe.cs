@@ -19,6 +19,7 @@ namespace AvatarWorkshop.Reference
         public const string CaseParameter = "Case";
         public const string MirrorParameter = "Mirror";
         public const string BlendX = "BlendX", BlendY = "BlendY", BlendU = "BlendU";
+        public static readonly string[] Ramps = { BlendX, BlendY, BlendU };
 
         internal static readonly string[] Goals = { "LeftFoot", "RightFoot", "LeftHand", "RightHand" };
 
@@ -220,10 +221,10 @@ namespace AvatarWorkshop.Reference
                 Case((body, bodyOff, "1D plain and goals", Tree1D(Base, k.Plain, k.Goals)));
                 Case((body, bodyOff, "1D RootT.y only", Tree1D(Base, k.RootY, k.RootYB)));
                 foreach (var type in new[] { BlendTreeType.SimpleDirectional2D, BlendTreeType.FreeformDirectional2D, BlendTreeType.FreeformCartesian2D })
-                    Case((body, bodyOff, type.ToString(), Tree2D(type, k)));
-                Case((body, bodyOff, "direct plain", Direct(Base, k.Plain, k.PlainB)));
-                Case((body, bodyOff, "direct goals", Direct(Base, k.Goals, k.GoalsB)));
-                Case((body, bodyOff, "direct RootT.y only", Direct(Base, k.RootY, k.RootYB)));
+                    Case((body, bodyOff, type.ToString(), Tree2D(Base, type, k.Plain, k.Goals, k.PlainB, k.GoalsB, k.RootY)));
+                Case((body, bodyOff, "direct plain", Direct(Base, (k.Plain, BlendX), (k.PlainB, BlendY))));
+                Case((body, bodyOff, "direct goals", Direct(Base, (k.Goals, BlendX), (k.GoalsB, BlendY))));
+                Case((body, bodyOff, "direct RootT.y only", Direct(Base, (k.RootY, BlendX), (k.RootYB, BlendY))));
 
                 Layered(k.Plain, idleOverride: true);
                 Layered(k.Plain, overMotion: ("goals over plain", k.GoalsB));
@@ -235,8 +236,8 @@ namespace AvatarWorkshop.Reference
                 Layered(k.Plain, addMotion: ("RootT.y only on plain", k.RootY));
                 // A locomotion system's play-space state: RootT.y-only clips in a direct tree under an override
                 // layer, with an additive layer above it.
-                Layered(k.Rest, overMotion: ("direct RootT.y only", Direct(Action, k.RootY, k.RootYB)), addMotion: ("bob", k.Bob));
-                Layered(k.Goals, overMotion: ("direct RootT.y only", Direct(Action, k.RootY, k.RootYB)), addMotion: ("bob", k.Bob));
+                Layered(k.Rest, overMotion: ("direct RootT.y only", Direct(Action, (k.RootY, BlendX), (k.RootYB, BlendY))), addMotion: ("bob", k.Bob));
+                Layered(k.Goals, overMotion: ("direct RootT.y only", Direct(Action, (k.RootY, BlendX), (k.RootYB, BlendY))), addMotion: ("bob", k.Bob));
 
                 var a = Case((body, bodyOff, "plain", k.Plain), (action, actionOff, "goals half", k.Goals));
                 PlayableControl(a[1], VRCPlayableLayerControl.BlendableLayer.Action, 0.5f, 0);
@@ -269,11 +270,8 @@ namespace AvatarWorkshop.Reference
 
             AnimatorState State(AnimatorStateMachine sm, AnimatorState off, string name, Motion m, int id)
             {
-                var s = sm.AddState($"{id} {name}");
-                s.writeDefaultValues = false; s.motion = m;
+                var s = CaseState(sm, off, name, m, id, writeDefaults: false);
                 s.mirrorParameterActive = true; s.mirrorParameter = MirrorParameter;
-                Go(off, s, 0).AddCondition(AnimatorConditionMode.Equals, id, CaseParameter);
-                Go(s, off, 0).AddCondition(AnimatorConditionMode.NotEqual, id, CaseParameter);
                 return s;
             }
 
@@ -292,33 +290,6 @@ namespace AvatarWorkshop.Reference
                 b.mirrorParameterActive = true; b.mirrorParameter = MirrorParameter;
                 Go(a, b, 0.5f).AddCondition(AnimatorConditionMode.Greater, 0.5f, BlendX);
                 Go(b, bodyOff, 0).AddCondition(AnimatorConditionMode.NotEqual, id, CaseParameter);
-            }
-
-            static BlendTree Tree1D(Ctl c, Motion a, Motion b)
-            {
-                var t = c.Tree("1D", BlendTreeType.Simple1D, BlendX);
-                t.AddChild(a, 0); t.AddChild(b, 1);
-                return t;
-            }
-
-            BlendTree Tree2D(BlendTreeType type, HumanClipSet k)
-            {
-                var t = Base.Tree(type.ToString(), type, BlendU, BlendY);
-                t.AddChild(k.Plain, new Vector2(-1, 0)); t.AddChild(k.Goals, new Vector2(1, 0));
-                t.AddChild(k.PlainB, new Vector2(0, 1)); t.AddChild(k.GoalsB, new Vector2(0, -1));
-                if (type != BlendTreeType.SimpleDirectional2D) t.AddChild(k.RootY, Vector2.zero);
-                return t;
-            }
-
-            static BlendTree Direct(Ctl c, Motion a, Motion b)
-            {
-                var t = c.Tree("Direct", BlendTreeType.Direct, BlendX);
-                t.children = new[]
-                {
-                    new ChildMotion { motion = a, timeScale = 1, directBlendParameter = BlendX },
-                    new ChildMotion { motion = b, timeScale = 1, directBlendParameter = BlendY },
-                };
-                return t;
             }
         }
     }

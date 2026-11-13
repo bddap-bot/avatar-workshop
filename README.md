@@ -67,11 +67,11 @@ dynamics produced (`set_dynamic`, read at the next step), the eyelids' blink and
 Its timing and blending rules were fitted to Av3Emulator's traces, the reference the harness records.
 `cargo test --test animator` replays the fixture's recording in
 `avatar-core/fixtures/reference/fixture-animator/`, stepping the core by the emulator's graph time from
-`time.tsv` (its graph starts at a different frame for each avatar) and driving contact and PhysBone parameters
-from `dynamics.tsv`, and requires every other parameter and every state sample to equal it
+`time.tsv` (its graph starts at a different frame for each avatar), setting on each frame the parameters `inputs.tsv` logs for it and driving contact and PhysBone parameters
+from `dynamics.tsv`, and requires every parameter but those `dynamics.tsv` drives and every state sample to equal the recording's
 and every recorded node, blendshape and material value, animated or not, to match within 1e-3. It also compares
 each layer's state time from `clocks.tsv`, and the muscle, constraint and contact field values every curve binds,
-and fails if a recording lacks one.
+and fails if a recording lacks a frame's state times, a bound field's value or a frame's row of `inputs.tsv`.
 `cargo run --release --example animator -- RECORDING AVATAR.glb` scores any recording.
 
 ## Unity exporter
@@ -237,13 +237,14 @@ state flags). `UNITY` names the editor command. With no `SCENE`, it generates th
 `PROJECT`'s `Assets/AWFixture` and records it, so point it at a scratch project. With `SCENE` `probe`, it generates and
 records the probe there: the fixture's body with one three-bone chain per PhysBone field value (`Fixture.Probes` lists
 them), so each field's effect has a reference trace of its own. The probe rests 15 s before its motion, so even its lightly damped chains start it settled. With `SCENE` `human`, it generates and records the
-composition probe (`reference/Editor/HumanProbe.cs`), described below, in place of the motion, menu and built-in steps. With `SCENE` `writedefaults`, it generates and records the write-defaults fixture: the fixture's body under animator controllers built from the environment variable `AW_WD`, which lists each layer's controller, weight, transition time and states, and for each state whether it writes defaults and what it animates (`reference/Editor/WriteDefaults.cs` gives the grammar; `AW_WD='T:de|dHat=1;K:fSmile=50'` is a write-defaults-on toggle of the hat beside a layer that keeps none). The environment variable `AW_STEPS` (`Name=value,...;...`, each step setting those animator parameters and held `AW_STEP_FRAMES` frames, 20 unless set, with a render on its last) replaces the motion, menu and built-in steps after the rest; the write-defaults fixture, which has no menu, requires it, and the composition probe refuses it. It restores
+composition probe (`reference/Editor/HumanProbe.cs`), and with `SCENE` `blend` the blend duration probe (`reference/Editor/BlendProbe.cs`), both described below, in place of the motion, menu and built-in steps. With `SCENE` `writedefaults`, it generates and records the write-defaults fixture: the fixture's body under animator controllers built from the environment variable `AW_WD`, which lists each layer's controller, weight, transition time and states, and for each state whether it writes defaults and what it animates (`reference/Editor/WriteDefaults.cs` gives the grammar; `AW_WD='T:de|dHat=1;K:fSmile=50'` is a write-defaults-on toggle of the hat beside a layer that keeps none). The environment variable `AW_STEPS` (`Name=value,...;...`, each step setting those animator parameters and held `AW_STEP_FRAMES` frames, 20 unless set, with a render on its last) replaces the motion, menu and built-in steps after the rest; the write-defaults fixture, which has no menu, requires it, and the composition and blend duration probes refuse it. It restores
 `PROJECT`'s package manifest on exit and refuses an `OUT` that holds something other than an earlier recording.
 `OUT` receives:
 
 | File | Contents |
 |---|---|
 | `steps.tsv` | each step: index, first frame, frames, menu control, label, parameters set |
+| `inputs.tsv` | what the harness's script does to the avatar on each frame, except the grabs, which `grabs.tsv` holds. No header; one row for each frame from the first frame of the first step: `frame, root, arms`, then a `<name>=<value>` field for each parameter set on that frame, in the order set (the name ends at the last `=`, with a tab, line break or backslash in it written `\t`, `\n`, `\r` or `\\`). `root` is the avatar root's world pose (`px,py,pz,qx,qy,qz,qw`); `arms` is the swing added to the upper arms after animation, two values in degrees about the root's Y and Z axes, mirrored for the left arm. Each is on the first row and on a frame that sets it, `-` otherwise, and holds until set again. The first row also sets every built-in parameter; before it the script does nothing. A recording fails (`error.txt`, a non-zero exit, no `done`) if the script sets something on a frame after that frame's row is written, and at its end if the file lacks a frame's row or lacks, on a step's first frame, a parameter the step sets |
 | `params.tsv` | every animator parameter on each change, values printed round-trip exact |
 | `states.tsv` | every playable layer's state and transition on each change |
 | `dynamics.tsv` | each parameter the avatar's contacts and PhysBones write, as each playable's animator holds it just before evaluating, every frame from the one the graph is created on, keyed `<i>:<name>` (numbered as in `states.tsv`) and written on change; `params.tsv` shows these as the dynamics left them later in the frame. A recording fails if they were not read on a frame |
@@ -258,7 +259,7 @@ composition probe (`reference/Editor/HumanProbe.cs`), described below, in place 
 | `time.tsv` | the time of the emulator's playable graph after each frame's evaluation, every frame from the one the graph is created on, so the first evaluation's delta shows; a recording fails if the graph is gone on a frame |
 | `avatar.glb`, `census.json`, `export.txt` | the exporter's model and census of the build this recording runs, written as the last step of its build preprocess, with the build tools' generated names and ids (and, as the emulator skips the SDK's material locking, unlocked shaders); `cargo run --release --example census -- avatar.glb census.json` in `avatar-core/` checks one; `export.txt` lists what the model does not represent |
 | `coverage.json`, `meta.json` | the avatar's feature counts; versions and totals |
-| `compositions.json` | the composition probe's only: for each humanoid composition it separates, how many clips in states play it |
+| `compositions.json` | the composition and blend duration probes' only: for each composition the probe is authored to play on its own, how many clips (composition probe) or states (blend duration probe) are authored to play it |
 
 The fixture (`reference/Editor/Fixture.cs`, licensed as this repository) is a synthetic humanoid
 authored for the harness: PhysBones covering both immobile types, every limit type, gravity with
@@ -289,6 +290,42 @@ layer and leaves it idle over a walking body, showing that effect. A recording a
 of its states, or if a playable it plays at partial weight held a weight strictly between 0 and 1 on fewer than 90% of
 the case's frames. A recording fails if any composition `Coverage.Compositions` lists is missing from
 `compositions.json`.
+
+The blend duration probe is the fixture's body with an FX controller for measuring how long Unity takes a state
+to last when its motion is a blend tree: `clocks.tsv` holds each state's normalized time, which advances each frame
+by the frame's time over that duration. Its clips set blendshapes: zero-length ones hold a single key; three run
+1 s, 2 s and 0.4 s; and an empty one has no curves, which Unity reports as one second long. An int expression
+parameter `Case` picks a state, each playing one tree, and 0 picks a state without motion; the harness sets each
+value for 150 frames with 20 frames of 0 after it, ramping `BlendX`, `BlendY` and `BlendU` as in the composition
+probe. A 1D tree blends by `BlendX` and a 2D tree by `BlendU` and `BlendY`. A direct tree takes its weights from
+controller parameters that are not expression parameters, so they keep their defaults of 0, 0.25, 0.5 and 1 (`W0`,
+`W25`, `W50`, `W100`) and the asset fixes the tree's weight sum; two direct trees take `BlendX` and `BlendY`
+instead, and two more with normalized blend values.
+
+The cases:
+- Direct trees of clips with length whose weights sum below, to and above one.
+- Direct trees mixing zero-length clips with clips that have length: summing below, to and above one, either kind
+  heavier, either kind at weight zero, and ten zero-length clips beside two with length.
+- Direct trees of zero-length clips alone.
+- Direct trees in direct trees: the inner or the outer weights summing below one, an inner tree of zero-length
+  clips alone, and a tree nested twice.
+- Direct trees with normalized blend values (the serialized `m_NormalizedBlendValues`, which build tools set on
+  the trees they merge toggles into): the weight sums, the mixes, zero-length clips alone, and nested in and around
+  direct trees without it.
+- 1D and each kind of 2D tree over zero-length clips alone and mixed with clips that have length, and a 1D tree in
+  a 1D tree.
+- Direct trees of 1D trees and of a 2D tree, the form build tools give merged toggle layers, with three and eight
+  1D trees of zero-length clips beside one clip with length.
+- The empty clip: alone and beside zero-length clips in direct trees; beside clips with length in a direct tree,
+  one with normalized blend values, a 1D tree and a direct tree of 1D trees.
+- An empty clip and a zero-length clip, each as a state's whole motion.
+
+A second layer plays four more trees in states without write defaults, with weights summing to at most one or
+normalized: without write defaults a direct tree feeds each blendshape's value back scaled by its weight sum, and
+at a sum of two the recorded values doubled every frame to infinity. Two more layers each play one tree as their
+default state, so from the first frame and throughout: six zero-length clips at weight one beside a 0.4 s clip, one
+with normalized blend values and one without, both with write defaults. A recording fails if a case never entered its state, or if
+`compositions.json` counts no state for a composition `Coverage.BlendCompositions` lists.
 `reference/check.sh PROJECT OUT [SCENE] [AVATAR]` records the avatar (the fixture by default) twice and requires every output but the logs (`unity.log`, `export.txt`),
 `tips.tsv` and `poses.tsv` to be byte-identical, and PhysBone tips and every pose value within 1e-5 (`reference/poses.py`, Python 3.10 or later).
 
