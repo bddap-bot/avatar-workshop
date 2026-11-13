@@ -4234,7 +4234,7 @@
           "type": "string"
         },
         "length": {
-          "description": "Seconds; zero for a clip without curves, which Unity reports as a second long and plays as none.",
+          "description": "Seconds; zero for a clip without curves, which Unity reports as a second long and counts as none in a blend's duration.",
           "type": "number",
           "format": "float"
         },

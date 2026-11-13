@@ -49,15 +49,15 @@ fn each_humanoid_composition_follows_its_reference_trace() {
     let cases: Vec<_> = steps.iter().filter(|s| s.label.starts_with("case ")).collect();
     assert_eq!(cases.len(), 116, "58 cases, each unmirrored and mirrored");
     for s in cases {
-        let wrong: Vec<_> = rep.bindings.frames.range(s.frame + 1..s.frame + s.frames).collect();
+        let wrong: Vec<_> = rep.bindings.samples.range((s.frame + 1, String::new())..(s.frame + s.frames, String::new())).map(|w| w.0).collect();
         assert!(wrong.is_empty(), "{} differs at frames {wrong:?}", s.label);
     }
     assert!(rep.bindings.wrong <= 187, "bindings: {}", rep.bindings.summary(20));
 }
 
-/// The blend duration probe plays one blend tree at a time; the core keeps every state's time. Every case's values
-/// follow the reference but for the visemes, whose time-since-load clocks Unity samples an ulp apart, from the first
-/// normalized tree whose weights sum below one to the last tree with write defaults.
+/// The blend duration probe plays one blend tree at a time; the core keeps every state's time. The values of the
+/// cases before the first normalized tree whose weights sum below one, and of those after the first tree without
+/// write defaults, follow the reference but for the visemes, whose long-running clocks Unity samples an ulp apart.
 #[test]
 fn each_blend_tree_follows_its_reference_trace() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -76,7 +76,7 @@ fn each_blend_tree_follows_its_reference_trace() {
         if (36..=75).contains(&n) {
             continue;
         }
-        let wrong: Vec<_> = rep.values.samples.range((s.frame, String::new())..(s.frame + s.frames, String::new())).filter(|(_, k)| !k.contains(":vrc.v_")).collect();
+        let wrong: Vec<_> = rep.values.samples.range((s.frame, String::new())..(s.frame + s.frames, String::new())).filter(|(f, k)| !k.contains(":vrc.v_")).collect();
         assert!(wrong.is_empty(), "{} differs: {wrong:?}", s.label);
     }
     assert!(rep.values.wrong <= 17_862, "values: {}", rep.values.summary(20));
@@ -215,8 +215,8 @@ fn each_semantic_follows_its_reference_trace() {
     assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
-/// A direct tree's weight parameter below zero plays its leaf at weight zero, as the reference's frame-time
-/// smoothing shows the frame a timer restarts, and a ramp's last frame writing its target's default shows.
+/// A direct tree's weight parameter below zero plays its leaf at weight zero: it adds nothing, as the reference's
+/// frame-time smoothing shows the frame a timer restarts, but still writes, as a ramp ending a hair below zero shows.
 #[test]
 fn a_negative_direct_weight_plays_its_leaf_at_zero() {
     use avatar_core::animator::motion::{leaves, Leaf};

@@ -1349,7 +1349,7 @@ pub enum ControlledLayer {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Clip {
     pub name: String,
-    /// Seconds; zero for a clip without curves, which Unity reports as a second long and plays as none.
+    /// Seconds; zero for a clip without curves, which Unity reports as a second long and counts as none in a blend's duration.
     pub length: f32,
     #[serde(rename = "loop")]
     pub looping: bool,

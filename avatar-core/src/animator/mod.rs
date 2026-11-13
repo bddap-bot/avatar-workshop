@@ -1370,8 +1370,9 @@ fn playing_pose(rt: &ControllerRt, layer: usize, p: &machine::Playing, clips: &[
 }
 
 /// One motion at one normalized time: the value of every target it writes, and whether only an animated
-/// transform's undriven components put it there. Under a direct blend tree, what only leaves at weight zero bind is
-/// not written.
+/// transform's undriven components put it there. Under a direct blend tree a leaf at weight zero, its own weight
+/// parameter below zero or its 1D tree's end, still writes its share, nothing, but for transforms and muscles; a
+/// leaf whose parameter is zero does not play.
 #[derive(Clone, Copy)]
 enum Sample {
     /// A normalized state time.
@@ -1446,6 +1447,9 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, sa
                 }
             }
         }
+        if l.weight == 0.0 {
+            own.retain(|t, _| c.resting.binary_search(t).is_err());
+        }
         for (t, v) in own {
             acc.get_mut(&t).unwrap().0 += l.weight * v;
             if direct {
@@ -1478,9 +1482,9 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, sa
 /// other bound target at its rest value. What a write-defaults state's motion binds but does not write this frame
 /// takes the value beneath, else last frame's (`through`); under a direct blend tree, else last frame's only when
 /// another layer binds it, else its default (`reset`): the traces show a lone direct-tree toggle returning to its
-/// default where a 2D tree's released child holds. Without write defaults a direct tree feeds back every bound
-/// target: what its leaves do not write it takes from last frame, scaled by those leaves' weight, and what its weights
-/// leave short of one from the default.
+/// default where a 2D tree's released child holds. The blend duration probe's trees without write defaults show a
+/// direct tree feeding back each bound target from last frame, by the weight of the leaves that do not write it, with
+/// the default making up what its weights leave short of one.
 #[allow(clippy::too_many_arguments)]
 fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32], bound: &[u32], slots: &[u32], targets: &[Target], beneath: &dyn Fn(u32) -> f32, held: &dyn Fn(u32) -> f32, through: &dyn Fn(u32) -> f32, reset: &dyn Fn(u32) -> f32) -> Vec<(u32, f32, f32)> {
     let l = &rt.layers[li];
@@ -1515,7 +1519,7 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
                     let mut ls = Vec::new();
                     rt.state_leaves(li, cur.state, &mut ls);
                     let sum: f32 = ls.iter().map(|l| l.weight).sum();
-                    for &t in bound.iter().filter(|&&t| !targets[t as usize].rests_at_default()) {
+                    for &t in bound.iter().filter(|&&t| !targets[t as usize].rests_at_default() && !targets[t as usize].discrete()) {
                         let covered: f32 = ls.iter().filter(|l| clips[l.clip as usize].variant(l.mirror).writes.binary_search(&t).is_ok()).map(|l| l.weight).sum();
                         let own = pose.get(&t).copied().unwrap_or(0.0);
                         pose.insert(t, own + (sum - covered) * held(t) + (1.0 - sum).max(0.0) * defaults[t as usize]);

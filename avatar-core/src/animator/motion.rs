@@ -96,6 +96,8 @@ pub struct CompiledClip {
     stepped: Vec<Stepped>,
     /// Every target this clip writes, sorted.
     pub writes: Vec<u32>,
+    /// Those of `writes` that rest at their default: a leaf at weight zero leaves them alone.
+    pub resting: Vec<u32>,
     pub rotations: Vec<[u32; 4]>,
     /// The clip played mirrored, when it has humanoid curves: Unity mirrors only those.
     pub mirrored: Option<Box<CompiledClip>>,
@@ -235,6 +237,7 @@ impl CompiledClip {
                 }
             }
         }
+        let resting = writes.iter().copied().filter(|&t| targets.list[t as usize].rests_at_default()).collect();
         CompiledClip {
             length: clip.length,
             looping: clip.looping,
@@ -243,6 +246,7 @@ impl CompiledClip {
             euler,
             stepped,
             writes,
+            resting,
             rotations,
             mirrored: None,
             rest_muscles: Vec::new(),
@@ -844,13 +848,16 @@ fn walk(motion: &Motion, param: &dyn Fn(&str) -> f32, scale: Leaf, next: &mut u3
                     }
                 }
                 BlendAlgorithm::Direct { normalized_blend_values, children } => {
-                    let raw: Vec<f32> = children.iter().map(|c| param(&c.direct_blend_parameter)).collect();
-                    let mut w: Vec<f32> = raw.iter().map(|w| w.max(0.0)).collect();
+                    let mut w: Vec<f32> = children.iter().map(|c| param(&c.direct_blend_parameter)).collect();
                     if *normalized_blend_values {
-                        normalize(&mut w);
+                        let mut positive: Vec<f32> = w.iter().map(|w| w.max(0.0)).collect();
+                        normalize(&mut positive);
+                        for (w, p) in w.iter_mut().zip(positive) {
+                            *w = if *w < 0.0 { *w } else { p };
+                        }
                     }
-                    for ((c, w), raw) in children.iter().zip(w).zip(raw) {
-                        push(&c.motion, (raw != 0.0).then_some(w), c.time_scale, c.cycle_offset, c.mirror, out);
+                    for (c, w) in children.iter().zip(w) {
+                        push(&c.motion, (w != 0.0).then_some(w.max(0.0)), c.time_scale, c.cycle_offset, c.mirror, out);
                     }
                 }
             }

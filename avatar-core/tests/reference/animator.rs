@@ -207,8 +207,6 @@ pub struct Mismatches {
     pub skipped: usize,
     pub wrong: usize,
     pub keys: BTreeMap<String, (usize, usize, String)>,
-    pub frames: BTreeSet<usize>,
-    /// Each wrong sample's frame and key.
     pub samples: BTreeSet<(usize, String)>,
 }
 
@@ -218,7 +216,6 @@ impl Mismatches {
             eprintln!("{frame}\t{key}\t{detail}");
         }
         self.wrong += 1;
-        self.frames.insert(frame);
         self.samples.insert((frame, key.to_string()));
         let e = self.keys.entry(key.to_string()).or_insert((0, frame, detail));
         e.0 += 1;
@@ -261,7 +258,7 @@ impl Report {
                 continue;
             }
             let end = steps.get(i + 1).map_or(usize::MAX, |n| n.frame);
-            let bad = [&self.parameters, &self.states, &self.values].iter().any(|m| m.frames.range(s.frame..end).next().is_some());
+            let bad = [&self.parameters, &self.states, &self.values].iter().any(|m| m.samples.range((s.frame, String::new())..(end, String::new())).next().is_some());
             match out.iter_mut().find(|(c, _): &&mut (String, bool)| *c == s.control) {
                 Some((_, ok)) => *ok &= !bad,
                 None => out.push((s.control.clone(), !bad)),
