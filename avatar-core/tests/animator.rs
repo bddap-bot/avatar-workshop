@@ -52,7 +52,7 @@ fn each_humanoid_composition_follows_its_reference_trace() {
         let wrong: Vec<_> = rep.bindings.frames.range(s.frame + 1..s.frame + s.frames).collect();
         assert!(wrong.is_empty(), "{} differs at frames {wrong:?}", s.label);
     }
-    assert!(rep.bindings.wrong <= 207, "bindings: {}", rep.bindings.summary(20));
+    assert!(rep.bindings.wrong <= 187, "bindings: {}", rep.bindings.summary(20));
 }
 
 /// A copy of the fixture's recording with one of its files rewritten.
@@ -289,9 +289,9 @@ fn a_humanoid_clip_writes_a_whole_pose() {
     assert_eq!((value(&a, "LeftHand.Index.1 Stretched"), value(&a, "LeftHand.Ring.1 Stretched")), (1.0, 0.0));
 }
 
-/// A controller covers the muscles it binds with its last output while a motionless state writes nothing.
+/// A layer covers the muscles its controller binds with what it last wrote while a motionless state writes nothing.
 #[test]
-fn a_controller_holds_what_a_motionless_state_leaves() {
+fn a_layer_holds_what_a_motionless_state_leaves() {
     let mut avatar = fingered();
     let gesture = avatar.model.layers.get_mut(&avatar_core::model::PlayableLayerType::Gesture).unwrap();
     let avatar_core::model::LayerContent::StateMachine { state_machine } = &mut gesture.controller.as_mut().unwrap().layers[0].content else { panic!() };

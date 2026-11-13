@@ -117,9 +117,8 @@ struct Playable {
     /// Per layer, every slot of each renderer it binds a slot of: Unity writes a renderer's slots together.
     slots: Vec<Vec<u32>>,
     layer_masks: Vec<Option<Mask>>,
-    /// The humanoid values the controller outputs whatever its layers write, with their last values: Unity's human
-    /// stream is whole, so a controller covers every muscle it binds, holding what no layer in a state covers.
-    human: Vec<(u32, f32)>,
+    /// The humanoid targets the controller binds that its masks admit.
+    human: Vec<u32>,
     /// Per target, whether it is one of `human`.
     whole: Vec<bool>,
 }
@@ -429,10 +428,10 @@ impl Animator {
                     Target::Muscle(n) => writable(human::part(n)),
                     _ => false,
                 })
-                .map(|&t| (t, defaults[t as usize]))
+                .copied()
                 .collect::<Vec<_>>();
             let mut whole = vec![false; targets.len()];
-            human.iter().for_each(|&(t, _)| whole[t as usize] = true);
+            human.iter().for_each(|&t| whole[t as usize] = true);
             playables.push(Playable {
                 kind,
                 human,
@@ -862,16 +861,21 @@ impl Animator {
             let below: Vec<(f32, f32, bool)> = self.playables[pi]
                 .human
                 .iter()
-                .map(|&(t, v)| {
+                .map(|&t| {
                     let i = t as usize;
                     let b = (acc.sum[i], acc.cov[i], acc.touched[i]);
-                    (acc.sum[i], acc.cov[i], acc.touched[i]) = (v, 1.0, true);
+                    (acc.sum[i], acc.cov[i], acc.touched[i]) = (0.0, 0.0, false);
                     b
                 })
                 .collect();
             let mut layer_human = std::mem::take(&mut self.playables[pi].layer_human);
             let params = self.evaluate(pi, &clips, &prev, &mut acc, &mut layer_human);
             self.playables[pi].layer_human = layer_human;
+            if self.playables[pi].kind == PlayableLayerType::Additive {
+                for &t in &self.playables[pi].human {
+                    acc.sum[t as usize] += (1.0 - acc.cov[t as usize]) * self.defaults[t as usize];
+                }
+            }
             let quads: Vec<[u32; 7]> = self.body.into_iter().chain(self.motion).chain(self.goals.iter().map(|g| g.0)).collect();
             let p = &mut self.playables[pi];
             // The Additive playable appends its body and goals to the stack's as transforms, each scaled by its
@@ -879,7 +883,7 @@ impl Animator {
             let mut appended: Vec<(u32, f32)> = Vec::new();
             if p.kind == PlayableLayerType::Additive {
                 for ids in quads.iter().filter(|ids| ids.iter().all(|&t| p.whole[t as usize])) {
-                    let under = |t: u32| p.human.iter().position(|h| h.0 == t).map(|k| below[k].0).unwrap();
+                    let under = |t: u32| p.human.iter().position(|&h| h == t).map(|k| below[k].0).unwrap();
                     let read = |f: &dyn Fn(u32) -> f32| (glam::Vec3::new(f(ids[0]), f(ids[1]), f(ids[2])), glam::Quat::from_xyzw(f(ids[3]), f(ids[4]), f(ids[5]), f(ids[6])));
                     let (bt, bq) = read(&under);
                     let (at, aq) = read(&|t| acc.sum[t as usize]);
@@ -889,13 +893,14 @@ impl Animator {
                     appended.extend(ids.iter().copied().zip([t.x, t.y, t.z, q.x, q.y, q.z, q.w]));
                 }
             }
-            for (h, (s0, c0, t0)) in p.human.iter_mut().zip(below) {
-                let i = h.0 as usize;
-                h.1 = acc.sum[i];
+            for (&t, (s0, c0, t0)) in p.human.iter().zip(below) {
+                let i = t as usize;
+                let (own, c) = (acc.sum[i], acc.cov[i]);
                 (acc.sum[i], acc.cov[i], acc.touched[i]) = if p.kind == PlayableLayerType::Additive {
-                    (appended.iter().find(|a| a.0 == h.0).map_or(s0 + (h.1 - self.defaults[i]) * pw, |a| a.1), c0, t0 || pw > 0.0)
+                    (appended.iter().find(|a| a.0 == t).map_or(s0 + (own - self.defaults[i]) * pw, |a| a.1), c0, t0 || pw > 0.0)
                 } else {
-                    (s0 * (1.0 - pw) + h.1 * pw, c0 * (1.0 - pw) + pw, t0 || pw > 0.0)
+                    let a = pw * c;
+                    (s0 * (1.0 - a) + own * pw, c0 * (1.0 - a) + a, t0 || a > 0.0)
                 };
             }
             if p.weight > 0.0 {
@@ -1039,12 +1044,15 @@ impl Animator {
             if stacked {
                 pose.retain(|x| p.whole[x.0 as usize]);
             }
-            // An override layer in a state gives the whole human pose: what the state does not write stays where
-            // the layer last wrote it, at rest until it has. A layer without states gives nothing.
+            // An override layer in a state gives the whole human pose: what the state does not write, or a
+            // transition leaves uncovered, stays where the layer last wrote it, at rest until it has. A layer
+            // without states gives nothing.
             if p.rt.layers[li].current.is_some() {
                 let last = &mut layer_human[li];
-                for &(t, v, _) in pose.iter().filter(|x| p.whole[x.0 as usize]) {
-                    last.insert(t, v);
+                for x in pose.iter_mut().filter(|x| p.whole[x.0 as usize]) {
+                    let kept = last.get(&x.0).copied().unwrap_or(self.defaults[x.0 as usize]);
+                    *x = (x.0, x.1 * x.2 + kept * (1.0 - x.2), 1.0);
+                    last.insert(x.0, x.1);
                 }
                 let kept: Vec<(u32, f32, f32)> = p.bound
                     .iter()
@@ -1380,7 +1388,7 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, sa
     let mut ls: Vec<Leaf> = Vec::new();
     rt.state_leaves(layer, state, &mut ls);
     let offset = rt.cycle_offset(layer, state);
-    // A mirrored state plays half a cycle on, which the pose an additive layer subtracts does not.
+    // A mirrored state plays its humanoid clips half a cycle on, which the pose an additive layer subtracts does not.
     let mirror_phase = if rt.state_mirrors(layer, state) { 0.5 } else { 0.0 };
     let mut acc: HashMap<u32, (f32, bool)> = HashMap::new();
     let direct = ls.iter().any(|l| l.direct);
@@ -1417,7 +1425,7 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, sa
             (Sample::Reference, None) => clips[l.clip as usize].variant(false).sample(at + l.cycle_offset, defaults, additive, &mut |t, v| {
                 own.insert(t, v);
             }),
-            (Sample::At(_), _) => c.sample(at + l.cycle_offset + c.cycle_offset + mirror_phase, defaults, additive, &mut |t, v| {
+            (Sample::At(_), _) => c.sample(at + l.cycle_offset + c.cycle_offset + if clips[l.clip as usize].mirrored.is_some() { mirror_phase } else { 0.0 }, defaults, additive, &mut |t, v| {
                 own.insert(t, v);
             }),
         }
