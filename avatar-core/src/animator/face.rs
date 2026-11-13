@@ -93,6 +93,20 @@ impl Face {
         Face { lips, lids }
     }
 
+    /// The blend shapes lip sync and the eyelids write.
+    pub fn shapes(&self) -> (Vec<u32>, Vec<u32>) {
+        let mouth = match &self.lips {
+            Lips::Visemes(ids) => ids.iter().flatten().copied().collect(),
+            Lips::JawShape(t) => vec![*t],
+            Lips::None | Lips::JawBone { .. } => vec![],
+        };
+        let lids = match &self.lids {
+            Lids::Shapes { blink, up, down } => [blink, up, down].into_iter().flatten().copied().collect(),
+            Lids::None | Lids::Bones(_) => vec![],
+        };
+        (mouth, lids)
+    }
+
     /// Shapes the mouth for a viseme index, 0 being silence.
     pub fn speak(&self, viseme: usize, out: &mut [f32]) {
         match &self.lips {

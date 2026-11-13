@@ -265,8 +265,7 @@ impl CompiledClip {
     /// Gives a humanoid clip, and its mirror, every muscle of `muscles` it has no curve for at rest, and the body
     /// and IK goals Unity's human pose holds for it.
     pub fn complete_human_pose(&mut self, muscles: &[u32], targets: &Targets, rest: Option<&HumanRest>) {
-        let human = |c: &CompiledClip| c.curves.iter().any(|(t, _)| matches!(targets.list[*t as usize], Target::Muscle(_)));
-        if !human(self) {
+        if !self.is_human(targets) {
             return;
         }
         self.rest_unbound_muscles(muscles);
@@ -277,6 +276,11 @@ impl CompiledClip {
             m.complete_goals(targets, rest, true);
             m.resting = resting(&m.writes, targets);
         }
+    }
+
+    /// Whether the clip plays through the human pose: it has a curve for a muscle, the body or an IK goal.
+    pub fn is_human(&self, targets: &Targets) -> bool {
+        self.curves.iter().any(|(t, _)| matches!(targets.list[*t as usize], Target::Muscle(_)))
     }
 
     fn complete_goals(&mut self, targets: &Targets, rest: Option<&HumanRest>, mirrored: bool) {

@@ -117,6 +117,8 @@ struct Playable {
     binders: Vec<u8>,
     /// Per layer, whether a clip it plays drives an animator parameter.
     drives_parameters: Vec<bool>,
+    /// Per layer, whether a clip it plays is humanoid: a layer playing none gives no human pose.
+    poses: Vec<bool>,
     /// Per layer, every slot of each renderer it binds a slot of: Unity writes a renderer's slots together.
     slots: Vec<Vec<u32>>,
     layer_masks: Vec<Option<Mask>>,
@@ -144,7 +146,7 @@ struct Accum {
 pub const TRACKED_PARTS: [&str; 10] =
     ["head", "leftHand", "rightHand", "hip", "leftFoot", "rightFoot", "leftFingers", "rightFingers", "eyes", "mouth"];
 const EYES: usize = 8;
-const MOUTH: usize = 9;
+pub const MOUTH: usize = 9;
 
 /// A temporary pose space waiting out its delays: the SDK's own (seconds, or the state's normalized time), then
 /// the emulator's, which waits `delay_time` seconds again once the SDK applies it.
@@ -208,6 +210,8 @@ pub struct Animator {
     /// Values the host's PhysBones and contacts gave this frame, entering the parameters for the next.
     dynamics: Vec<(String, f32)>,
     face: face::Face,
+    /// Lip sync's and the eyelids' shapes no controller binds, which keep their last value once handed to animation.
+    unbound_face: (Vec<u32>, Vec<u32>),
     blink: f32,
     look_y: f32,
 }
@@ -413,9 +417,11 @@ impl Animator {
             };
             let mut binders = vec![0u8; targets.len()];
             let mut drives_parameters = Vec::new();
+            let mut poses = Vec::new();
             for li in 0..c.layers.len() {
                 let mut ts: Vec<u32> = rt.layer_clip_ids(li).iter().flat_map(|&c| clips[c as usize].bindings()).collect();
                 drives_parameters.push(ts.iter().any(|&t| matches!(targets.list[t as usize], Target::AnimatorParameter(_))));
+                poses.push(rt.layer_clip_ids(li).iter().any(|&c| clips[c as usize].is_human(&targets)));
                 ts.sort_unstable();
                 ts.dedup();
                 for t in ts {
@@ -443,6 +449,7 @@ impl Animator {
                 rt,
                 binders,
                 drives_parameters,
+                poses,
                 weight,
                 blend: None,
                 layer_blends: HashMap::new(),
@@ -521,6 +528,9 @@ impl Animator {
         let ids = |g: &str| motion::goal_ids(&targets, g);
         let rests = motion::goal_rests(m.humanoid.rest.as_ref());
         let goals = human::GOALS.iter().filter(|(_, p)| *p != crate::model::BodyPart::Root).zip(rests).filter_map(|((g, _), (t, q))| Some((ids(g)?, t, q))).collect();
+        let unbound = |v: Vec<u32>| -> Vec<u32> { v.into_iter().filter(|t| !playables.iter().any(|p| p.bound.binary_search(t).is_ok())).collect() };
+        let (mouth, lids) = face.shapes();
+        let unbound_face = (unbound(mouth), unbound(lids));
         let mut a = Animator {
             body: ids("Root"),
             motion: ids("Motion"),
@@ -553,6 +563,7 @@ impl Animator {
             random: UnityRandom::new(1),
             dynamics: Vec::new(),
             face,
+            unbound_face,
             blink: 0.0,
             look_y: 0.0,
         };
@@ -935,9 +946,13 @@ impl Animator {
         }
         if self.tracking[MOUTH] != TrackingType::Animation {
             self.face.speak(self.builtins["Viseme"].max(0.0) as usize, &mut out);
+        } else {
+            self.unbound_face.0.iter().for_each(|&t| out[t as usize] = prev[t as usize]);
         }
         if self.tracking[EYES] != TrackingType::Animation {
             self.face.look(self.blink, self.look_y, &mut out);
+        } else {
+            self.unbound_face.1.iter().for_each(|&t| out[t as usize] = prev[t as usize]);
         }
         for &t in &self.boneless {
             out[t as usize] = self.defaults[t as usize];
@@ -1077,7 +1092,7 @@ impl Animator {
                 let wd = p.rt.state(li, c.state).is_some_and(|s| s.write_defaults);
                 match (p.rt.motion(li, c.state).is_some(), wd) {
                     (true, _) => {
-                        let mut last: Vec<(u32, f32)> = pose.iter().filter(|x| holdable(x.0 as usize)).map(|x| (x.0, x.1)).collect();
+                        let mut last: Vec<(u32, f32)> = pose.iter().filter(|x| holdable(x.0 as usize) && x.2 > 0.0).map(|x| (x.0, x.1)).collect();
                         if !wd {
                             let animated: std::collections::HashSet<u32> = last.iter().map(|x| x.0).collect();
                             last.extend(p.bound.iter().filter(|&&t| holdable(t as usize) && !animated.contains(&t)).map(|&t| (t, self.kept[t as usize])));
@@ -1090,8 +1105,8 @@ impl Animator {
             }
             // An override layer in a state gives the whole human pose: what the state does not write, or a
             // transition leaves uncovered, stays where the layer last wrote it, at rest until it has. A layer
-            // without states gives nothing.
-            if p.rt.layers[li].current.is_some() {
+            // without states, or playing no humanoid clip, gives nothing.
+            if p.rt.layers[li].current.is_some() && p.poses[li] {
                 let last = &mut layer_human[li];
                 for x in pose.iter_mut().filter(|x| p.whole[x.0 as usize]) {
                     let kept = last.get(&x.0).copied().unwrap_or(self.defaults[x.0 as usize]);
@@ -1494,6 +1509,22 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, sa
     acc
 }
 
+/// The targets a write-defaults state's direct-tree leaves write only at weight zero, which they cover not at all.
+fn uncovered(rt: &ControllerRt, li: usize, state: crate::model::StateId, clips: &[CompiledClip], targets: &[Target]) -> std::collections::HashSet<u32> {
+    let mut ls = Vec::new();
+    rt.state_leaves(li, state, &mut ls);
+    if !rt.state(li, state).is_some_and(|s| s.write_defaults) || !ls.iter().any(|l| l.direct) {
+        return Default::default();
+    }
+    let mut weight: HashMap<u32, f32> = HashMap::new();
+    for l in &ls {
+        for &t in &clips[l.clip as usize].variant(l.mirror).writes {
+            *weight.entry(t).or_insert(0.0) += l.weight.abs();
+        }
+    }
+    weight.into_iter().filter(|&(t, w)| w == 0.0 && !matches!(targets[t as usize], Target::AnimatorParameter(_) | Target::Slot(..))).map(|(t, _)| t).collect()
+}
+
 /// A layer's pose this frame: each target it writes, with how much of it the layer covers. Outside a
 /// transition a state covers what its motion animates. During one, the source covers by the remaining weight
 /// what it animates, and without write defaults also every other bound target but transforms at the value
@@ -1503,7 +1534,9 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, sa
 /// another layer binds it, else its default (`reset`): the traces show a lone direct-tree toggle returning to its
 /// default where a 2D tree's released child holds. The blend duration probe's trees without write defaults show a
 /// direct tree feeding back each bound target from last frame, by the weight of the leaves that do not write it, with
-/// the default making up what its weights leave short of one.
+/// the default making up what its weights leave short of one. Under write defaults a target only a direct tree's
+/// leaves at weight zero write is covered by none of them, so it keeps the value beneath, as a toggle's far end over a
+/// radial shows; an animator parameter they write still takes the zero share.
 #[allow(clippy::too_many_arguments)]
 fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32], bound: &[u32], slots: &[u32], targets: &[Target], beneath: &dyn Fn(u32) -> f32, held: &dyn Fn(u32) -> f32, through: &dyn Fn(u32) -> f32, reset: &dyn Fn(u32) -> f32) -> Vec<(u32, f32, f32)> {
     let l = &rt.layers[li];
@@ -1521,6 +1554,7 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
         (_, Some(cur)) => {
             let mut pose = animated(playing_pose(rt, li, cur, clips, defaults, false));
             let wd = rt.state(li, cur.state).is_some_and(|s| s.write_defaults);
+            let uncovered = uncovered(rt, li, cur.state, clips, targets);
             if rt.motion(li, cur.state).is_some() {
                 let shown: std::collections::HashSet<u32> =
                     pose.keys().filter_map(|&t| if let Target::Slot(n, _) = targets[t as usize] { Some(n) } else { None }).collect();
@@ -1556,7 +1590,7 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
                     }
                 }
             }
-            let mut v: Vec<(u32, f32, f32)> = pose.into_iter().map(|(t, v)| (t, v, 1.0)).collect();
+            let mut v: Vec<(u32, f32, f32)> = pose.into_iter().map(|(t, v)| (t, v, if uncovered.contains(&t) { 0.0 } else { 1.0 })).collect();
             v.sort_by_key(|x| x.0);
             v
         }
@@ -1565,7 +1599,10 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
             let w = a.progress();
             let (from, from_wd): (HashMap<u32, (f32, f32)>, bool) = match &a.from {
                 From::State(p) => (
-                    animated(playing_pose(rt, li, p, clips, defaults, false)).into_iter().map(|(t, v)| (t, (v, 1.0))).collect(),
+                    {
+                        let uncovered = uncovered(rt, li, p.state, clips, targets);
+                        animated(playing_pose(rt, li, p, clips, defaults, false)).into_iter().map(|(t, v)| (t, (v, if uncovered.contains(&t) { 0.0 } else { 1.0 }))).collect()
+                    },
                     rt.state(li, p.state).is_some_and(|s| s.write_defaults),
                 ),
                 From::Frozen(v) => (v.iter().map(|&(t, v, c)| (t, (v, c))).collect(), true),

@@ -311,18 +311,36 @@ fn an_animated_material_property_defaults_from_the_first_material_declaring_it()
     assert_eq!(value(&avatar, "_Probe"), 1.0);
 }
 
-fn muscle(name: &str, value: f32) -> avatar_core::model::Curve {
-    use avatar_core::model::{AnimationCurve, Binding, Curve, Keyframe, WeightedMode};
+fn constant(binding: avatar_core::model::Binding, value: f32) -> avatar_core::model::Curve {
+    use avatar_core::model::{AnimationCurve, Curve, Keyframe, WeightedMode};
     let key = Keyframe { time: 0.0, value, in_tangent: 0.0, out_tangent: 0.0, in_weight: 1.0 / 3.0, out_weight: 1.0 / 3.0, weighted_mode: WeightedMode::None };
-    Curve { binding: Binding::Muscle { name: name.into() }, curve: AnimationCurve { keys: vec![key] } }
+    Curve { binding, curve: AnimationCurve { keys: vec![key] } }
 }
+
+fn muscle(name: &str, value: f32) -> avatar_core::model::Curve {
+    constant(avatar_core::model::Binding::Muscle { name: name.into() }, value)
+}
+
+fn blend_shape(name: &str, value: f32) -> avatar_core::model::Curve {
+    constant(avatar_core::model::Binding::BlendShape { node: avatar_core::model::NodeIndex(BODY), name: name.into() }, value)
+}
+
+/// The fixture's face mesh.
+const BODY: u32 = 75;
 
 fn clip_mut<'a>(avatar: &'a mut avatar_core::Avatar, name: &str) -> &'a mut avatar_core::model::Clip {
     avatar.model.clips.iter_mut().find(|c| c.name == name).unwrap()
 }
 
 fn value(a: &Animator, name: &str) -> f32 {
-    let t = avatar_core::animator::motion::Target::Muscle(name.into());
+    target_value(a, avatar_core::animator::motion::Target::Muscle(name.into()))
+}
+
+fn shape(a: &Animator, name: &str) -> f32 {
+    target_value(a, avatar_core::animator::motion::Target::BlendShape(BODY, name.into()))
+}
+
+fn target_value(a: &Animator, t: avatar_core::animator::motion::Target) -> f32 {
     a.values()[a.targets().iter().position(|x| *x == t).unwrap()]
 }
 
@@ -485,4 +503,101 @@ fn an_uncurved_goal_follows_the_body_and_mirrors_with_its_clip() {
     assert_eq!((plain[2].abs(), plain[3].abs()), (0.0, 1.0), "{plain:?}");
     assert!((mirrored[1] - mirrored[0] + 0.07).abs() < 1e-6, "{mirrored:?}");
     assert_eq!((mirrored[2].abs(), mirrored[3].abs()), (1.0, 0.0), "{mirrored:?}");
+}
+
+fn clip(name: &str, curves: Vec<avatar_core::model::Curve>) -> avatar_core::model::Clip {
+    avatar_core::model::Clip { name: name.into(), length: 0.0, looping: false, cycle_offset: 0.0, additive_reference_pose: None, humanoid: None, curves, slot_curves: vec![] }
+}
+
+/// Under a write-defaults direct tree, a shape only a 1D tree's end at weight zero writes is left to the layers
+/// beneath: a toggle's off end, its other end binding the shape, keeps the radial below it. A transition out of the
+/// state starts from that value, the source covering none of it.
+#[test]
+fn a_direct_trees_unweighted_end_leaves_the_value_beneath() {
+    use avatar_core::model::{AnimatorLayer, AnimatorParameter, AnimatorParameterValue, PlayableLayerType};
+    let mut avatar = fixture();
+    let m = &mut avatar.model;
+    let c = m.clips.len() as u32;
+    m.clips.extend([clip("Below", vec![blend_shape("AwShape", 42.5)]), clip("Off", vec![blend_shape("AwOther", 0.0)]), clip("On", vec![blend_shape("AwShape", 100.0)])]);
+    let state = |id: u32, wd: bool, motion: serde_json::Value, transitions: serde_json::Value| {
+        serde_json::json!({"id": id, "name": format!("S{id}"), "speed": 1, "cycleOffset": 0, "mirror": false, "motion": motion, "writeDefaults": wd, "ikOnFeet": false, "behaviours": [], "transitions": transitions})
+    };
+    let layer = |id: u32, states: Vec<serde_json::Value>| -> AnimatorLayer {
+        serde_json::from_value(serde_json::json!({"name": format!("L{id}"), "defaultWeight": 1, "blending": "override", "ikPass": false,
+            "content": {"type": "stateMachine", "stateMachine": {"id": id, "name": format!("L{id}"), "states": states, "stateMachines": [], "defaultState": id, "anyStateTransitions": [], "entryTransitions": [], "stateMachineTransitions": [], "behaviours": []}}}))
+        .unwrap()
+    };
+    let toggle = serde_json::json!({"blendTree": {"name": "T", "algorithm": {"type": "direct", "normalizedBlendValues": false, "children": [
+        {"motion": {"blendTree": {"name": "Toggle", "algorithm": {"type": "simple1D", "blendParameter": "AwToggle", "children": [
+            {"motion": {"clip": c + 1}, "threshold": 0, "timeScale": 1, "cycleOffset": 0, "mirror": false},
+            {"motion": {"clip": c + 2}, "threshold": 1, "timeScale": 1, "cycleOffset": 0, "mirror": false}]}}},
+         "directBlendParameter": "AwOne", "timeScale": 1, "cycleOffset": 0, "mirror": false}]}}});
+    let leave = serde_json::json!([{"destination": {"type": "state", "id": 9102}, "conditions": [{"mode": "if", "parameter": "AwLeave", "threshold": 0}],
+        "duration": {"fixed": 0.5}, "offset": 0, "interruptionSource": "none", "orderedInterruption": true, "canTransitionToSelf": false, "mute": false, "solo": false}]);
+    let fx = m.layers.get_mut(&PlayableLayerType::Fx).unwrap().controller.as_mut().unwrap();
+    for (name, default) in [("AwOne", 1.0), ("AwToggle", 0.0)] {
+        fx.parameters.push(AnimatorParameter { name: name.into(), default: AnimatorParameterValue::Float(default) });
+    }
+    fx.parameters.push(AnimatorParameter { name: "AwLeave".into(), default: AnimatorParameterValue::Bool(false) });
+    fx.layers.push(layer(9000, vec![state(9000, false, serde_json::json!({"clip": c}), serde_json::json!([]))]));
+    fx.layers.push(layer(9100, vec![state(9100, true, toggle, leave), state(9102, true, serde_json::json!({"clip": c + 1}), serde_json::json!([]))]));
+    let mut a = Animator::new(&avatar);
+    run(&mut a, 3);
+    assert_eq!(shape(&a, "AwShape"), 42.5);
+    a.set("AwLeave", 1.0);
+    let leaving: Vec<f32> = (0..4).map(|_| {
+        run(&mut a, 1);
+        shape(&a, "AwShape")
+    }).collect();
+    assert!(leaving.iter().all(|&v| v > 35.0), "{leaving:?}");
+    run(&mut a, 40);
+    assert_eq!(shape(&a, "AwShape"), 42.5);
+    let mut b = Animator::new(&avatar);
+    b.set("AwToggle", 1.0);
+    run(&mut b, 3);
+    assert_eq!(shape(&b, "AwShape"), 100.0);
+}
+
+/// Handed to animation, lip sync stops writing: a viseme shape no controller binds keeps the value lip sync last gave
+/// it, and one a controller binds is the animator's.
+#[test]
+fn lip_sync_handed_to_animation_leaves_its_last_shape() {
+    let speak_then_hand_over = |avatar: &avatar_core::Avatar| {
+        let mut a = Animator::new(avatar);
+        a.set_builtin("Viseme", 10.0);
+        run(&mut a, 3);
+        assert_eq!(shape(&a, "vrc.v_aa"), 100.0);
+        a.tracking[avatar_core::animator::MOUTH] = avatar_core::model::TrackingType::Animation;
+        a.set_builtin("Viseme", 0.0);
+        run(&mut a, 3);
+        shape(&a, "vrc.v_aa")
+    };
+    assert_eq!(speak_then_hand_over(&fixture()), 100.0);
+    let mut bound = fixture();
+    clip_mut(&mut bound, "Stand").curves.push(blend_shape("vrc.v_aa", 25.0));
+    assert_eq!(speak_then_hand_over(&bound), 25.0);
+}
+
+/// A layer playing no humanoid clip leaves the human pose to the layers beneath, as an emote under a state-tracking
+/// layer of empty clips shows.
+#[test]
+fn a_layer_of_generic_clips_gives_no_human_pose() {
+    use avatar_core::model::{AnimatorLayer, PlayableLayerType};
+    let mut avatar = fingered();
+    let mut a = Animator::new(&avatar);
+    run(&mut a, 5);
+    let beneath = value(&a, "Left Upper Leg Front-Back");
+    assert_ne!(beneath, 0.0);
+    let m = &mut avatar.model;
+    let c = m.clips.len() as u32;
+    m.clips.push(clip("Empty generic", vec![]));
+    let layer: AnimatorLayer = serde_json::from_value(serde_json::json!({"name": "Regulator", "defaultWeight": 1, "blending": "override", "ikPass": false,
+        "content": {"type": "stateMachine", "stateMachine": {"id": 9200, "name": "Regulator", "states": [{"id": 9200, "name": "Wait", "speed": 1, "cycleOffset": 0, "mirror": false,
+            "motion": {"clip": c}, "writeDefaults": false, "ikOnFeet": false, "behaviours": [], "transitions": []}],
+            "stateMachines": [], "defaultState": 9200, "anyStateTransitions": [], "entryTransitions": [], "stateMachineTransitions": [], "behaviours": []}}}))
+    .unwrap();
+    m.layers.get_mut(&PlayableLayerType::Base).unwrap().controller.as_mut().unwrap().layers.extend([layer.clone(), layer]);
+    let mut a = Animator::new(&avatar);
+    run(&mut a, 5);
+    assert_eq!(value(&a, "Left Upper Leg Front-Back"), beneath);
 }
