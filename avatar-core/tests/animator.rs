@@ -721,3 +721,47 @@ fn a_crossfade_turns_a_goal_the_short_way() {
         assert!(w < -0.5, "{g} after the transition keeps its clip's sign: {w}");
     }
 }
+
+/// A crossfade blends a node's rotation from the source's toward the destination's as it lies in the source's
+/// hemisphere, so it turns the short way, as a corpus toggle crossfading from an empty write-defaults state into a
+/// clip holding a bone half a revolution round shows. A transition interrupted midway starts from that short-way pose.
+#[test]
+fn a_crossfade_turns_a_node_the_short_way() {
+    use avatar_core::animator::motion::Target;
+    use avatar_core::model::{Axis, Binding, InterruptionSource, LayerContent, NodeIndex, PlayableLayerType, TransformProperty};
+    const HAT: u32 = 76;
+    let turned = [(Axis::X, 0.0), (Axis::Y, 0.0), (Axis::Z, std::f32::consts::FRAC_1_SQRT_2), (Axis::W, -std::f32::consts::FRAC_1_SQRT_2)];
+    let angles = |interrupt: Option<usize>| {
+        let mut avatar = fixture();
+        let fx = avatar.model.layers.get_mut(&PlayableLayerType::Fx).unwrap().controller.as_mut().unwrap();
+        let LayerContent::StateMachine { state_machine } = &mut fx.layers.iter_mut().find(|l| l.name == "Hat").unwrap().content else { panic!() };
+        for s in &mut state_machine.states {
+            s.write_defaults = true;
+            s.transitions.iter_mut().for_each(|t| t.interruption_source = InterruptionSource::Destination);
+        }
+        clip_mut(&mut avatar, "HatOn")
+            .curves
+            .extend(turned.map(|(component, v)| constant(Binding::Transform { node: NodeIndex(HAT), property: TransformProperty::Rotation, component }, v)));
+        let mut a = Animator::new(&avatar);
+        run(&mut a, 10);
+        a.set("Hat", 1.0);
+        let mut angles = Vec::new();
+        for frame in 0..60 {
+            if Some(frame) == interrupt {
+                a.set("Hat", 0.0);
+            }
+            run(&mut a, 1);
+            let q = [Axis::X, Axis::Y, Axis::Z, Axis::W].map(|c| target_value(&a, Target::Rotation(HAT, c)));
+            let len = q.iter().map(|x| x * x).sum::<f32>().sqrt();
+            angles.push(2.0 * (q[3].abs() / len).min(1.0).acos().to_degrees());
+        }
+        angles
+    };
+    let through = angles(None);
+    assert!(through.iter().any(|d| (10.0..80.0).contains(d)), "never mid-transition: {through:?}");
+    assert!(through.iter().all(|d| *d < 90.01), "turned the long way: {through:?}");
+    assert!((through.last().unwrap() - 90.0).abs() < 1e-2, "after the transition: {through:?}");
+    let back = angles(Some(8));
+    assert!(back.iter().all(|d| *d < 90.01), "interrupted, turned the long way: {back:?}");
+    assert!(back.iter().all(|d| *d < 60.0) && back[9] > 30.0 && back.last().unwrap() < &20.0, "interrupted, never turned back: {back:?}");
+}

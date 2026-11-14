@@ -183,8 +183,12 @@ pub struct Animator {
     pose_spaces: Vec<PoseSpace>,
     /// Muscles of bones the avatar lacks, which Unity's human stream holds at rest.
     boneless: Vec<u32>,
-    /// The body's and IK goals' rotation components, which Unity's human pose holds as unit quaternions.
-    human_rotations: Vec<[u32; 4]>,
+    /// The rotation components a crossfade blends as quaternions, negating a destination in the other hemisphere from
+    /// its source as Unity does: first the body's and IK goals', which Unity's human pose holds as unit quaternions,
+    /// then each node's.
+    rotations: Vec<[u32; 4]>,
+    /// How many of `rotations` are the body's and IK goals'.
+    human_rotations: usize,
     /// The body's targets (position, then rotation), and each IK goal's with its rest from the body: the animator
     /// blends a goal as the body it follows, and Unity's human stream holds it at its rest from there.
     body: Option<[u32; 7]>,
@@ -526,13 +530,19 @@ impl Animator {
                 curved[t as usize] = true;
             }
         }
-        let human_rotations = human::GOALS
+        let mut rotations = human::GOALS
             .iter()
             .filter_map(|(g, _)| {
                 let id = |c: &str| targets.index_of(&Target::Muscle(format!("{g}Q.{c}"))).map(|i| i as u32);
                 Some([id("x")?, id("y")?, id("z")?, id("w")?])
             })
-            .collect();
+            .collect::<Vec<_>>();
+        let human_rotations = rotations.len();
+        rotations.extend((0..targets.len() as u32).filter_map(|t| {
+            let &Target::Rotation(n, Axis::X) = &targets.list[t as usize] else { return None };
+            let id = |a: Axis| targets.index_of(&Target::Rotation(n, a)).map(|i| i as u32);
+            Some([t, id(Axis::Y)?, id(Axis::Z)?, id(Axis::W)?])
+        }));
         let boneless = (0..targets.len() as u32)
             .filter(|&t| matches!(&targets.list[t as usize], Target::Muscle(n) if human::bone(n).is_some_and(|b| !m.humanoid.bones.contains_key(&b))))
             .collect();
@@ -548,6 +558,7 @@ impl Animator {
             goals,
             values: Vec::new(),
             boneless,
+            rotations,
             human_rotations,
             kept: defaults.clone(),
             curved,
@@ -876,7 +887,7 @@ impl Animator {
                 let targets = &self.targets.list;
                 let beneath = |t: u32| prev_ref[t as usize];
                 let kept = |t: u32| self.kept[t as usize];
-                let quats = &self.human_rotations;
+                let quats = &self.rotations;
                 let frozen = |rt: &ControllerRt, li: usize| layer_pose(rt, li, clips_ref, defaults, &bound, &slots[li], targets, quats, &beneath, &kept, &beneath, &beneath);
                 self.playables[pi].rt.update(dt, &clips, &mut entered, &frozen);
             }
@@ -926,7 +937,7 @@ impl Animator {
                 }
             }
             if p.kind != PlayableLayerType::Additive {
-                for q in self.human_rotations.iter().filter(|q| pw * acc.cov[q[3] as usize] < 1.0) {
+                for q in self.rotations[..self.human_rotations].iter().filter(|q| pw * acc.cov[q[3] as usize] < 1.0) {
                     let pos = |t: u32| p.human.iter().position(|&h| h == t);
                     let (Some(a), Some(b), Some(c), Some(d)) = (pos(q[0]), pos(q[1]), pos(q[2]), pos(q[3])) else { continue };
                     let k = [a, b, c, d];
@@ -980,7 +991,7 @@ impl Animator {
         for &t in &self.boneless {
             out[t as usize] = self.defaults[t as usize];
         }
-        for q in &self.human_rotations {
+        for q in self.human_rotations() {
             let len = q.iter().map(|&t| out[t as usize] * out[t as usize]).sum::<f32>().sqrt();
             if len > 0.0 {
                 q.iter().for_each(|&t| out[t as usize] /= len);
@@ -1067,7 +1078,7 @@ impl Animator {
                 (false, true) => prev[t as usize],
                 (false, false) => self.defaults[t as usize],
             };
-            let whole_pose = (!additive || stacked).then(|| layer_pose(&p.rt, li, clips, &self.defaults, &p.bound, &p.slots[li], &self.targets.list, &self.human_rotations, &beneath, &kept, &through, &reset));
+            let whole_pose = (!additive || stacked).then(|| layer_pose(&p.rt, li, clips, &self.defaults, &p.bound, &p.slots[li], &self.targets.list, &self.rotations, &beneath, &kept, &through, &reset));
             if additive {
                 if let Some(mut pose) = whole_pose.clone().filter(|_| p.drives_parameters[li]) {
                     self.pull_parameters(&p.rt, &pulled(&p.rt, li, clips, &self.defaults), &mut pose);
@@ -1201,23 +1212,27 @@ impl Animator {
         }
     }
 
+    fn human_rotations(&self) -> &[[u32; 4]] {
+        &self.rotations[..self.human_rotations]
+    }
+
     /// Negates a layer's rotation lying in the other hemisphere from the rotation beneath it, as Unity's blend does.
     /// The body and the IK goals are negated only in a layer below full weight: a layer at full weight writes them
     /// with the sign its clips give.
     fn align_rotations(&self, pose: &mut [(u32, f32, f32)], acc: &Accum, weight: f32) {
         let mut quats: HashMap<u32, [Option<usize>; 4]> = HashMap::new();
-        let mut human = vec![[None; 4]; self.human_rotations.len()];
+        let mut human = vec![[None; 4]; self.human_rotations];
         for (k, &(t, _, _)) in pose.iter().enumerate() {
             if let Target::Rotation(n, a) = &self.targets.list[t as usize] {
                 quats.entry(*n).or_default()[axis_index(*a)] = Some(k);
             }
-            for (slots, q) in human.iter_mut().zip(&self.human_rotations) {
+            for (slots, q) in human.iter_mut().zip(self.human_rotations()) {
                 if let Some(j) = q.iter().position(|&x| x == t) {
                     slots[j] = Some(k);
                 }
             }
         }
-        for (slots, q) in human.into_iter().zip(&self.human_rotations).filter(|_| weight < 1.0) {
+        for (slots, q) in human.into_iter().zip(self.human_rotations()).filter(|_| weight < 1.0) {
             let [Some(x), Some(y), Some(z), Some(w)] = slots else { continue };
             let below = q.map(|t| acc.sum[t as usize] + (1.0 - acc.cov[t as usize]) * self.defaults[t as usize]);
             if motion::opposed([pose[x].1, pose[y].1, pose[z].1, pose[w].1], below) {
@@ -1583,7 +1598,8 @@ fn uncovered(rt: &ControllerRt, li: usize, state: crate::model::StateId, clips: 
 /// tree feeding back each bound target from last frame, by the weight of the leaves that do not write it, with the
 /// default making up what its weights leave short of one. Under write defaults a target only a direct tree's leaves
 /// at weight zero write is covered by none of them, so it keeps the value beneath, as a toggle's far end over a
-/// radial shows; an animator parameter they write still takes the zero share.
+/// radial shows; an animator parameter they write still takes the zero share. A destination rotation of `quats` in the
+/// other hemisphere from its source is negated before the two blend.
 #[allow(clippy::too_many_arguments)]
 fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32], bound: &[u32], slots: &[u32], targets: &[Target], quats: &[[u32; 4]], beneath: &dyn Fn(u32) -> f32, held: &dyn Fn(u32) -> f32, through: &dyn Fn(u32) -> f32, reset: &dyn Fn(u32) -> f32) -> Vec<(u32, f32, f32)> {
     let l = &rt.layers[li];
