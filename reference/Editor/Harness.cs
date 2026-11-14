@@ -848,6 +848,9 @@ namespace AvatarWorkshop.Reference
                 foreach (var c in pb.colliders ?? new List<VRCPhysBoneColliderBase>())
                     if (c != null) Role(c.GetRootTransform(), "collider");
             }
+            var animator = runtime.GetComponent<Animator>();
+            if (animator != null && animator.isHuman)
+                for (var b = HumanBodyBones.Hips; b < HumanBodyBones.LastBone; b++) Role(animator.GetBoneTransform(b), "humanoid:" + b);
             var targets = new HashSet<Transform>();
             foreach (var c in root.GetComponentsInChildren<VRCPhysBoneColliderBase>(true)) Role(c.GetRootTransform(), "collider");
             foreach (var c in root.GetComponentsInChildren<ContactBase>(true)) Role(c.GetRootTransform(), "contact");
