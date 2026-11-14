@@ -13,7 +13,7 @@ use std::path::Path;
 
 fn main() {
     let names = reference::names();
-    let args: Vec<String> = std::env::args().collect();
+    let args = reference::args();
     let flag = |name: &str| args.iter().position(|a| a == name).map(|i| args[i + 1].parse::<usize>().unwrap());
     let avatar = avatar_core::read(&std::fs::read(&args[2]).unwrap()).unwrap();
     let run = reference::animator::Run::new(Path::new(&args[1]), avatar);

@@ -2,19 +2,20 @@
 # usage: run.sh <unity project> <output dir> [scene path, "probe", "human", "blend", "layering", "sampletime", "rotation", "writedefaults" or "curves"] [avatar object name]
 # UNITY names the editor command (default: Unity on PATH); it needs a display (e.g. Xvfb).
 set -euo pipefail
+[ -f "$1/Packages/manifest.json" ] || { echo "the project has no Packages/manifest.json" >&2; exit 2; }
 project=$(realpath "$1") out=$(realpath -m "$2") scene=${3:-} avatar=${4:-}
 here=$(cd "$(dirname "$0")" && pwd)
 if [ -d "$out" ] && [ -n "$(ls -A "$out")" ] && [ ! -e "$out/done" ] && [ ! -e "$out/error.txt" ]; then
-  echo "$out is not an earlier recording; refusing to replace it" >&2
+  echo "the output dir is not an earlier recording; refusing to replace it" >&2
   exit 2
 fi
 manifest=$project/Packages/manifest.json
 for pkg in com.vrchat.avatars lyuma.av3emulator; do
   [ -d "$project/Packages/$pkg" ] || jq -e --arg p "$pkg" '.dependencies[$p]' "$manifest" >/dev/null ||
-    { echo "$project lacks $pkg; install it (e.g. vrc-get install $pkg)" >&2; exit 2; }
+    { echo "the project lacks $pkg; install it (e.g. vrc-get install $pkg)" >&2; exit 2; }
 done
 for pkg in com.avatar-workshop.reference com.avatarworkshop.exporter; do
-  [ ! -e "$project/Packages/$pkg" ] || { echo "$project/Packages/$pkg would shadow this checkout's copy; remove it" >&2; exit 2; }
+  [ ! -e "$project/Packages/$pkg" ] || { echo "the project's Packages/$pkg would shadow this checkout's copy; remove it" >&2; exit 2; }
 done
 original=$(mktemp)
 cp -p "$manifest" "$original"

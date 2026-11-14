@@ -1,6 +1,10 @@
 //! Compares an exported `.glb` with the census the Unity exporter writes beside it (`-awCensus`):
-//! `census <export.glb> <census.json>`. Prints one line per category, `ok` or `FAIL`, and exits
-//! non-zero on any failure.
+//! `census <export.glb> <census.json> [--names]`. Prints one line per category, `ok` or `FAIL`, and exits
+//! non-zero on any failure. A failing category prints its fault count, and with `--names` its faults, which name
+//! the avatar's objects, materials and fields.
+
+#[path = "../tests/reference/names.rs"]
+mod names;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::process::ExitCode;
@@ -13,9 +17,10 @@ use avatar_core::Avatar;
 use serde_json::{json, Value};
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let names = names::names();
+    let args: Vec<String> = names::args().into_iter().skip(1).collect();
     if args.len() != 2 {
-        eprintln!("usage: census <export.glb> <census.json>");
+        eprintln!("usage: census <export.glb> <census.json> [--names]");
         return ExitCode::from(2);
     }
     let avatar = match std::fs::read(&args[0])
@@ -24,7 +29,7 @@ fn main() -> ExitCode {
     {
         Ok(a) => a,
         Err(e) => {
-            eprintln!("{}: {e}", args[0]);
+            eprintln!("export: {}", if names { e } else { "unreadable: pass --names for the error".into() });
             return ExitCode::FAILURE;
         }
     };
@@ -34,20 +39,20 @@ fn main() -> ExitCode {
     {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("{}: {e}", args[1]);
+            eprintln!("census: {}", if names { e } else { "unreadable: pass --names for the error".into() });
             return ExitCode::FAILURE;
         }
     };
     let streams = match std::fs::read(format!("{}.bin", args[1])) {
         Ok(b) => b,
         Err(e) => {
-            eprintln!("{}.bin: {e}", args[1]);
+            eprintln!("census streams: {}", if names { e.to_string() } else { "unreadable: pass --names for the error".into() });
             return ExitCode::FAILURE;
         }
     };
     let mut report = Report::default();
     Check { avatar: &avatar, census: &census, streams: &streams, report: &mut report }.run();
-    report.print();
+    report.print(names);
     if report.failed {
         ExitCode::FAILURE
     } else {
@@ -76,10 +81,16 @@ impl Report {
         self.line(category, unity, shown, faults);
     }
 
-    fn print(&self) {
+    fn print(&self, names: bool) {
         println!("category\tunity\tmodel\tverdict");
         for (category, unity, model, ok, faults) in &self.lines {
             println!("{category}\t{unity}\t{model}\t{}", if *ok { "ok" } else { "FAIL" });
+            if !names {
+                if !faults.is_empty() {
+                    println!("  faults: {}", faults.len());
+                }
+                continue;
+            }
             for f in faults.iter().take(20) {
                 println!("  {f}");
             }

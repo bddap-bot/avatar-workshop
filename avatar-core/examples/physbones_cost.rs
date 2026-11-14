@@ -1,9 +1,13 @@
 //! Measures the core's PhysBones cost per simulated joint per step.
 //!
-//! usage: physbones_cost AVATAR.glb [SECONDS]
+//! usage: physbones_cost AVATAR.glb [SECONDS] [--names]
 //!
 //! Steps every PhysBone of the avatar for SECONDS (default 20) of simulated time at a 72 Hz host rate, the avatar
-//! root swinging and turning so every chain moves, and prints the time per joint per step.
+//! root swinging and turning so every chain moves, and prints the time per joint per step. A failure's message,
+//! which may name a part of the avatar, prints with `--names`.
+
+#[path = "../tests/reference/names.rs"]
+mod names;
 
 use std::time::Instant;
 
@@ -11,7 +15,8 @@ use avatar_core::physbones::{Frame, Nodes, PhysBones, Transform, STEP};
 use glam::{Quat, Vec3};
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
+    names::names();
+    let args = names::args();
     let avatar = avatar_core::read(&std::fs::read(&args[1]).unwrap()).unwrap();
     let seconds: f64 = args.get(2).map_or(20.0, |s| s.parse().unwrap());
     let nodes = Nodes::read(&avatar).unwrap();

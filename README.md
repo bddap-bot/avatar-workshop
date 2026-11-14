@@ -93,7 +93,8 @@ Unity -batchmode -projectPath <project> -executeMethod AvatarWorkshop.Exporter.B
 Without `-awAvatar`, the scene must hold exactly one active avatar.
 `avatar-core/fixtures/unity-synthetic.glb` is the `avatar.glb` of a [reference harness](#reference-harness)
 recording of the fixture, and `cargo test` reads it. `cargo run --example read -- <file.glb>...`, run in `avatar-core/`, reads exports and prints
-their sections and their `unsupported` report.
+their sections and their `unsupported` report. Like every tool here that reads an avatar or its recording, it
+prints numbers and counts by default, and names only with `--names`.
 
 `unity/check.sh <project> <out> [scene] [avatar]` checks an export against Unity itself. With
 `-awCensus <census.json>` the exporter also writes what Unity holds for the preprocessed avatar, read

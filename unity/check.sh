@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# usage: check.sh <unity project> <output dir> [scene path] [avatar object name]
+# usage: check.sh <unity project> <output dir> [scene path] [avatar object name] [--names]
 # Exports the avatar with its census, records the export's wall time and peak RSS, and compares the export with
 # what Unity holds (avatar-core/examples/census.rs). UNITY names the editor command (default: Unity on PATH); it
-# needs a display (e.g. Xvfb), GNU time and cargo on PATH.
+# needs a display (e.g. Xvfb), GNU time and cargo on PATH. --names passes to the census.
 set -euo pipefail
+names=() args=()
+for a in "$@"; do if [ "$a" = --names ]; then names=(--names); else args+=("$a"); fi; done
+set -- "${args[@]}"
+[ -f "$1/Packages/manifest.json" ] || { echo "the project has no Packages/manifest.json" >&2; exit 2; }
 project=$(realpath "$1") out=$(realpath -m "$2") scene=${3:-} avatar=${4:-}
 here=$(cd "$(dirname "$0")" && pwd)
 manifest=$project/Packages/manifest.json
@@ -19,4 +23,4 @@ command time -f '%e s wall, %M KiB peak RSS' -o "$out/measure.txt" "${UNITY:-Uni
 grep -a '^\[aw\]' "$out/unity.log" > "$out/export.txt"
 cat "$out/measure.txt"
 cargo run -q --release --manifest-path "$here/../avatar-core/Cargo.toml" --example census -- \
-  "$out/avatar.glb" "$out/census.json" | tee "$out/census.tsv"
+  "$out/avatar.glb" "$out/census.json" ${names[@]+"${names[@]}"} | tee "$out/census.tsv"

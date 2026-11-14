@@ -3,6 +3,9 @@ import math
 import sys
 from typing import Iterator
 
+sys.dont_write_bytecode = True
+from names import names
+
 
 def frames(path: str) -> Iterator[tuple[int, dict[tuple[str, str], list[float]]]]:
     with open(path) as f:
@@ -12,6 +15,7 @@ def frames(path: str) -> Iterator[tuple[int, dict[tuple[str, str], list[float]]]
 
 
 def main() -> None:
+    named = names()
     a, b = frames(sys.argv[1]), frames(sys.argv[2])
     sa: dict[tuple[str, str], list[float]] = {}
     sb: dict[tuple[str, str], list[float]] = {}
@@ -30,7 +34,7 @@ def main() -> None:
             sys.exit(f"driver poses differ in transforms at frame {frame}")
         for k in sa:
             if len(sa[k]) != len(sb[k]):
-                sys.exit(f"driver pose {k} has {len(sa[k])} and {len(sb[k])} values at frame {frame}")
+                sys.exit(f"driver pose {k if named else sorted(sa).index(k)} has {len(sa[k])} and {len(sb[k])} values at frame {frame}")
             for x, y in zip(sa[k], sb[k]):
                 d = abs(x - y)
                 if not d <= worst:

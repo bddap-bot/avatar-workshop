@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""usage: compare.py REFERENCE_DIR RUNTIME_DIR"""
+"""usage: compare.py REFERENCE_DIR RUNTIME_DIR [--names]
+
+Prints counts and scores; the tables it writes into RUNTIME_DIR name the avatar's chains and controls. With `--names` a failure prints its message."""
 import collections
 import csv
 import json
@@ -10,6 +12,9 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
+
+sys.dont_write_bytecode = True
+from names import names
 
 CHANGED = 24 / 255
 VISIBLE = 0.002
@@ -47,7 +52,7 @@ def changed(a, b):
 def main(reference, runtime):
     reference, runtime = Path(reference), Path(runtime)
     if not (reference / "menu.tsv").exists():
-        sys.exit(f"{reference / 'menu.tsv'} is missing: record the reference with the current harness")
+        sys.exit("the reference has no menu.tsv: record it with the current harness")
     steps = {int(r[0]): {"start": int(r[1]), "frames": int(r[2]), "control": r[3], "label": r[4]} for r in rows(reference / "steps.tsv")}
     by_label = {s["label"]: s for s in steps.values()}
     window = range(by_label["motion"]["start"], by_label["settle"]["start"] + by_label["settle"]["frames"])
@@ -152,4 +157,5 @@ def main(reference, runtime):
 
 
 if __name__ == "__main__":
+    names()
     main(*sys.argv[1:3])

@@ -3,6 +3,8 @@
 #![allow(dead_code)]
 
 pub mod animator;
+mod names;
+pub use names::{args, names};
 
 use std::collections::BTreeMap;
 use std::io::Read;
@@ -12,25 +14,6 @@ use std::path::Path;
 use avatar_core::physbones::{Frame, Nodes, PhysBones, Toucher, Transform};
 use avatar_core::Avatar;
 use glam::{Quat, Vec3};
-
-/// Whether an example may print names: a recording of an avatar outside this repository holds that avatar's
-/// names, so without `--names` a failure reports only where it happened and the name traces are refused.
-pub fn names() -> bool {
-    let names = std::env::args_os().any(|a| a == "--names");
-    if !names {
-        for trace in ["AW_TRACE", "AW_CLOCK"] {
-            if std::env::var_os(trace).is_some() {
-                eprintln!("{trace} prints names: pass --names");
-                std::process::exit(2);
-            }
-        }
-        std::panic::set_hook(Box::new(|info| {
-            let at = info.location().map_or(String::new(), |l| format!(" at {}:{}", l.file(), l.line()));
-            eprintln!("failed{at}: pass --names for the message");
-        }));
-    }
-    names
-}
 
 /// A recording file, or its gzipped copy beside it.
 pub fn text(path: &Path) -> String {

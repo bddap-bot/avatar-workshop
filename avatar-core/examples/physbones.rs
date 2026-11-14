@@ -17,7 +17,7 @@ use std::path::Path;
 
 fn main() {
     let names = reference::names();
-    let args: Vec<String> = std::env::args().collect();
+    let args = reference::args();
     let dir = Path::new(&args[1]);
     let avatar = avatar_core::read(&std::fs::read(&args[2]).unwrap()).unwrap();
     let flag = |name: &str| args.iter().position(|a| a == name).map(|i| args[i + 1].clone());
