@@ -1569,17 +1569,20 @@ fn uncovered(rt: &ControllerRt, li: usize, state: crate::model::StateId, clips: 
     weight.into_iter().filter(|&(t, w)| w == 0.0 && !matches!(targets[t as usize], Target::AnimatorParameter(_) | Target::Slot(..))).map(|(t, _)| t).collect()
 }
 
-/// A layer's pose this frame: each target it writes, with how much of it the layer covers. Outside a
-/// transition a state covers what its motion animates. During one, the source covers by the remaining weight
-/// what it animates, and without write defaults also every other bound target but transforms at the value
-/// beneath; the destination covers by the transition's weight what it animates, and under write defaults every
-/// other bound target at its rest value. What a write-defaults state's motion binds but does not write this frame
-/// takes the value beneath, else last frame's (`through`); under a direct blend tree, else last frame's only when
-/// another layer binds it, else its default (`reset`): the traces show a lone direct-tree toggle returning to its
-/// default where a 2D tree's released child holds. The blend duration probe's trees without write defaults show a
-/// direct tree feeding back each bound target from last frame, by the weight of the leaves that do not write it, with
-/// the default making up what its weights leave short of one. Under write defaults a target only a direct tree's
-/// leaves at weight zero write is covered by none of them, so it keeps the value beneath, as a toggle's far end over a
+/// A layer's pose this frame: each target it writes, with how much of it the layer covers. Outside a transition a
+/// state covers what its motion animates. During one, the source covers by the remaining weight what it animates, and
+/// without write defaults also every other bound target but transforms at the value beneath; the destination covers
+/// by the transition's weight what it animates, and under write defaults every other bound target at its rest value.
+/// What a write-defaults state's motion binds but does not write this frame takes the value beneath, else last
+/// frame's (`through`); under a direct blend tree, else last frame's only when another layer binds it, else its
+/// default (`reset`): the traces show a lone direct-tree toggle returning to its default where a 2D tree's released
+/// child with a length holds. A target other than an animator parameter or a material slot that only this state's
+/// zero-length clips write takes the value beneath, else its default: the blend duration probe's 2D trees reset a
+/// released zero-length child's shape the frame its weight reaches zero, alone or under a direct tree, while corpus
+/// parameters driven by zero-length clips hold. The blend duration probe's trees without write defaults show a direct
+/// tree feeding back each bound target from last frame, by the weight of the leaves that do not write it, with the
+/// default making up what its weights leave short of one. Under write defaults a target only a direct tree's leaves
+/// at weight zero write is covered by none of them, so it keeps the value beneath, as a toggle's far end over a
 /// radial shows; an animator parameter they write still takes the zero share.
 #[allow(clippy::too_many_arguments)]
 fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32], bound: &[u32], slots: &[u32], targets: &[Target], quats: &[[u32; 4]], beneath: &dyn Fn(u32) -> f32, held: &dyn Fn(u32) -> f32, through: &dyn Fn(u32) -> f32, reset: &dyn Fn(u32) -> f32) -> Vec<(u32, f32, f32)> {
@@ -1622,13 +1625,20 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
                         pose.insert(t, own + (sum - covered) * held(t) + (1.0 - sum).max(0.0) * defaults[t as usize]);
                     }
                 }
+                ids.sort_by_key(|&c| !(clips[c as usize].length > 0.0));
                 for c in ids {
+                    let lasting = clips[c as usize].length > 0.0;
                     for &t in &clips[c as usize].writes {
                         if !targets[t as usize].rests_at_default() {
-                            pose.entry(t).or_insert_with(|| match (wd, direct) {
-                                (true, true) => reset(t),
-                                (true, false) => through(t),
-                                (false, _) => held(t),
+                            let shown = !matches!(targets[t as usize], Target::AnimatorParameter(_) | Target::Slot(..));
+                            pose.entry(t).or_insert_with(|| if !wd {
+                                held(t)
+                            } else if !lasting && shown {
+                                beneath(t)
+                            } else if direct {
+                                reset(t)
+                            } else {
+                                through(t)
                             });
                         }
                     }

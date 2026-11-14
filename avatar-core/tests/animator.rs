@@ -80,8 +80,8 @@ fn each_humanoid_rotation_follows_its_reference_trace() {
 }
 
 /// The blend duration probe plays one blend tree at a time; the core keeps every state's time. The values of every
-/// case but the 2D trees, direct trees of them and the last tree without write defaults (cases 65 to 75) follow the
-/// reference.
+/// case but the first tree without write defaults (case 75), which starts from what the case before it left, follow
+/// the reference, released zero-length children of 2D trees included.
 #[test]
 fn each_blend_tree_follows_its_reference_trace() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -97,13 +97,13 @@ fn each_blend_tree_follows_its_reference_trace() {
     assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
     for s in cases {
         let n: u32 = s.label["case ".len()..].split(':').next().unwrap().parse().unwrap();
-        if (65..=75).contains(&n) {
+        if n == 75 {
             continue;
         }
         let wrong: Vec<_> = rep.values.samples.range((s.frame, String::new())..(s.frame + s.frames, String::new())).collect();
         assert!(wrong.is_empty(), "{} differs: {wrong:?}", s.label);
     }
-    assert!(rep.values.wrong <= 744, "values: {}", rep.values.summary(20));
+    assert!(rep.values.wrong <= 221, "values: {}", rep.values.summary(20));
 }
 
 /// The write-defaults layering probe plays one composition of write defaults across layers at a time. Every value
