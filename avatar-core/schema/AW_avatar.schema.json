@@ -4243,6 +4243,10 @@
           "type": "number",
           "format": "float"
         },
+        "highQualityCurve": {
+          "description": "Unity's `m_UseHighQualityCurve`. Off, Unity samples each curve on the clip's frame grid and interpolates\nlinearly between frames, in place of the curve's own Hermite cubic.",
+          "type": "boolean"
+        },
         "loop": {
           "type": "boolean"
         },
@@ -4291,6 +4295,7 @@
         "name",
         "length",
         "sampleRate",
+        "highQualityCurve",
         "loop",
         "cycleOffset",
         "curves",

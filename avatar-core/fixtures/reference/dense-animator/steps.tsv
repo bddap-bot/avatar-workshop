@@ -1,0 +1,386 @@
+0	5	90	-	rest	GestureLeft=0,GestureRight=0,GestureLeftWeight=0,GestureRightWeight=0,Viseme=0,Voice=0,Grounded=1,Seated=0,AFK=0,VelocityX=0,VelocityY=0,VelocityZ=0,AngularY=0,Upright=1,TrackingType=3,VRMode=1,InStation=0,IsOnFriendsList=0
+1	95	150	-	case 1: base/Body: 1 humanoid every_frame 30 flat high speed_1	Case=1
+2	245	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+3	265	150	-	case 2: base/Body: 2 humanoid every_frame 30 flat high speed_0_5	Case=2
+4	415	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+5	435	150	-	case 3: base/Body: 3 humanoid every_frame 30 auto high speed_1	Case=3
+6	585	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+7	605	150	-	case 4: base/Body: 4 humanoid every_frame 30 auto high speed_0_5	Case=4
+8	755	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+9	775	150	-	case 5: base/Body: 5 humanoid every_frame 30 auto low speed_1	Case=5
+10	925	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+11	945	150	-	case 6: base/Body: 6 humanoid every_frame 30 auto low speed_0_5	Case=6
+12	1095	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+13	1115	150	-	case 7: base/Body: 7 humanoid every_frame 30 clamped_auto high speed_1	Case=7
+14	1265	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+15	1285	150	-	case 8: base/Body: 8 humanoid every_frame 30 clamped_auto high speed_0_5	Case=8
+16	1435	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+17	1455	150	-	case 9: base/Body: 9 humanoid every_frame 30 broken high speed_1	Case=9
+18	1605	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+19	1625	150	-	case 10: base/Body: 10 humanoid every_frame 30 broken high speed_0_5	Case=10
+20	1775	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+21	1795	150	-	case 11: base/Body: 11 humanoid every_frame 30 broken low speed_1	Case=11
+22	1945	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+23	1965	150	-	case 12: base/Body: 12 humanoid every_frame 30 broken low speed_0_5	Case=12
+24	2115	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+25	2135	150	-	case 13: base/Body: 13 humanoid every_frame 60 flat high speed_1	Case=13
+26	2285	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+27	2305	150	-	case 14: base/Body: 14 humanoid every_frame 60 flat high speed_0_5	Case=14
+28	2455	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+29	2475	150	-	case 15: base/Body: 15 humanoid every_frame 60 auto high speed_1	Case=15
+30	2625	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+31	2645	150	-	case 16: base/Body: 16 humanoid every_frame 60 auto high speed_0_5	Case=16
+32	2795	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+33	2815	150	-	case 17: base/Body: 17 humanoid every_frame 60 auto low speed_1	Case=17
+34	2965	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+35	2985	150	-	case 18: base/Body: 18 humanoid every_frame 60 auto low speed_0_5	Case=18
+36	3135	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+37	3155	150	-	case 19: base/Body: 19 humanoid every_frame 60 clamped_auto high speed_1	Case=19
+38	3305	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+39	3325	150	-	case 20: base/Body: 20 humanoid every_frame 60 clamped_auto high speed_0_5	Case=20
+40	3475	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+41	3495	150	-	case 21: base/Body: 21 humanoid every_frame 60 broken high speed_1	Case=21
+42	3645	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+43	3665	150	-	case 22: base/Body: 22 humanoid every_frame 60 broken high speed_0_5	Case=22
+44	3815	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+45	3835	150	-	case 23: base/Body: 23 humanoid every_frame 60 broken low speed_1	Case=23
+46	3985	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+47	4005	150	-	case 24: base/Body: 24 humanoid every_frame 60 broken low speed_0_5	Case=24
+48	4155	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+49	4175	150	-	case 25: base/Body: 25 humanoid most_frames 30 flat high speed_1	Case=25
+50	4325	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+51	4345	150	-	case 26: base/Body: 26 humanoid most_frames 30 flat high speed_0_5	Case=26
+52	4495	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+53	4515	150	-	case 27: base/Body: 27 humanoid most_frames 30 auto high speed_1	Case=27
+54	4665	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+55	4685	150	-	case 28: base/Body: 28 humanoid most_frames 30 auto high speed_0_5	Case=28
+56	4835	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+57	4855	150	-	case 29: base/Body: 29 humanoid most_frames 30 auto low speed_1	Case=29
+58	5005	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+59	5025	150	-	case 30: base/Body: 30 humanoid most_frames 30 auto low speed_0_5	Case=30
+60	5175	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+61	5195	150	-	case 31: base/Body: 31 humanoid most_frames 30 clamped_auto high speed_1	Case=31
+62	5345	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+63	5365	150	-	case 32: base/Body: 32 humanoid most_frames 30 clamped_auto high speed_0_5	Case=32
+64	5515	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+65	5535	150	-	case 33: base/Body: 33 humanoid most_frames 30 broken high speed_1	Case=33
+66	5685	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+67	5705	150	-	case 34: base/Body: 34 humanoid most_frames 30 broken high speed_0_5	Case=34
+68	5855	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+69	5875	150	-	case 35: base/Body: 35 humanoid most_frames 30 broken low speed_1	Case=35
+70	6025	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+71	6045	150	-	case 36: base/Body: 36 humanoid most_frames 30 broken low speed_0_5	Case=36
+72	6195	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+73	6215	150	-	case 37: base/Body: 37 humanoid most_frames 60 flat high speed_1	Case=37
+74	6365	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+75	6385	150	-	case 38: base/Body: 38 humanoid most_frames 60 flat high speed_0_5	Case=38
+76	6535	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+77	6555	150	-	case 39: base/Body: 39 humanoid most_frames 60 auto high speed_1	Case=39
+78	6705	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+79	6725	150	-	case 40: base/Body: 40 humanoid most_frames 60 auto high speed_0_5	Case=40
+80	6875	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+81	6895	150	-	case 41: base/Body: 41 humanoid most_frames 60 auto low speed_1	Case=41
+82	7045	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+83	7065	150	-	case 42: base/Body: 42 humanoid most_frames 60 auto low speed_0_5	Case=42
+84	7215	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+85	7235	150	-	case 43: base/Body: 43 humanoid most_frames 60 clamped_auto high speed_1	Case=43
+86	7385	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+87	7405	150	-	case 44: base/Body: 44 humanoid most_frames 60 clamped_auto high speed_0_5	Case=44
+88	7555	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+89	7575	150	-	case 45: base/Body: 45 humanoid most_frames 60 broken high speed_1	Case=45
+90	7725	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+91	7745	150	-	case 46: base/Body: 46 humanoid most_frames 60 broken high speed_0_5	Case=46
+92	7895	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+93	7915	150	-	case 47: base/Body: 47 humanoid most_frames 60 broken low speed_1	Case=47
+94	8065	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+95	8085	150	-	case 48: base/Body: 48 humanoid most_frames 60 broken low speed_0_5	Case=48
+96	8235	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+97	8255	150	-	case 49: base/Body: 49 humanoid every_other_frame 30 flat high speed_1	Case=49
+98	8405	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+99	8425	150	-	case 50: base/Body: 50 humanoid every_other_frame 30 flat high speed_0_5	Case=50
+100	8575	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+101	8595	150	-	case 51: base/Body: 51 humanoid every_other_frame 30 auto high speed_1	Case=51
+102	8745	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+103	8765	150	-	case 52: base/Body: 52 humanoid every_other_frame 30 auto high speed_0_5	Case=52
+104	8915	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+105	8935	150	-	case 53: base/Body: 53 humanoid every_other_frame 30 auto low speed_1	Case=53
+106	9085	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+107	9105	150	-	case 54: base/Body: 54 humanoid every_other_frame 30 auto low speed_0_5	Case=54
+108	9255	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+109	9275	150	-	case 55: base/Body: 55 humanoid every_other_frame 30 clamped_auto high speed_1	Case=55
+110	9425	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+111	9445	150	-	case 56: base/Body: 56 humanoid every_other_frame 30 clamped_auto high speed_0_5	Case=56
+112	9595	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+113	9615	150	-	case 57: base/Body: 57 humanoid every_other_frame 30 broken high speed_1	Case=57
+114	9765	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+115	9785	150	-	case 58: base/Body: 58 humanoid every_other_frame 30 broken high speed_0_5	Case=58
+116	9935	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+117	9955	150	-	case 59: base/Body: 59 humanoid every_other_frame 30 broken low speed_1	Case=59
+118	10105	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+119	10125	150	-	case 60: base/Body: 60 humanoid every_other_frame 30 broken low speed_0_5	Case=60
+120	10275	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+121	10295	150	-	case 61: base/Body: 61 humanoid every_other_frame 60 flat high speed_1	Case=61
+122	10445	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+123	10465	150	-	case 62: base/Body: 62 humanoid every_other_frame 60 flat high speed_0_5	Case=62
+124	10615	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+125	10635	150	-	case 63: base/Body: 63 humanoid every_other_frame 60 auto high speed_1	Case=63
+126	10785	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+127	10805	150	-	case 64: base/Body: 64 humanoid every_other_frame 60 auto high speed_0_5	Case=64
+128	10955	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+129	10975	150	-	case 65: base/Body: 65 humanoid every_other_frame 60 auto low speed_1	Case=65
+130	11125	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+131	11145	150	-	case 66: base/Body: 66 humanoid every_other_frame 60 auto low speed_0_5	Case=66
+132	11295	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+133	11315	150	-	case 67: base/Body: 67 humanoid every_other_frame 60 clamped_auto high speed_1	Case=67
+134	11465	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+135	11485	150	-	case 68: base/Body: 68 humanoid every_other_frame 60 clamped_auto high speed_0_5	Case=68
+136	11635	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+137	11655	150	-	case 69: base/Body: 69 humanoid every_other_frame 60 broken high speed_1	Case=69
+138	11805	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+139	11825	150	-	case 70: base/Body: 70 humanoid every_other_frame 60 broken high speed_0_5	Case=70
+140	11975	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+141	11995	150	-	case 71: base/Body: 71 humanoid every_other_frame 60 broken low speed_1	Case=71
+142	12145	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+143	12165	150	-	case 72: base/Body: 72 humanoid every_other_frame 60 broken low speed_0_5	Case=72
+144	12315	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+145	12335	150	-	case 73: base/Body: 73 humanoid off_grid 30 flat high speed_1	Case=73
+146	12485	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+147	12505	150	-	case 74: base/Body: 74 humanoid off_grid 30 flat high speed_0_5	Case=74
+148	12655	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+149	12675	150	-	case 75: base/Body: 75 humanoid off_grid 30 auto high speed_1	Case=75
+150	12825	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+151	12845	150	-	case 76: base/Body: 76 humanoid off_grid 30 auto high speed_0_5	Case=76
+152	12995	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+153	13015	150	-	case 77: base/Body: 77 humanoid off_grid 30 auto low speed_1	Case=77
+154	13165	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+155	13185	150	-	case 78: base/Body: 78 humanoid off_grid 30 auto low speed_0_5	Case=78
+156	13335	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+157	13355	150	-	case 79: base/Body: 79 humanoid off_grid 30 clamped_auto high speed_1	Case=79
+158	13505	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+159	13525	150	-	case 80: base/Body: 80 humanoid off_grid 30 clamped_auto high speed_0_5	Case=80
+160	13675	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+161	13695	150	-	case 81: base/Body: 81 humanoid off_grid 30 broken high speed_1	Case=81
+162	13845	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+163	13865	150	-	case 82: base/Body: 82 humanoid off_grid 30 broken high speed_0_5	Case=82
+164	14015	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+165	14035	150	-	case 83: base/Body: 83 humanoid off_grid 30 broken low speed_1	Case=83
+166	14185	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+167	14205	150	-	case 84: base/Body: 84 humanoid off_grid 30 broken low speed_0_5	Case=84
+168	14355	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+169	14375	150	-	case 85: base/Body: 85 humanoid off_grid 60 flat high speed_1	Case=85
+170	14525	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+171	14545	150	-	case 86: base/Body: 86 humanoid off_grid 60 flat high speed_0_5	Case=86
+172	14695	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+173	14715	150	-	case 87: base/Body: 87 humanoid off_grid 60 auto high speed_1	Case=87
+174	14865	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+175	14885	150	-	case 88: base/Body: 88 humanoid off_grid 60 auto high speed_0_5	Case=88
+176	15035	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+177	15055	150	-	case 89: base/Body: 89 humanoid off_grid 60 auto low speed_1	Case=89
+178	15205	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+179	15225	150	-	case 90: base/Body: 90 humanoid off_grid 60 auto low speed_0_5	Case=90
+180	15375	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+181	15395	150	-	case 91: base/Body: 91 humanoid off_grid 60 clamped_auto high speed_1	Case=91
+182	15545	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+183	15565	150	-	case 92: base/Body: 92 humanoid off_grid 60 clamped_auto high speed_0_5	Case=92
+184	15715	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+185	15735	150	-	case 93: base/Body: 93 humanoid off_grid 60 broken high speed_1	Case=93
+186	15885	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+187	15905	150	-	case 94: base/Body: 94 humanoid off_grid 60 broken high speed_0_5	Case=94
+188	16055	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+189	16075	150	-	case 95: base/Body: 95 humanoid off_grid 60 broken low speed_1	Case=95
+190	16225	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+191	16245	150	-	case 96: base/Body: 96 humanoid off_grid 60 broken low speed_0_5	Case=96
+192	16395	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+193	16415	150	-	case 97: fx/Dense: 97 generic every_frame 30 flat high speed_1	Case=97
+194	16565	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+195	16585	150	-	case 98: fx/Dense: 98 generic every_frame 30 flat high speed_0_5	Case=98
+196	16735	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+197	16755	150	-	case 99: fx/Dense: 99 generic every_frame 30 auto high speed_1	Case=99
+198	16905	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+199	16925	150	-	case 100: fx/Dense: 100 generic every_frame 30 auto high speed_0_5	Case=100
+200	17075	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+201	17095	150	-	case 101: fx/Dense: 101 generic every_frame 30 auto low speed_1	Case=101
+202	17245	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+203	17265	150	-	case 102: fx/Dense: 102 generic every_frame 30 auto low speed_0_5	Case=102
+204	17415	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+205	17435	150	-	case 103: fx/Dense: 103 generic every_frame 30 clamped_auto high speed_1	Case=103
+206	17585	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+207	17605	150	-	case 104: fx/Dense: 104 generic every_frame 30 clamped_auto high speed_0_5	Case=104
+208	17755	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+209	17775	150	-	case 105: fx/Dense: 105 generic every_frame 30 broken high speed_1	Case=105
+210	17925	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+211	17945	150	-	case 106: fx/Dense: 106 generic every_frame 30 broken high speed_0_5	Case=106
+212	18095	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+213	18115	150	-	case 107: fx/Dense: 107 generic every_frame 30 broken low speed_1	Case=107
+214	18265	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+215	18285	150	-	case 108: fx/Dense: 108 generic every_frame 30 broken low speed_0_5	Case=108
+216	18435	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+217	18455	150	-	case 109: fx/Dense: 109 generic every_frame 60 flat high speed_1	Case=109
+218	18605	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+219	18625	150	-	case 110: fx/Dense: 110 generic every_frame 60 flat high speed_0_5	Case=110
+220	18775	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+221	18795	150	-	case 111: fx/Dense: 111 generic every_frame 60 auto high speed_1	Case=111
+222	18945	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+223	18965	150	-	case 112: fx/Dense: 112 generic every_frame 60 auto high speed_0_5	Case=112
+224	19115	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+225	19135	150	-	case 113: fx/Dense: 113 generic every_frame 60 auto low speed_1	Case=113
+226	19285	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+227	19305	150	-	case 114: fx/Dense: 114 generic every_frame 60 auto low speed_0_5	Case=114
+228	19455	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+229	19475	150	-	case 115: fx/Dense: 115 generic every_frame 60 clamped_auto high speed_1	Case=115
+230	19625	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+231	19645	150	-	case 116: fx/Dense: 116 generic every_frame 60 clamped_auto high speed_0_5	Case=116
+232	19795	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+233	19815	150	-	case 117: fx/Dense: 117 generic every_frame 60 broken high speed_1	Case=117
+234	19965	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+235	19985	150	-	case 118: fx/Dense: 118 generic every_frame 60 broken high speed_0_5	Case=118
+236	20135	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+237	20155	150	-	case 119: fx/Dense: 119 generic every_frame 60 broken low speed_1	Case=119
+238	20305	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+239	20325	150	-	case 120: fx/Dense: 120 generic every_frame 60 broken low speed_0_5	Case=120
+240	20475	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+241	20495	150	-	case 121: fx/Dense: 121 generic most_frames 30 flat high speed_1	Case=121
+242	20645	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+243	20665	150	-	case 122: fx/Dense: 122 generic most_frames 30 flat high speed_0_5	Case=122
+244	20815	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+245	20835	150	-	case 123: fx/Dense: 123 generic most_frames 30 auto high speed_1	Case=123
+246	20985	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+247	21005	150	-	case 124: fx/Dense: 124 generic most_frames 30 auto high speed_0_5	Case=124
+248	21155	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+249	21175	150	-	case 125: fx/Dense: 125 generic most_frames 30 auto low speed_1	Case=125
+250	21325	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+251	21345	150	-	case 126: fx/Dense: 126 generic most_frames 30 auto low speed_0_5	Case=126
+252	21495	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+253	21515	150	-	case 127: fx/Dense: 127 generic most_frames 30 clamped_auto high speed_1	Case=127
+254	21665	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+255	21685	150	-	case 128: fx/Dense: 128 generic most_frames 30 clamped_auto high speed_0_5	Case=128
+256	21835	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+257	21855	150	-	case 129: fx/Dense: 129 generic most_frames 30 broken high speed_1	Case=129
+258	22005	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+259	22025	150	-	case 130: fx/Dense: 130 generic most_frames 30 broken high speed_0_5	Case=130
+260	22175	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+261	22195	150	-	case 131: fx/Dense: 131 generic most_frames 30 broken low speed_1	Case=131
+262	22345	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+263	22365	150	-	case 132: fx/Dense: 132 generic most_frames 30 broken low speed_0_5	Case=132
+264	22515	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+265	22535	150	-	case 133: fx/Dense: 133 generic most_frames 60 flat high speed_1	Case=133
+266	22685	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+267	22705	150	-	case 134: fx/Dense: 134 generic most_frames 60 flat high speed_0_5	Case=134
+268	22855	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+269	22875	150	-	case 135: fx/Dense: 135 generic most_frames 60 auto high speed_1	Case=135
+270	23025	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+271	23045	150	-	case 136: fx/Dense: 136 generic most_frames 60 auto high speed_0_5	Case=136
+272	23195	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+273	23215	150	-	case 137: fx/Dense: 137 generic most_frames 60 auto low speed_1	Case=137
+274	23365	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+275	23385	150	-	case 138: fx/Dense: 138 generic most_frames 60 auto low speed_0_5	Case=138
+276	23535	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+277	23555	150	-	case 139: fx/Dense: 139 generic most_frames 60 clamped_auto high speed_1	Case=139
+278	23705	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+279	23725	150	-	case 140: fx/Dense: 140 generic most_frames 60 clamped_auto high speed_0_5	Case=140
+280	23875	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+281	23895	150	-	case 141: fx/Dense: 141 generic most_frames 60 broken high speed_1	Case=141
+282	24045	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+283	24065	150	-	case 142: fx/Dense: 142 generic most_frames 60 broken high speed_0_5	Case=142
+284	24215	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+285	24235	150	-	case 143: fx/Dense: 143 generic most_frames 60 broken low speed_1	Case=143
+286	24385	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+287	24405	150	-	case 144: fx/Dense: 144 generic most_frames 60 broken low speed_0_5	Case=144
+288	24555	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+289	24575	150	-	case 145: fx/Dense: 145 generic every_other_frame 30 flat high speed_1	Case=145
+290	24725	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+291	24745	150	-	case 146: fx/Dense: 146 generic every_other_frame 30 flat high speed_0_5	Case=146
+292	24895	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+293	24915	150	-	case 147: fx/Dense: 147 generic every_other_frame 30 auto high speed_1	Case=147
+294	25065	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+295	25085	150	-	case 148: fx/Dense: 148 generic every_other_frame 30 auto high speed_0_5	Case=148
+296	25235	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+297	25255	150	-	case 149: fx/Dense: 149 generic every_other_frame 30 auto low speed_1	Case=149
+298	25405	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+299	25425	150	-	case 150: fx/Dense: 150 generic every_other_frame 30 auto low speed_0_5	Case=150
+300	25575	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+301	25595	150	-	case 151: fx/Dense: 151 generic every_other_frame 30 clamped_auto high speed_1	Case=151
+302	25745	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+303	25765	150	-	case 152: fx/Dense: 152 generic every_other_frame 30 clamped_auto high speed_0_5	Case=152
+304	25915	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+305	25935	150	-	case 153: fx/Dense: 153 generic every_other_frame 30 broken high speed_1	Case=153
+306	26085	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+307	26105	150	-	case 154: fx/Dense: 154 generic every_other_frame 30 broken high speed_0_5	Case=154
+308	26255	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+309	26275	150	-	case 155: fx/Dense: 155 generic every_other_frame 30 broken low speed_1	Case=155
+310	26425	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+311	26445	150	-	case 156: fx/Dense: 156 generic every_other_frame 30 broken low speed_0_5	Case=156
+312	26595	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+313	26615	150	-	case 157: fx/Dense: 157 generic every_other_frame 60 flat high speed_1	Case=157
+314	26765	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+315	26785	150	-	case 158: fx/Dense: 158 generic every_other_frame 60 flat high speed_0_5	Case=158
+316	26935	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+317	26955	150	-	case 159: fx/Dense: 159 generic every_other_frame 60 auto high speed_1	Case=159
+318	27105	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+319	27125	150	-	case 160: fx/Dense: 160 generic every_other_frame 60 auto high speed_0_5	Case=160
+320	27275	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+321	27295	150	-	case 161: fx/Dense: 161 generic every_other_frame 60 auto low speed_1	Case=161
+322	27445	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+323	27465	150	-	case 162: fx/Dense: 162 generic every_other_frame 60 auto low speed_0_5	Case=162
+324	27615	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+325	27635	150	-	case 163: fx/Dense: 163 generic every_other_frame 60 clamped_auto high speed_1	Case=163
+326	27785	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+327	27805	150	-	case 164: fx/Dense: 164 generic every_other_frame 60 clamped_auto high speed_0_5	Case=164
+328	27955	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+329	27975	150	-	case 165: fx/Dense: 165 generic every_other_frame 60 broken high speed_1	Case=165
+330	28125	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+331	28145	150	-	case 166: fx/Dense: 166 generic every_other_frame 60 broken high speed_0_5	Case=166
+332	28295	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+333	28315	150	-	case 167: fx/Dense: 167 generic every_other_frame 60 broken low speed_1	Case=167
+334	28465	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+335	28485	150	-	case 168: fx/Dense: 168 generic every_other_frame 60 broken low speed_0_5	Case=168
+336	28635	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+337	28655	150	-	case 169: fx/Dense: 169 generic off_grid 30 flat high speed_1	Case=169
+338	28805	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+339	28825	150	-	case 170: fx/Dense: 170 generic off_grid 30 flat high speed_0_5	Case=170
+340	28975	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+341	28995	150	-	case 171: fx/Dense: 171 generic off_grid 30 auto high speed_1	Case=171
+342	29145	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+343	29165	150	-	case 172: fx/Dense: 172 generic off_grid 30 auto high speed_0_5	Case=172
+344	29315	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+345	29335	150	-	case 173: fx/Dense: 173 generic off_grid 30 auto low speed_1	Case=173
+346	29485	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+347	29505	150	-	case 174: fx/Dense: 174 generic off_grid 30 auto low speed_0_5	Case=174
+348	29655	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+349	29675	150	-	case 175: fx/Dense: 175 generic off_grid 30 clamped_auto high speed_1	Case=175
+350	29825	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+351	29845	150	-	case 176: fx/Dense: 176 generic off_grid 30 clamped_auto high speed_0_5	Case=176
+352	29995	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+353	30015	150	-	case 177: fx/Dense: 177 generic off_grid 30 broken high speed_1	Case=177
+354	30165	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+355	30185	150	-	case 178: fx/Dense: 178 generic off_grid 30 broken high speed_0_5	Case=178
+356	30335	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+357	30355	150	-	case 179: fx/Dense: 179 generic off_grid 30 broken low speed_1	Case=179
+358	30505	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+359	30525	150	-	case 180: fx/Dense: 180 generic off_grid 30 broken low speed_0_5	Case=180
+360	30675	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+361	30695	150	-	case 181: fx/Dense: 181 generic off_grid 60 flat high speed_1	Case=181
+362	30845	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+363	30865	150	-	case 182: fx/Dense: 182 generic off_grid 60 flat high speed_0_5	Case=182
+364	31015	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+365	31035	150	-	case 183: fx/Dense: 183 generic off_grid 60 auto high speed_1	Case=183
+366	31185	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+367	31205	150	-	case 184: fx/Dense: 184 generic off_grid 60 auto high speed_0_5	Case=184
+368	31355	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+369	31375	150	-	case 185: fx/Dense: 185 generic off_grid 60 auto low speed_1	Case=185
+370	31525	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+371	31545	150	-	case 186: fx/Dense: 186 generic off_grid 60 auto low speed_0_5	Case=186
+372	31695	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+373	31715	150	-	case 187: fx/Dense: 187 generic off_grid 60 clamped_auto high speed_1	Case=187
+374	31865	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+375	31885	150	-	case 188: fx/Dense: 188 generic off_grid 60 clamped_auto high speed_0_5	Case=188
+376	32035	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+377	32055	150	-	case 189: fx/Dense: 189 generic off_grid 60 broken high speed_1	Case=189
+378	32205	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+379	32225	150	-	case 190: fx/Dense: 190 generic off_grid 60 broken high speed_0_5	Case=190
+380	32375	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+381	32395	150	-	case 191: fx/Dense: 191 generic off_grid 60 broken low speed_1	Case=191
+382	32545	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+383	32565	150	-	case 192: fx/Dense: 192 generic off_grid 60 broken low speed_0_5	Case=192
+384	32715	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+385	32735	60	-	final	

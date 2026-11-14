@@ -411,13 +411,16 @@ probed curves are keyed on its frame grid (its sample rate, 30 or 60) on every f
 after left out), on every other frame, or off the grid (its first and last frame and 0.37 of a frame
 after each frame between); their keys take the same seeded values in the same order in every clip, with flat
 tangents, legacy `Auto` tangents, `Clamped Auto` tangents, or broken
-tangents set apart. A humanoid clip probes three muscles (`Spine Front-Back`,
+tangents set apart. Each clip keeps high-quality curves; those with `Auto` or broken tangents also play in a copy without
+them (`m_UseHighQualityCurve` off, as some emote packs ship their clips). Only those two, so the 192 cases fit the
+integer case parameter. A humanoid clip probes three muscles (`Spine Front-Back`,
 `Left Upper Leg Front-Back`, `Right Arm Down-Up`) and holds every other muscle and the body at rest with keys at its
 first and last frame; a generic clip probes the float parameter `Dense` and the `Smile` blendshape. Each clip plays at
 speed 1 and at 0.5. A recording fails if a case never entered its state or if `compositions.json` counts zero for a
-composition `Coverage.DenseCompositions` lists, keyed by kind, keying, sample rate, tangents and speed
-(`dense.humanoid.every_frame.rate_30.auto.speed_1` is a humanoid clip keyed on every 1/30 s with `Auto` tangents at
-speed 1).
+composition `Coverage.DenseCompositions` lists, keyed by kind, keying, sample rate, tangents, curve quality and speed
+(`dense.humanoid.every_frame.rate_30.auto.quality_low.speed_1` is a humanoid clip keyed on every 1/30 s with `Auto`
+tangents and without high-quality curves at speed 1). The probe's recording is a reference trace of the core
+(`avatar-core/fixtures/reference/dense-animator`).
 
 The curve probe plays no avatar. It builds one clip per curve, its only curve on a transform's X position, and
 samples it at seeded random times through an `AnimationClipPlayable`, beside `AnimationCurve.Evaluate` at the same

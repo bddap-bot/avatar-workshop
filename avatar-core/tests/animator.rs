@@ -149,6 +149,24 @@ fn each_clip_sample_time_follows_its_reference_trace() {
     assert_eq!(rep.worst_value, 0.0, "values not the recorded bits");
 }
 
+/// The dense clip probe plays clips keyed on, between and off their frame grid, with high-quality curves and
+/// without: a low-quality curve whose keys all lie on the grid is sampled on its frames and linearly between them.
+#[test]
+fn each_dense_clip_follows_its_reference_trace() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dir = root.join("fixtures/reference/dense-animator");
+    let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-dense.glb")).unwrap()).unwrap();
+    assert!(avatar.model.clips.iter().filter(|c| !c.high_quality_curve).count() >= 32);
+    let rep = Run::new(&dir, avatar).run(None);
+    assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
+    assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
+    assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
+    assert!(rep.values.compared > 4_000_000, "{} values compared", rep.values.compared);
+    assert_eq!(rep.values.wrong, 0, "values: {}", rep.values.summary(20));
+    assert!(rep.bindings.compared > 3_000_000, "{} bindings compared", rep.bindings.compared);
+    assert_eq!(rep.bindings.wrong, 0, "bindings: {}", rep.bindings.summary(20));
+}
+
 /// The curve probe samples clips through Unity's clip playable beside `AnimationCurve.Evaluate`, at identity curves of
 /// the sample-time probe's lengths and at random curves of every span; both match to the bit.
 #[test]
@@ -589,7 +607,7 @@ fn an_uncurved_goal_follows_the_body_and_mirrors_with_its_clip() {
 }
 
 fn clip(name: &str, curves: Vec<avatar_core::model::Curve>) -> avatar_core::model::Clip {
-    avatar_core::model::Clip { name: name.into(), length: 0.0, sample_rate: 60.0, looping: false, cycle_offset: 0.0, additive_reference_pose: None, humanoid: None, curves, slot_curves: vec![] }
+    avatar_core::model::Clip { name: name.into(), length: 0.0, sample_rate: 60.0, high_quality_curve: true, looping: false, cycle_offset: 0.0, additive_reference_pose: None, humanoid: None, curves, slot_curves: vec![] }
 }
 
 /// Under a write-defaults direct tree, a shape only a 1D tree's end at weight zero writes is left to the layers

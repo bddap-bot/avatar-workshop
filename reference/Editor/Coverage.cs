@@ -727,8 +727,10 @@ namespace AvatarWorkshop.Reference
              from keying in Fixture.DenseKeyings
              from rate in Fixture.DenseRates
              from tangent in Fixture.DenseTangents
+             from quality in Fixture.DenseQualities
+             where Fixture.DenseCase(tangent, quality)
              from speed in Fixture.DenseSpeeds
-             select $"dense.{kind}.{keying}.rate_{rate}.{tangent}.{Fixture.SpeedKey(speed)}").ToArray();
+             select $"dense.{kind}.{keying}.rate_{rate}.{tangent}.quality_{quality}.{Fixture.SpeedKey(speed)}").ToArray();
 
         static string Keying(Keyframe[] keys, float rate)
         {
@@ -770,7 +772,8 @@ namespace AvatarWorkshop.Reference
             var keyings = probed.Select(c => Keying(c.keys, clip.frameRate)).Distinct().ToList();
             var tangents = probed.Select(Tangents).Distinct().ToList();
             if (keyings.Count != 1 || keyings[0] == null || tangents.Count != 1 || tangents[0] == null) return null;
-            return $"dense.{(clip.humanMotion ? "humanoid" : "generic")}.{keyings[0]}.rate_{(int)clip.frameRate}.{tangents[0]}";
+            var quality = new SerializedObject(clip).FindProperty("m_UseHighQualityCurve").boolValue ? "high" : "low";
+            return $"dense.{(clip.humanMotion ? "humanoid" : "generic")}.{keyings[0]}.rate_{(int)clip.frameRate}.{tangents[0]}.quality_{quality}";
         }
 
         public static SortedDictionary<string, int> CountDenseCompositions(VRCAvatarDescriptor d)

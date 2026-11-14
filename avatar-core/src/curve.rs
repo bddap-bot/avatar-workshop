@@ -17,6 +17,31 @@ impl AnimationCurve {
         let i = keys.partition_point(|k| k.time <= time).max(1);
         segment(&keys[i - 1], &keys[i], time)
     }
+
+    /// The curve as Unity samples it without high-quality curves: when every key lies on the frame grid of `rate`,
+    /// its value on each frame from 0 to `length` and the straight line between neighbouring frames; else unchanged.
+    pub fn on_frames(&self, rate: f32, length: f32) -> AnimationCurve {
+        let on_grid = |t: f32| ((t * rate) - (t * rate).round()).abs() < 1e-3;
+        if self.keys.len() < 2 || rate <= 0.0 || length <= 0.0 || !self.keys.iter().all(|k| on_grid(k.time)) {
+            return self.clone();
+        }
+        let frames = (length * rate - 1e-3).ceil().max(1.0) as usize;
+        let times: Vec<f32> = (0..frames).map(|i| i as f32 / rate).chain([length]).collect();
+        let values: Vec<f32> = times.iter().map(|&t| self.evaluate(t)).collect();
+        let slope = |i: usize| (values[i + 1] - values[i]) / (times[i + 1] - times[i]);
+        let keys = (0..times.len())
+            .map(|i| Keyframe {
+                time: times[i],
+                value: values[i],
+                in_tangent: if i == 0 { 0.0 } else { slope(i - 1) },
+                out_tangent: if i + 1 == times.len() { 0.0 } else { slope(i) },
+                in_weight: DEFAULT_WEIGHT,
+                out_weight: DEFAULT_WEIGHT,
+                weighted_mode: WeightedMode::None,
+            })
+            .collect();
+        AnimationCurve { keys }
+    }
 }
 
 /// The time Unity samples a clip's curves at, `seconds` into it, which differs from `seconds` by an ulp on most
@@ -105,5 +130,20 @@ mod tests {
         let ease = AnimationCurve { keys: vec![key(0.0, 0.0, 0.0), key(1.0, 1.0, 0.0)] };
         assert!((ease.evaluate(0.5) - 0.5).abs() < 1e-6);
         assert!((ease.evaluate(0.25) - 0.15625).abs() < 1e-6);
+    }
+
+    #[test]
+    fn on_frames_is_linear_between_frames() {
+        let ease = AnimationCurve { keys: vec![key(0.0, 0.0, 0.0), key(0.05, 1.0, 0.0)] };
+        let framed = ease.on_frames(60.0, 0.05);
+        assert_eq!(framed.keys.iter().map(|k| k.time).collect::<Vec<_>>(), [0.0, 1.0 / 60.0, 2.0 / 60.0, 0.05]);
+        for (i, k) in framed.keys.iter().enumerate() {
+            assert_eq!(k.value, ease.evaluate(k.time), "frame {i}");
+        }
+        let first = ease.evaluate(1.0 / 60.0);
+        assert!((framed.evaluate(0.5 / 60.0) - 0.5 * first).abs() < 1e-6);
+        assert!((framed.evaluate(0.5 / 60.0) - ease.evaluate(0.5 / 60.0)).abs() > 1e-2);
+        let off = AnimationCurve { keys: vec![key(0.0, 0.0, 0.0), key(1.37 / 60.0, 1.0, 0.0), key(0.05, 0.0, 0.0)] };
+        assert_eq!(off.on_frames(60.0, 0.05), off);
     }
 }

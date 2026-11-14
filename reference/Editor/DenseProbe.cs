@@ -10,13 +10,16 @@ using VRC.SDK3.Avatars.ScriptableObjects;
 namespace AvatarWorkshop.Reference
 {
     // The dense clip probe: a corpus emote keyed on every frame of its sample rate matches Unity on its keys and misses
-    // between them, so each case plays one clip whose curves are keyed at one density, rate and tangent.
+    // between them, so each case plays one clip whose curves are keyed at one density, rate, tangent and curve quality.
     public static partial class Fixture
     {
         public static readonly string[] DenseKinds = { "humanoid", "generic" };
         public static readonly string[] DenseKeyings = { "every_frame", "most_frames", "every_other_frame", "off_grid" };
         public static readonly int[] DenseRates = { 30, 60 };
         public static readonly string[] DenseTangents = { "flat", "auto", "clamped_auto", "broken" };
+        public static readonly string[] DenseQualities = { "high", "low" };
+        // Low-quality cases only at two tangents, so every case fits the int case parameter's 255.
+        public static bool DenseCase(string tangent, string quality) => quality == "high" || tangent == "auto" || tangent == "broken";
         public static readonly float[] DenseSpeeds = { 1, 0.5f };
         public static readonly string[] DenseMuscles = { "Spine Front-Back", "Left Upper Leg Front-Back", "Right Arm Down-Up" };
         public const string DenseParameter = "Dense";
@@ -66,9 +69,12 @@ namespace AvatarWorkshop.Reference
             return curve;
         }
 
-        static void DenseClip(AnimationClip c, string kind, string keying, int rate, string tangent)
+        static void DenseClip(AnimationClip c, string kind, string keying, int rate, string tangent, string quality)
         {
             c.frameRate = rate;
+            var serialized = new SerializedObject(c);
+            serialized.FindProperty("m_UseHighQualityCurve").boolValue = quality == "high";
+            serialized.ApplyModifiedPropertiesWithoutUndo();
             void Set(string path, Type type, string prop, AnimationCurve curve) => AnimationUtility.SetEditorCurve(c, EditorCurveBinding.FloatCurve(path, type, prop), curve);
             // Not Muscles(): its constant curves key 1/60 s, off a 30 Hz grid, and the rule may depend on the whole clip.
             AnimationCurve Hold(float v) => new AnimationCurve(new Keyframe(0, v, 0, 0), new Keyframe(DenseLength, v, 0, 0));
@@ -125,14 +131,15 @@ namespace AvatarWorkshop.Reference
                 foreach (var keying in DenseKeyings)
                     foreach (var rate in DenseRates)
                         foreach (var tangent in DenseTangents)
-                        {
-                            var clip = k.Make($"{kind} {keying} {rate} {tangent}", c => DenseClip(c, kind, keying, rate, tangent));
-                            foreach (var speed in DenseSpeeds)
+                            foreach (var quality in DenseQualities.Where(q => DenseCase(tangent, q)))
                             {
-                                var (sm, off) = kind == "humanoid" ? (body, bodyOff) : (generic, genericOff);
-                                CaseState(sm, off, $"{clip.name} {SpeedKey(speed)}", clip, next++, writeDefaults: false).speed = speed;
+                                var clip = k.Make($"{kind} {keying} {rate} {tangent} {quality}", c => DenseClip(c, kind, keying, rate, tangent, quality));
+                                foreach (var speed in DenseSpeeds)
+                                {
+                                    var (sm, off) = kind == "humanoid" ? (body, bodyOff) : (generic, genericOff);
+                                    CaseState(sm, off, $"{clip.name} {SpeedKey(speed)}", clip, next++, writeDefaults: false).speed = speed;
+                                }
                             }
-                        }
 
             d.customExpressions = true;
             d.expressionParameters = parameters;

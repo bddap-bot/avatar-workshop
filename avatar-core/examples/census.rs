@@ -764,8 +764,8 @@ impl Check<'_> {
 
     fn clip_settings(&mut self) {
         use avatar_core::model::{HeightBasis, HumanoidClip, RotationBasis, XzBasis};
-        const ALL: [&str; 14] = [
-            "sampleRate", "loop", "cycleOffset", "additiveReferencePose", "mirror", "loopPose", "rotationBakeIntoPose", "rotationBasedUpon",
+        const ALL: [&str; 15] = [
+            "sampleRate", "highQualityCurve", "loop", "cycleOffset", "additiveReferencePose", "mirror", "loopPose", "rotationBakeIntoPose", "rotationBasedUpon",
             "rotationOffsetDegrees", "heightBakeIntoPose", "heightBasedUpon", "heightOffset", "xzBakeIntoPose", "xzBasedUpon",
         ];
         type Settings = (String, BTreeMap<&'static str, Value>);
@@ -792,9 +792,9 @@ impl Check<'_> {
                 json!(h.height.bake_into_pose), json!(height), jf(h.height.offset), json!(h.xz.bake_into_pose), json!(xz),
             ]
         };
-        let record = |name: &str, rate: Value, looping: Value, cycle: Value, reference: Value, humanoid: bool, h: [Value; 10]| -> Settings {
-            let mut v: BTreeMap<&'static str, Value> = ALL[4..].iter().copied().zip(h).collect();
-            v.extend([("sampleRate", rate), ("loop", looping), ("cycleOffset", cycle), ("additiveReferencePose", reference), ("humanoid", json!(humanoid))]);
+        let record = |name: &str, rate: Value, quality: Value, looping: Value, cycle: Value, reference: Value, humanoid: bool, h: [Value; 10]| -> Settings {
+            let mut v: BTreeMap<&'static str, Value> = ALL[5..].iter().copied().zip(h).collect();
+            v.extend([("sampleRate", rate), ("highQualityCurve", quality), ("loop", looping), ("cycleOffset", cycle), ("additiveReferencePose", reference), ("humanoid", json!(humanoid))]);
             (name.to_string(), v)
         };
         let model_settings: Vec<Settings> = model
@@ -802,7 +802,7 @@ impl Check<'_> {
             .iter()
             .map(|c| {
                 let reference = c.additive_reference_pose.as_ref().map_or(Value::Null, |r| json!({ "clip": model.clips[r.clip.0 as usize].name, "time": jf(r.time) }));
-                record(&c.name, jf(c.sample_rate), json!(c.looping), jf(c.cycle_offset), reference, c.humanoid.is_some(), humanoid_settings(c.humanoid.as_ref()))
+                record(&c.name, jf(c.sample_rate), json!(c.high_quality_curve), json!(c.looping), jf(c.cycle_offset), reference, c.humanoid.is_some(), humanoid_settings(c.humanoid.as_ref()))
             })
             .collect();
         let census = arr(&self.census["clipSettings"]);
@@ -829,7 +829,7 @@ impl Check<'_> {
                 } else {
                     humanoid_settings(None)
                 };
-                record(c["name"].as_str().unwrap_or(""), jf(num(&c["sampleRate"])), c["loop"].clone(), jf(num(&c["cycleOffset"])), reference, humanoid, h)
+                record(c["name"].as_str().unwrap_or(""), jf(num(&c["sampleRate"])), c["highQualityCurve"].clone(), c["loop"].clone(), jf(num(&c["cycleOffset"])), reference, humanoid, h)
             })
             .collect();
         let mut faults = vec![];
