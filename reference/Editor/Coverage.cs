@@ -507,6 +507,80 @@ namespace AvatarWorkshop.Reference
             return c;
         }
 
+        public static readonly string[] SampleTimeCompositions =
+            (from entry in Fixture.SampleTimeEntries
+             from container in Fixture.SampleTimeContainers
+             from speed in Fixture.SampleTimeSpeeds
+             from e in Fixture.SampleTimeExponents
+             select $"sample_time.{entry}.{container}.{Fixture.SpeedKey(speed)}.length_1e{e}").ToArray();
+
+        // The parameter an identity clip animates and its length: one curve on a float parameter of the controller,
+        // keys (0, 0) and (L, L) with unit tangents, looping, without a cycle offset.
+        static (string parameter, float length)? Identity(AnimationClip clip, Dictionary<string, AnimatorControllerParameter> parameters)
+        {
+            var bindings = AnimationUtility.GetCurveBindings(clip);
+            if (bindings.Length != 1 || bindings[0].type != typeof(Animator) || bindings[0].path != "") return null;
+            if (!parameters.TryGetValue(bindings[0].propertyName, out var p) || p.type != AnimatorControllerParameterType.Float) return null;
+            var keys = AnimationUtility.GetEditorCurve(clip, bindings[0]).keys;
+            if (keys.Length != 2 || keys[0].time != 0 || keys[0].value != 0 || keys[1].time <= 0 || keys[1].value != keys[1].time) return null;
+            if (keys.Any(k => k.inTangent != 1 || k.outTangent != 1 || k.weightedMode != WeightedMode.None)) return null;
+            var settings = AnimationUtility.GetAnimationClipSettings(clip);
+            if (!settings.loopTime || settings.cycleOffset != 0) return null;
+            return (p.name, keys[1].time);
+        }
+
+        public static SortedDictionary<string, int> CountSampleTimeCompositions(VRCAvatarDescriptor d)
+        {
+            var c = new SortedDictionary<string, int>();
+            foreach (var k in SampleTimeCompositions) c[k] = 0;
+            foreach (var (_, ctrl, _) in Controllers(d))
+            {
+                var parameters = ctrl.parameters.ToDictionary(p => p.name);
+                var states = ctrl.layers.SelectMany(l => l.stateMachine.states.Select(x => x.state)).ToList();
+                var writers = states.SelectMany(s => Leaves(s.motion).SelectMany(AnimationUtility.GetCurveBindings).Where(b => b.type == typeof(Animator) && b.path == "")
+                    .Select(b => b.propertyName).Distinct()).GroupBy(n => n).ToDictionary(g => g.Key, g => g.Count());
+                foreach (var layer in ctrl.layers)
+                {
+                    var sm = layer.stateMachine;
+                    if (layer.defaultWeight != 1 || layer.blendingMode != AnimatorLayerBlendingMode.Override || layer.syncedLayerIndex >= 0) continue;
+                    var cases = CaseOf(sm);
+                    var into = sm.states.SelectMany(x => x.state.transitions).Where(t => t.destinationState != null).ToLookup(t => t.destinationState);
+                    foreach (var s in sm.states.Select(x => x.state))
+                    {
+                        var entry = cases.ContainsKey(s) && into[s].All(t => t.duration == 0) && s.transitions.Length == 0 ? "later"
+                            : s == sm.defaultState && !cases.ContainsKey(s) && s.transitions.Length == 0 ? "first_frame" : null;
+                        if (entry == null || s.timeParameterActive || s.cycleOffsetParameterActive || s.cycleOffset != 0) continue;
+                        string container;
+                        if (s.motion is AnimationClip) container = "state";
+                        else if (s.motion is BlendTree bt && bt.children.All(ch => ch.motion is AnimationClip && ch.timeScale == 1 && ch.cycleOffset == 0))
+                        {
+                            if (bt.blendType == BlendTreeType.Simple1D && parameters.TryGetValue(bt.blendParameter, out var bp) && !Fixture.Ramps.Contains(bp.name)
+                                && bt.children.Length > 0 && bt.children[0].threshold == bp.defaultFloat && bt.children.Skip(1).All(ch => ch.threshold > bp.defaultFloat)
+                                && bt.children.All(ch => ch.motion == bt.children[0].motion))
+                                container = "simple_1d";
+                            else if (bt.blendType == BlendTreeType.Direct && bt.children.Length == 1 && parameters.TryGetValue(bt.children[0].directBlendParameter, out var w)
+                                && !Fixture.Ramps.Contains(w.name) && w.defaultFloat == 1 && !AvatarWorkshop.Exporter.Exporter.NormalizedBlendValues(bt))
+                                container = "direct";
+                            else continue;
+                        }
+                        else continue;
+                        var identities = Leaves(s.motion).Select(l => Identity(l, parameters)).Distinct().ToList();
+                        if (identities.Count != 1 || identities[0] == null) continue;
+                        var (parameter, length) = identities[0].Value;
+                        var e = Fixture.SampleTimeExponents.Where(x => Mathf.Pow(10, x) == length).Select(x => (int?)x).FirstOrDefault();
+                        float? speed = s.speedParameterActive ? (float?)null : s.speed;
+                        if (s.speedParameterActive && (s.speed != 1 || !parameters.TryGetValue(s.speedParameter, out var sp) || Fixture.Ramps.Contains(sp.name) || sp.defaultFloat == 0)) continue;
+                        if (e == null || !Fixture.SampleTimeSpeeds.Contains(speed)) continue;
+                        // A parameter another state also animates holds neither's sample time alone.
+                        if (writers[parameter] != 1) continue;
+                        var key = $"sample_time.{entry}.{container}.{Fixture.SpeedKey(speed)}.length_1e{e}";
+                        c[key] = c.TryGetValue(key, out var n) ? n + 1 : 1;
+                    }
+                }
+            }
+            return c;
+        }
+
         static void Machine(AnimatorStateMachine sm, AnimatorStateMachine parent, HashSet<string> parameters, HashSet<string> triggers, System.Action<string> add)
         {
             var transitions = sm.anyStateTransitions.Cast<AnimatorStateTransition>().Concat(sm.states.SelectMany(s => s.state.transitions)).ToList();

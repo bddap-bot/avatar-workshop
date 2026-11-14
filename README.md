@@ -237,7 +237,7 @@ state flags). `UNITY` names the editor command. With no `SCENE`, it generates th
 `PROJECT`'s `Assets/AWFixture` and records it, so point it at a scratch project. With `SCENE` `probe`, it generates and
 records the probe there: the fixture's body with one three-bone chain per PhysBone field value (`Fixture.Probes` lists
 them), so each field's effect has a reference trace of its own. The probe rests 15 s before its motion, so even its lightly damped chains start it settled. With `SCENE` `human`, it generates and records the
-composition probe (`reference/Editor/HumanProbe.cs`), with `SCENE` `blend` the blend duration probe (`reference/Editor/BlendProbe.cs`) and with `SCENE` `layering` the write-defaults layering probe (`reference/Editor/LayeringProbe.cs`), all described below, in place of the motion, menu and built-in steps. With `SCENE` `writedefaults`, it generates and records the write-defaults fixture: the fixture's body under animator controllers built from the environment variable `AW_WD`, which lists each layer's controller, weight, transition time and states, and for each state whether it writes defaults and what it animates (`reference/Editor/WriteDefaults.cs` gives the grammar; `AW_WD='T:de|dHat=1;K:fSmile=50'` is a write-defaults-on toggle of the hat beside a layer that keeps none). The environment variable `AW_STEPS` (`Name=value,...;...`, each step setting those animator parameters and held `AW_STEP_FRAMES` frames, 20 unless set, with a render on its last) replaces the motion, menu and built-in steps after the rest; the write-defaults fixture, which has no menu, requires it, and the composition, blend duration and layering probes refuse it. It restores
+composition probe (`reference/Editor/HumanProbe.cs`), with `SCENE` `blend` the blend duration probe (`reference/Editor/BlendProbe.cs`), with `SCENE` `layering` the write-defaults layering probe (`reference/Editor/LayeringProbe.cs`) and with `SCENE` `sampletime` the clip sample-time probe (`reference/Editor/SampleTimeProbe.cs`), all described below, in place of the motion, menu and built-in steps. With `SCENE` `writedefaults`, it generates and records the write-defaults fixture: the fixture's body under animator controllers built from the environment variable `AW_WD`, which lists each layer's controller, weight, transition time and states, and for each state whether it writes defaults and what it animates (`reference/Editor/WriteDefaults.cs` gives the grammar; `AW_WD='T:de|dHat=1;K:fSmile=50'` is a write-defaults-on toggle of the hat beside a layer that keeps none). The environment variable `AW_STEPS` (`Name=value,...;...`, each step setting those animator parameters and held `AW_STEP_FRAMES` frames, 20 unless set, with a render on its last) replaces the motion, menu and built-in steps after the rest; the write-defaults fixture, which has no menu, requires it, and the composition, blend duration, layering and clip sample-time probes refuse it. It restores
 `PROJECT`'s package manifest on exit and refuses an `OUT` that holds something other than an earlier recording.
 `OUT` receives:
 
@@ -259,7 +259,7 @@ composition probe (`reference/Editor/HumanProbe.cs`), with `SCENE` `blend` the b
 | `time.tsv` | the time of the emulator's playable graph after each frame's evaluation, every frame from the one the graph is created on, so the first evaluation's delta shows; a recording fails if the graph is gone on a frame |
 | `avatar.glb`, `census.json`, `export.txt` | the exporter's model and census of the build this recording runs, written as the last step of its build preprocess, with the build tools' generated names and ids (and, as the emulator skips the SDK's material locking, unlocked shaders); `cargo run --release --example census -- avatar.glb census.json` in `avatar-core/` checks one; `export.txt` lists what the model does not represent |
 | `coverage.json`, `meta.json` | the avatar's feature counts; versions and totals |
-| `compositions.json` | the composition, blend duration and layering probes' only: for each composition the probe is authored to play on its own, how many clips (composition probe) or states and transitions (the others) are authored to play it |
+| `compositions.json` | the composition, blend duration, layering and clip sample-time probes' only: for each composition the probe is authored to play on its own, how many clips (composition probe), states (clip sample-time probe) or states and transitions (the others) are authored to play it |
 
 The fixture (`reference/Editor/Fixture.cs`, licensed as this repository) is a synthetic humanoid
 authored for the harness: PhysBones covering both immobile types, every limit type, gravity with
@@ -351,6 +351,18 @@ then 20 of `Case` 0, with the blend parameters ramped). The cases:
 A recording fails if a case never entered its states, or if `compositions.json` counts zero for a composition
 `Coverage.LayeringCompositions` lists. The probe's recording is a reference trace of the core
 (`avatar-core/fixtures/reference/layering-animator`).
+
+The clip sample-time probe is the fixture's body with one FX controller playing looping clips whose one curve is the
+identity: keys at (0, 0) and (L, L) with unit tangents on an animator parameter, so the parameter's recorded value
+(`curve:` in `values.tsv`) is the time Unity sampled the clip at, beside the state's normalized time in `clocks.tsv`.
+Each clip is 1, 10, … or 10⁷ s long and plays at speed 1, 0.5 or 2, or under `SampleSpeed`, a speed parameter that
+keeps its default of 0.75; as a state's whole motion, as both leaves of a 1D tree held at its first threshold, or as
+the one leaf of a direct tree at weight one; and from the graph's first frame, as its layer's default state, or later,
+entered when case 1 starts. Each of these 192 has a layer and parameter of its own, so all play at once without
+touching one another, and every later one enters on the same frame. The harness plays case 1 as the blend duration
+probe plays its cases, then holds 3,000 frames. A recording fails if case 1 never entered one of its states, or if
+`compositions.json` counts zero for a composition `Coverage.SampleTimeCompositions` lists. The probe's recording is a
+reference trace of the core (`avatar-core/fixtures/reference/sampletime-animator`).
 
 `reference/check.sh PROJECT OUT [SCENE] [AVATAR]` records the avatar (the fixture by default) twice and requires every output but the logs (`unity.log`, `export.txt`),
 `tips.tsv` and `poses.tsv` to be byte-identical, and PhysBone tips and every pose value within 1e-5 (`reference/poses.py`, Python 3.10 or later).

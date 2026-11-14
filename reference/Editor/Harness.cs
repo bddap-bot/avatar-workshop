@@ -50,7 +50,7 @@ namespace AvatarWorkshop.Reference
             var avatarName = Env("AW_AVATAR");
             Fixture.Kind? kind = scenePath == null ? Fixture.Kind.Fixture : scenePath == "probe" ? Fixture.Kind.Probe : scenePath == "human" ? Fixture.Kind.Human
                 : scenePath == "blend" ? Fixture.Kind.Blend : scenePath == "writedefaults" ? Fixture.Kind.WriteDefaults
-                : scenePath == "layering" ? Fixture.Kind.Layering : (Fixture.Kind?)null;
+                : scenePath == "layering" ? Fixture.Kind.Layering : scenePath == "sampletime" ? Fixture.Kind.SampleTime : (Fixture.Kind?)null;
             if (kind.HasValue) scenePath = Fixture.Build(kind.Value);
 
             EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
@@ -230,8 +230,8 @@ namespace AvatarWorkshop.Reference
         public bool Finished;
         readonly string output;
         readonly string avatarName;
-        readonly bool fixture, probe, human, blend, layering;
-        bool Cased => human || blend || layering;
+        readonly bool fixture, probe, human, blend, layering, sampleTime;
+        bool Cased => human || blend || layering || sampleTime;
         readonly bool migratedDynamicBones;
         bool exported;
         StreamWriter timeOut;
@@ -296,6 +296,7 @@ namespace AvatarWorkshop.Reference
             human = kind == Fixture.Kind.Human;
             blend = kind == Fixture.Kind.Blend;
             layering = kind == Fixture.Kind.Layering;
+            sampleTime = kind == Fixture.Kind.SampleTime;
             this.output = output;
             this.avatarName = avatarName;
             this.migratedDynamicBones = migratedDynamicBones;
@@ -630,7 +631,8 @@ namespace AvatarWorkshop.Reference
             {
                 var (name, listed, compositions) = human ? ("composition", Coverage.Compositions, Coverage.CountCompositions(descriptor))
                     : blend ? ("blend duration", Coverage.BlendCompositions, Coverage.CountBlendCompositions(descriptor))
-                    : ("layering", Coverage.LayeringCompositions, Coverage.CountLayeringCompositions(descriptor));
+                    : layering ? ("layering", Coverage.LayeringCompositions, Coverage.CountLayeringCompositions(descriptor))
+                    : ("clip sample-time", Coverage.SampleTimeCompositions, Coverage.CountSampleTimeCompositions(descriptor));
                 File.WriteAllText(Path.Combine(output, "compositions.json"), Json(compositions) + "\n");
                 var absent = listed.Where(k => compositions[k] == 0).ToList();
                 if (absent.Count > 0) throw new Exception($"the {name} probe lacks {string.Join(", ", absent)}");
@@ -645,6 +647,7 @@ namespace AvatarWorkshop.Reference
                 ["human"] = human,
                 ["blend"] = blend,
                 ["layering"] = layering,
+                ["sample_time"] = sampleTime,
                 ["root_scale"] = new[] { root.lossyScale.x, root.lossyScale.y, root.lossyScale.z },
                 ["unity"] = Application.unityVersion,
                 ["dynamic_bones_migrated"] = migratedDynamicBones,
@@ -1008,6 +1011,7 @@ namespace AvatarWorkshop.Reference
             if (Cased)
             {
                 Compositions(descriptor);
+                if (sampleTime) S("hold", Fixture.SampleTimeHold);
                 S("final", 60, render: true);
                 return;
             }

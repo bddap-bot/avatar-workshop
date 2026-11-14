@@ -107,6 +107,24 @@ fn each_write_defaults_layering_follows_its_reference_trace() {
     assert!(rep.values.wrong <= 1, "values: {}", rep.values.summary(20));
 }
 
+/// The clip sample-time probe plays identity clips, whose value is the time Unity sampled them at, at every length,
+/// speed, container and entry frame at once. The tolerance is wider than a long clip's normalized time, so state times
+/// are held to Unity's bits.
+#[test]
+fn each_clip_sample_time_follows_its_reference_trace() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dir = root.join("fixtures/reference/sampletime-animator");
+    let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-sampletime.glb")).unwrap()).unwrap();
+    let rep = Run::new(&dir, avatar).run(None);
+    assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
+    assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
+    assert!(rep.clocks.compared > 660_000, "{} state times compared", rep.clocks.compared);
+    assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
+    assert_eq!(rep.clock_bits_differ, 0, "state times not the recorded bits");
+    assert!(rep.values.compared > 1_700_000, "{} values compared", rep.values.compared);
+    assert_eq!(rep.values.wrong, 0, "values: {}", rep.values.summary(20));
+}
+
 /// A copy of the fixture's recording with one of its files rewritten.
 fn edited_recording(name: &str, file: &str, edit: impl Fn(&str) -> bool) -> std::path::PathBuf {
     let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/reference/fixture-animator");
