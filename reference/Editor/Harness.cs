@@ -29,6 +29,7 @@ namespace AvatarWorkshop.Reference
         public const int Rate = 60;
 
         internal static Recorder recorder;
+        static ClipSampler sampler;
         static (bool enabled, EnterPlayModeOptions options)? playModeSettings;
 
         public static void Run()
@@ -82,7 +83,13 @@ namespace AvatarWorkshop.Reference
             playModeSettings = (EditorSettings.enterPlayModeOptionsEnabled, EditorSettings.enterPlayModeOptions);
             EditorSettings.enterPlayModeOptionsEnabled = true;
             EditorSettings.enterPlayModeOptions = EnterPlayModeOptions.DisableDomainReload;
-            recorder = new Recorder(output, avatar.name, kind, migrated);
+            var clips = Env("AW_CLIPS");
+            if (clips != null)
+            {
+                if (kind.HasValue || Env("AW_STEPS") != null) throw new Exception("AW_CLIPS samples a recording of a scene's avatar, not a generated probe's or a scripted one");
+                sampler = new ClipSampler(output, clips);
+            }
+            else recorder = new Recorder(output, avatar.name, kind, migrated);
             EditorApplication.playModeStateChanged += OnPlayMode;
             EditorApplication.EnterPlaymode();
         }
@@ -96,7 +103,8 @@ namespace AvatarWorkshop.Reference
                 Time.fixedDeltaTime = 1f / Rate;
                 Time.maximumDeltaTime = 1f / Rate;
                 UnityEngine.Random.InitState(1);
-                Install();
+                if (sampler != null) InstallSampler();
+                else Install();
             }
             catch (Exception e) { Fail(e); }
         }
@@ -140,6 +148,30 @@ namespace AvatarWorkshop.Reference
             PlayerLoop.SetPlayerLoop(loop);
         }
 
+        struct SampleStage { }
+
+        static void InstallSampler()
+        {
+            var loop = PlayerLoop.GetCurrentPlayerLoop();
+            for (int i = 0; i < loop.subSystemList.Length; i++)
+            {
+                var sys = loop.subSystemList[i];
+                if (sys.type != typeof(PostLateUpdate)) continue;
+                sys.subSystemList = sys.subSystemList.Append(new PlayerLoopSystem
+                {
+                    type = typeof(SampleStage),
+                    updateDelegate = () =>
+                    {
+                        if (sampler.Finished) return;
+                        try { sampler.Tick(); }
+                        catch (Exception e) { Fail(e); }
+                    },
+                }).ToArray();
+                loop.subSystemList[i] = sys;
+            }
+            PlayerLoop.SetPlayerLoop(loop);
+        }
+
         static void Guard(Action a)
         {
             if (recorder == null || recorder.Finished) return;
@@ -164,6 +196,7 @@ namespace AvatarWorkshop.Reference
             var output = Env("AW_OUT");
             if (output != null) { Directory.CreateDirectory(output); File.WriteAllText(Path.Combine(output, "error.txt"), e.ToString()); }
             if (recorder != null) recorder.Finished = true;
+            if (sampler != null) sampler.Finished = true;
             Finish(1);
         }
     }
@@ -191,6 +224,19 @@ namespace AvatarWorkshop.Reference
         public NativeArray<MuscleHandle> Handles;
         public NativeArray<float> Values;
         public NativeArray<int> Runs;
+
+        /// `held` is false for a muscle whose bone the avatar does not map.
+        public static (MuscleHandle[] handles, string[] keys, bool[] held) Keys(Animator animator)
+        {
+            var handles = new MuscleHandle[MuscleHandle.muscleHandleCount];
+            MuscleHandle.GetMuscleHandles(handles);
+            var keys = handles.Select(h => "muscle:" + Fixture.Binding(h.name)).ToList();
+            var mapped = handles.Select(h => Array.IndexOf(HumanTrait.MuscleName, h.name))
+                .Select(m => m < 0 || animator.GetBoneTransform((HumanBodyBones)HumanTrait.BoneFromMuscle(m)) != null).ToList();
+            foreach (var part in new[] { "Root" }.Concat(Enum.GetNames(typeof(AvatarIKGoal))))
+                keys.AddRange(new[] { "T.x", "T.y", "T.z", "Q.x", "Q.y", "Q.z", "Q.w" }.Select(c => "muscle:" + part + c));
+            return (handles, keys.ToArray(), mapped.Concat(Enumerable.Repeat(true, keys.Count - mapped.Count)).ToArray());
+        }
 
         public void ProcessRootMotion(AnimationStream stream) { }
 
@@ -382,16 +428,9 @@ namespace AvatarWorkshop.Reference
             var output = (AnimationPlayableOutput)graph.GetOutputByType<AnimationPlayableOutput>(0);
             if (!output.GetSourcePlayable().Equals((Playable)mixer)) throw new Exception("the emulator's animation output does not play its mixer");
 
-            var handles = new MuscleHandle[MuscleHandle.muscleHandleCount];
-            MuscleHandle.GetMuscleHandles(handles);
+            MuscleHandle[] handles;
+            (handles, humanKeys, humanHeld) = HumanOutput.Keys(animator);
             humanHandles = new NativeArray<MuscleHandle>(handles, Allocator.Persistent);
-            var keys = handles.Select(h => "muscle:" + Fixture.Binding(h.name)).ToList();
-            var mapped = handles.Select(h => Array.IndexOf(HumanTrait.MuscleName, h.name))
-                .Select(m => m < 0 || animator.GetBoneTransform((HumanBodyBones)HumanTrait.BoneFromMuscle(m)) != null).ToList();
-            foreach (var part in new[] { "Root" }.Concat(Enum.GetNames(typeof(AvatarIKGoal))))
-                keys.AddRange(new[] { "T.x", "T.y", "T.z", "Q.x", "Q.y", "Q.z", "Q.w" }.Select(c => "muscle:" + part + c));
-            humanKeys = keys.ToArray();
-            humanHeld = mapped.Concat(Enumerable.Repeat(true, keys.Count - mapped.Count)).ToArray();
             humanValues = new NativeArray<float>(humanKeys.Length, Allocator.Persistent);
             humanRuns = new NativeArray<int>(1, Allocator.Persistent);
             var job = AnimationScriptPlayable.Create(graph, new HumanOutput { Handles = humanHandles, Values = humanValues, Runs = humanRuns }, 1);

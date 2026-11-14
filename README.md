@@ -241,6 +241,22 @@ records the probe there: the fixture's body with one three-bone chain per PhysBo
 them), so each field's effect has a reference trace of its own. The probe rests 15 s before its motion, so even its lightly damped chains start it settled. With `SCENE` `human`, it generates and records the
 composition probe (`reference/Editor/HumanProbe.cs`), with `SCENE` `blend` the blend duration probe (`reference/Editor/BlendProbe.cs`), with `SCENE` `layering` the write-defaults layering probe (`reference/Editor/LayeringProbe.cs`), with `SCENE` `sampletime` the clip sample-time probe (`reference/Editor/SampleTimeProbe.cs`), with `SCENE` `rotation` the rotation probe (`reference/Editor/RotationProbe.cs`) and with `SCENE` `dense` the dense clip probe (`reference/Editor/DenseProbe.cs`), all described below, in place of the motion, menu and built-in steps. With `SCENE` `curves` it records the curve probe (`reference/Editor/CurveProbe.cs`), also below, which plays no avatar and refuses `AVATAR` and `AW_STEPS`. With `SCENE` `writedefaults`, it generates and records the write-defaults fixture: the fixture's body under animator controllers built from the environment variable `AW_WD`, which lists each layer's controller, weight, transition time and states, and for each state whether it writes defaults and what it animates (`reference/Editor/WriteDefaults.cs` gives the grammar; `AW_WD='T:de|dHat=1;K:fSmile=50'` is a write-defaults-on toggle of the hat beside a layer that keeps none). The environment variable `AW_STEPS` (`Name=value,...;...`, each step setting those animator parameters and held `AW_STEP_FRAMES` frames, 20 unless set, with a render on its last) replaces the motion, menu and built-in steps after the rest; the write-defaults fixture, which has no menu, requires it, and the composition, blend duration, layering, clip sample-time, rotation and dense clip probes refuse it. It restores
 `PROJECT`'s package manifest on exit and refuses an `OUT` that holds something other than an earlier recording.
+
+With the environment variable `AW_CLIPS` naming a recording of `SCENE`'s avatar, it records no steps. It enters play mode
+as a recording does, so the emulator builds the same avatar, then plays each clip that recording's playables played
+alone, in a one-clip playable graph on that avatar (foot IK and playable IK off), at every normalized state time
+`clocks.tsv` held it, with `states.tsv` naming the state. A blend tree's leaves each play at the tree's state time.
+`OUT` receives `clips.tsv` (each clip: number, name, length, whether it loops, its own cycle offset and mirror, then
+its curves: `muscle:<name>` for a humanoid curve, `animator:<name>` for another animator curve on the root,
+`<path>|<component>|<property>` otherwise), `played.tsv` (each frame from the first `states.tsv` holds: layer, current
+or next state, clip, normalized time, and the state's cycle offset and mirror, `parameter` where one drives it), `samples.tsv` (each clip at each of its normalized times: the clip time set,
+then for each curve the value the graph produced and `AnimationCurve.Evaluate` at that time within the clip, joined
+by a comma) and `done`. The graph's humanoid values are read from its output stream as `values.tsv` reads them
+(`-` for a muscle of a bone the avatar does not map); other curves are read from the object they bind (`-` when it
+holds no value). A run fails if a played clip lacks a sample or the stream held no humanoid values for a humanoid
+clip. `cargo run --release --example clips -- OUT RECORDING/avatar.glb [--frames FIRST-LAST]` in `avatar-core/` compares
+each muscle sample with the core's sampling of the same clip alone.
+
 `OUT` receives:
 
 | File | Contents |

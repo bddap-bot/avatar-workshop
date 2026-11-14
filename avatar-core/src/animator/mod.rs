@@ -237,6 +237,12 @@ pub fn authored(avatar: &Avatar, t: &Target) -> f32 {
     default_of(avatar, t, &rest)
 }
 
+/// Each target's value as the avatar was authored.
+pub fn authored_all(avatar: &Avatar, targets: &Targets) -> Vec<f32> {
+    let rest = crate::physbones::Nodes::read(avatar).map(|n| n.rest).unwrap_or_default();
+    targets.list.iter().map(|t| default_of(avatar, t, &rest)).collect()
+}
+
 fn default_of(avatar: &Avatar, t: &Target, rest: &[crate::physbones::Transform]) -> f32 {
     let m = &avatar.model;
     match t {
@@ -363,16 +369,23 @@ fn controlled(l: ControlledLayer) -> PlayableLayerType {
     }
 }
 
+/// The model's clips as the animator samples them, in the model's order, and the targets they write.
+pub fn compile_clips(avatar: &Avatar) -> (Targets, Vec<CompiledClip>) {
+    let m = &avatar.model;
+    let mut targets = Targets::default();
+    let mut clips: Vec<CompiledClip> = m.clips.iter().map(|c| CompiledClip::compile(c, &mut targets)).collect();
+    let muscle_targets: Vec<u32> =
+        (0..targets.len() as u32).filter(|&t| matches!(&targets.list[t as usize], Target::Muscle(n) if human::goal(n).is_none())).collect();
+    for c in &mut clips {
+        c.complete_human_pose(&muscle_targets, &targets, m.humanoid.rest.as_ref());
+    }
+    (targets, clips)
+}
+
 impl Animator {
     pub fn new(avatar: &Avatar) -> Animator {
         let m = &avatar.model;
-        let mut targets = Targets::default();
-        let mut clips: Vec<CompiledClip> = m.clips.iter().map(|c| CompiledClip::compile(c, &mut targets)).collect();
-        let muscle_targets: Vec<u32> =
-            (0..targets.len() as u32).filter(|&t| matches!(&targets.list[t as usize], Target::Muscle(n) if human::goal(n).is_none())).collect();
-        for c in &mut clips {
-            c.complete_human_pose(&muscle_targets, &targets, m.humanoid.rest.as_ref());
-        }
+        let (mut targets, clips) = compile_clips(avatar);
         let face = face::Face::new(&m.descriptor, &mut targets);
         let anim_params = |c: u32| -> Vec<String> {
             clips[c as usize]
@@ -384,8 +397,7 @@ impl Animator {
                 })
                 .collect()
         };
-        let rest = crate::physbones::Nodes::read(avatar).map(|n| n.rest).unwrap_or_default();
-        let defaults: Vec<f32> = targets.list.iter().map(|t| default_of(avatar, t, &rest)).collect();
+        let defaults = authored_all(avatar, &targets);
         let mut playables = Vec::new();
         for kind in PLAYABLE_ORDER {
             let Some(layer) = m.layers.get(&kind) else { continue };
