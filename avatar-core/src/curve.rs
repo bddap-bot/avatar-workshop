@@ -18,11 +18,16 @@ impl AnimationCurve {
         segment(&keys[i - 1], &keys[i], time)
     }
 
-    /// The curve as Unity samples it without high-quality curves: when every key lies on the frame grid of `rate`,
-    /// its value on each frame from 0 to `length` and the straight line between neighbouring frames; else unchanged.
-    pub fn on_frames(&self, rate: f32, length: f32) -> AnimationCurve {
+    /// Whether every key lies on the frame grid of `rate`, with finite tangents: the curves a clip without
+    /// high-quality curves samples on its frames.
+    pub fn on_frame_grid(&self, rate: f32) -> bool {
         let on_grid = |t: f32| ((t * rate) - (t * rate).round()).abs() < 1e-3;
-        if self.keys.len() < 2 || rate <= 0.0 || length <= 0.0 || !self.keys.iter().all(|k| on_grid(k.time)) {
+        rate > 0.0 && self.keys.iter().all(|k| on_grid(k.time) && k.in_tangent.is_finite() && k.out_tangent.is_finite())
+    }
+
+    /// The curve's value on each frame of `rate` from 0 to `length`, and the straight line between neighbouring frames.
+    pub fn framed(&self, rate: f32, length: f32) -> AnimationCurve {
+        if self.keys.len() < 2 || rate <= 0.0 || length <= 0.0 {
             return self.clone();
         }
         let frames = (length * rate - 1e-3).ceil().max(1.0) as usize;
@@ -133,9 +138,10 @@ mod tests {
     }
 
     #[test]
-    fn on_frames_is_linear_between_frames() {
+    fn framed_is_linear_between_frames() {
         let ease = AnimationCurve { keys: vec![key(0.0, 0.0, 0.0), key(0.05, 1.0, 0.0)] };
-        let framed = ease.on_frames(60.0, 0.05);
+        assert!(ease.on_frame_grid(60.0));
+        let framed = ease.framed(60.0, 0.05);
         assert_eq!(framed.keys.iter().map(|k| k.time).collect::<Vec<_>>(), [0.0, 1.0 / 60.0, 2.0 / 60.0, 0.05]);
         for (i, k) in framed.keys.iter().enumerate() {
             assert_eq!(k.value, ease.evaluate(k.time), "frame {i}");
@@ -144,6 +150,9 @@ mod tests {
         assert!((framed.evaluate(0.5 / 60.0) - 0.5 * first).abs() < 1e-6);
         assert!((framed.evaluate(0.5 / 60.0) - ease.evaluate(0.5 / 60.0)).abs() > 1e-2);
         let off = AnimationCurve { keys: vec![key(0.0, 0.0, 0.0), key(1.37 / 60.0, 1.0, 0.0), key(0.05, 0.0, 0.0)] };
-        assert_eq!(off.on_frames(60.0, 0.05), off);
+        assert!(!off.on_frame_grid(60.0));
+        let mut stepped = ease.clone();
+        stepped.keys[0].out_tangent = f32::INFINITY;
+        assert!(!stepped.on_frame_grid(60.0));
     }
 }

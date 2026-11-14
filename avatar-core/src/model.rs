@@ -1353,8 +1353,8 @@ pub struct Clip {
     pub length: f32,
     /// Frames per second of the clip's frame grid, Unity's clip sample rate.
     pub sample_rate: f32,
-    /// Unity's `m_UseHighQualityCurve`. Off, Unity samples each curve on the clip's frame grid and interpolates
-    /// linearly between frames, in place of the curve's own Hermite cubic.
+    /// Unity's `m_UseHighQualityCurve`. Off, Unity samples each curve whose keys all lie on the clip's frame grid on
+    /// its frames and linearly between them, in place of the curve's own Hermite cubic.
     pub high_quality_curve: bool,
     #[serde(rename = "loop")]
     pub looping: bool,

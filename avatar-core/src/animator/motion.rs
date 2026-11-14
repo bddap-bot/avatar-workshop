@@ -167,7 +167,9 @@ impl CompiledClip {
     }
 
     fn compile_as_is(clip: &Clip, targets: &mut Targets) -> CompiledClip {
-        let sampled = |c: &AnimationCurve| if clip.high_quality_curve { c.clone() } else { c.on_frames(clip.sample_rate, clip.length) };
+        let as_played = |c: &AnimationCurve| {
+            if clip.high_quality_curve || !c.on_frame_grid(clip.sample_rate) { c.clone() } else { c.framed(clip.sample_rate, clip.length) }
+        };
         let mut curves = Vec::new();
         let mut euler: Vec<EulerGroup> = Vec::new();
         for c in &clip.curves {
@@ -183,12 +185,12 @@ impl CompiledClip {
                 };
                 let i = axis_index(*component);
                 if i < 3 {
-                    euler[at].axes[i] = Some(sampled(&c.curve));
+                    euler[at].axes[i] = Some(as_played(&c.curve));
                 }
                 continue;
             }
             if let Some(t) = target_of(&c.binding) {
-                curves.push((targets.id(t), sampled(&c.curve)));
+                curves.push((targets.id(t), as_played(&c.curve)));
             }
         }
         let stepped = clip

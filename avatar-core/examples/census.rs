@@ -865,10 +865,11 @@ impl Check<'_> {
             faults.extend(rest.iter().map(|x| format!("model clip {x} is not Unity's")));
             let unset = match i {
                 0 => jf(60.0),
-                1 => json!(false),
-                2 => jf(0.0),
-                3 => Value::Null,
-                _ => neutral[i - 4].clone(),
+                1 => json!(true),
+                2 => json!(false),
+                3 => jf(0.0),
+                4 => Value::Null,
+                _ => neutral[i - 5].clone(),
             };
             let set = unity_settings.iter().filter(|(_, v)| v[k] != unset).count();
             self.report.line(&format!("clip setting {k} ({set} not the default)"), u.len(), equal, faults);
