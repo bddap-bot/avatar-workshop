@@ -52,7 +52,31 @@ fn each_humanoid_composition_follows_its_reference_trace() {
         let wrong: Vec<_> = rep.bindings.samples.range((s.frame + 1, String::new())..(s.frame + s.frames, String::new())).map(|w| w.0).collect();
         assert!(wrong.is_empty(), "{} differs at frames {wrong:?}", s.label);
     }
-    assert!(rep.bindings.wrong <= 187, "bindings: {}", rep.bindings.summary(20));
+    assert!(rep.bindings.wrong <= 134, "bindings: {}", rep.bindings.summary(20));
+}
+
+/// The rotation probe turns the body and the IK goals about all three axes, one clip and root-motion setting at a
+/// time, in Base and Action at full and partial weight. Every case follows the reference but a moving clip under Loop
+/// Pose and the Feet height basis left unbaked.
+#[test]
+fn each_humanoid_rotation_follows_its_reference_trace() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dir = root.join("fixtures/reference/rotation-animator");
+    let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-rotation.glb")).unwrap()).unwrap();
+    let rep = Run::new(&dir, avatar).run(None);
+    assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
+    assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
+    assert_eq!(rep.values.wrong, 0, "values: {}", rep.values.summary(20));
+    assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
+    assert!(rep.bindings.compared > 1_900_000, "{} bindings compared", rep.bindings.compared);
+    let steps = reference::animator::steps(&dir);
+    let cases: Vec<_> = steps.iter().filter(|s| s.label.starts_with("case ")).collect();
+    assert_eq!(cases.len(), 96, "48 cases, each unmirrored and mirrored");
+    for s in cases.iter().filter(|s| !s.label.ends_with("moving xyz loop pose") && !s.label.ends_with("height feet")) {
+        let wrong: Vec<_> = rep.bindings.samples.range((s.frame, String::new())..(s.frame + s.frames, String::new())).take(20).collect();
+        assert!(wrong.is_empty(), "{} differs: {wrong:?}", s.label);
+    }
+    assert!(rep.bindings.wrong <= 8882, "bindings: {}", rep.bindings.summary(20));
 }
 
 /// The blend duration probe plays one blend tree at a time; the core keeps every state's time. The values of every
@@ -671,4 +695,29 @@ fn a_numbered_summary_holds_no_name() {
     let named = m.summary(20);
     assert!(named.contains("\n  0 active:Armature/Tail: 1 frames, first at 7: 0 (want 1)"), "{named}");
     assert!(named.contains("\n  1 2:0:Sit: 2 frames, first at 9: Upright (want Slouch)"), "{named}");
+}
+
+/// A crossfade blends each IK goal from the source's rotation toward the destination's as it lies in the source's
+/// hemisphere, as the die pose's foot goal (w below zero) shows on entering it from a standing pose; once the
+/// transition ends the goal takes the clip's own sign.
+#[test]
+fn a_crossfade_turns_a_goal_the_short_way() {
+    let mut avatar = fixture();
+    let goal = |q: [f32; 4]| ["LeftFoot", "RightFoot"].into_iter().flat_map(move |g| ["x", "y", "z", "w"].into_iter().zip(q).map(move |(c, v)| muscle(&format!("{g}Q.{c}"), v)));
+    clip_mut(&mut avatar, "Stand").curves.extend(goal([0.0, 0.0, 0.0, 1.0]));
+    clip_mut(&mut avatar, "Walk").curves.extend(goal([0.6, 0.0, 0.0, -0.8]));
+    let mut a = Animator::new(&avatar);
+    a.set("Flip", 1.0);
+    run(&mut a, 10);
+    a.set_builtin("VelocityZ", 2.0);
+    run(&mut a, 6);
+    for g in ["LeftFoot", "RightFoot"] {
+        let (x, w) = (value(&a, &format!("{g}Q.x")), value(&a, &format!("{g}Q.w")));
+        assert!(x < -0.1 && w > 0.9, "{g} mid-transition: ({x}, {w})");
+    }
+    run(&mut a, 30);
+    for g in ["LeftFoot", "RightFoot"] {
+        let w = value(&a, &format!("{g}Q.w"));
+        assert!(w < -0.5, "{g} after the transition keeps its clip's sign: {w}");
+    }
 }

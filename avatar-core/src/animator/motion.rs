@@ -413,22 +413,22 @@ struct Human {
     slots: Vec<u32>,
     settings: HumanoidClip,
     start: glam::Vec3,
+    /// The body's yaw at the clip's start, from which root motion turns.
+    start_twist: Quat,
     /// Change over the clip's length, which Loop Pose removes from what it bakes into the pose.
     drift: glam::Vec3,
-    yaw_drift: f32,
+    /// The body's start seen from its end, which Loop Pose blends in over the clip's length.
+    body_drift: Quat,
     /// The lower foot's height at the clip's start, which the Feet height basis measures the body from.
     feet: f32,
     /// Change of each other curve over the clip's length, by target, which Loop Pose removes.
     curve_drift: Vec<(u32, f32)>,
 }
 
-fn yaw(q: Quat) -> f32 {
-    (2.0 * (q.w * q.y + q.x * q.z)).atan2(1.0 - 2.0 * (q.x * q.x + q.y * q.y))
-}
-
-fn wrapped(angle: f32) -> f32 {
-    let a = angle.rem_euclid(std::f32::consts::TAU);
-    if a > std::f32::consts::PI { a - std::f32::consts::TAU } else { a }
+/// A rotation's turn about Y.
+fn twist(q: Quat) -> Quat {
+    let t = Quat::from_xyzw(0.0, q.y, 0.0, q.w);
+    if t.length_squared() > 0.0 { t.normalize() } else { Quat::IDENTITY }
 }
 
 impl Human {
@@ -484,10 +484,11 @@ impl Human {
             body,
             goals,
             slots,
+            body_drift: if settings.loop_pose { rot(&body, clip.length).inverse() * start_q } else { Quat::IDENTITY },
             settings,
             start,
+            start_twist: twist(start_q),
             drift: pos(&body, clip.length) - start,
-            yaw_drift: wrapped(yaw(rot(&body, clip.length)) - yaw(start_q)),
             feet,
         })
     }
@@ -501,16 +502,14 @@ impl Human {
         let s = &self.settings;
         let frac = if length > 0.0 { time / length } else { 0.0 };
         let t = glam::Vec3::new(get(self.body[0]), get(self.body[1]), get(self.body[2]));
-        let q = Quat::from_xyzw(get(self.body[3]), get(self.body[4]), get(self.body[5]), get(self.body[6])).normalize();
+        let mut q = Quat::from_xyzw(get(self.body[3]), get(self.body[4]), get(self.body[5]), get(self.body[6])).normalize();
+        q *= weighted(self.body_drift, frac);
         let mut turn = Quat::from_rotation_y(s.rotation.offset_degrees.to_radians());
-        if s.rotation.bake_into_pose && s.loop_pose {
-            turn *= Quat::from_rotation_y(self.yaw_drift * frac);
-        }
-        if !s.rotation.bake_into_pose || s.rotation.based_upon == RotationBasis::BodyOrientation {
-            let twist = Quat::from_xyzw(0.0, q.y, 0.0, q.w);
-            if twist.length_squared() > 0.0 {
-                turn *= twist.normalize();
-            }
+        match (s.rotation.bake_into_pose, s.rotation.based_upon) {
+            (false, RotationBasis::BodyOrientation) => turn *= twist(q),
+            (true, RotationBasis::BodyOrientation) => turn *= self.start_twist,
+            (false, RotationBasis::Original) => turn *= twist(q) * self.start_twist.inverse(),
+            (true, RotationBasis::Original) => {}
         }
         let mut at = glam::Vec3::new(0.0, s.height.offset, 0.0);
         if s.height.bake_into_pose {
@@ -520,10 +519,11 @@ impl Human {
             if s.height.based_upon == HeightBasis::Feet {
                 at.y += self.feet;
             }
-        } else if s.height.based_upon == HeightBasis::Original {
-            at.y += t.y - self.start.y;
         } else {
-            at.y += t.y;
+            at.y += match s.height.based_upon {
+                HeightBasis::Original => t.y - self.start.y,
+                HeightBasis::CenterOfMass | HeightBasis::Feet => t.y,
+            };
         }
         if s.xz.bake_into_pose {
             if s.loop_pose {
@@ -532,8 +532,10 @@ impl Human {
             if s.xz.based_upon == XzBasis::CenterOfMass {
                 at += glam::Vec3::new(self.start.x, 0.0, self.start.z);
             }
-        } else {
+        } else if s.xz.based_upon == XzBasis::CenterOfMass {
             at += glam::Vec3::new(t.x, 0.0, t.z);
+        } else {
+            at += glam::Vec3::new(t.x - self.start.x, 0.0, t.z - self.start.z);
         }
         let root = turn.inverse();
         let local = |p: glam::Vec3| root * (p - at);
@@ -553,6 +555,11 @@ impl Human {
             write(ids, t + q * (ct + cq * g.mirror.0), q * cq * g.mirror.1, out);
         }
     }
+}
+
+/// Whether two rotations, as xyzw components, lie in opposite hemispheres: Unity's blends negate one of them first.
+pub fn opposed(a: [f32; 4], b: [f32; 4]) -> bool {
+    a.iter().zip(b).map(|(x, y)| x * y).sum::<f32>() < 0.0
 }
 
 /// A rotation scaled by a weight as Unity's human pose scales one: its vector part, renormalized.

@@ -117,8 +117,9 @@ struct Playable {
     binders: Vec<u8>,
     /// Per layer, whether a clip it plays drives an animator parameter.
     drives_parameters: Vec<bool>,
-    /// Per layer, whether a clip it plays is humanoid: a layer playing none gives no human pose.
-    poses: Vec<bool>,
+    /// Per layer, the states that give the human pose: those whose motion holds a humanoid clip, at any weight, and
+    /// those with no motion, which hold what the layer last wrote. None of a layer playing no humanoid clip.
+    poses: Vec<std::collections::HashSet<crate::model::StateId>>,
     /// Per layer, every slot of each renderer it binds a slot of: Unity writes a renderer's slots together.
     slots: Vec<Vec<u32>>,
     layer_masks: Vec<Option<Mask>>,
@@ -421,7 +422,17 @@ impl Animator {
             for li in 0..c.layers.len() {
                 let mut ts: Vec<u32> = rt.layer_clip_ids(li).iter().flat_map(|&c| clips[c as usize].bindings()).collect();
                 drives_parameters.push(ts.iter().any(|&t| matches!(targets.list[t as usize], Target::AnimatorParameter(_))));
-                poses.push(rt.layer_clip_ids(li).iter().any(|&c| clips[c as usize].is_human(&targets)));
+                let human = |m: &Motion| {
+                    let mut ids = Vec::new();
+                    machine::clip_ids(m, &mut ids);
+                    ids.iter().any(|&c| clips[c as usize].is_human(&targets))
+                };
+                let states = rt.state_ids(li).into_iter().map(|s| (s, rt.motion(li, s)));
+                let mut posing: std::collections::HashSet<_> = states.filter(|(_, m)| m.as_ref().is_none_or(human)).map(|(s, _)| s).collect();
+                if !rt.layer_clip_ids(li).iter().any(|&c| clips[c as usize].is_human(&targets)) {
+                    posing.clear();
+                }
+                poses.push(posing);
                 ts.sort_unstable();
                 ts.dedup();
                 for t in ts {
@@ -865,7 +876,8 @@ impl Animator {
                 let targets = &self.targets.list;
                 let beneath = |t: u32| prev_ref[t as usize];
                 let kept = |t: u32| self.kept[t as usize];
-                let frozen = |rt: &ControllerRt, li: usize| layer_pose(rt, li, clips_ref, defaults, &bound, &slots[li], targets, &beneath, &kept, &beneath, &beneath);
+                let quats = &self.human_rotations;
+                let frozen = |rt: &ControllerRt, li: usize| layer_pose(rt, li, clips_ref, defaults, &bound, &slots[li], targets, quats, &beneath, &kept, &beneath, &beneath);
                 self.playables[pi].rt.update(dt, &clips, &mut entered, &frozen);
             }
             all_entered.extend(entered.into_iter().map(|e| (pi, e)));
@@ -911,6 +923,17 @@ impl Animator {
                     let bq = unit(bq);
                     let (t, q) = (bt + bq * (at * pw), bq * motion::weighted(unit(aq), pw));
                     appended.extend(ids.iter().copied().zip([t.x, t.y, t.z, q.x, q.y, q.z, q.w]));
+                }
+            }
+            if p.kind != PlayableLayerType::Additive {
+                for q in self.human_rotations.iter().filter(|q| pw * acc.cov[q[3] as usize] < 1.0) {
+                    let pos = |t: u32| p.human.iter().position(|&h| h == t);
+                    let (Some(a), Some(b), Some(c), Some(d)) = (pos(q[0]), pos(q[1]), pos(q[2]), pos(q[3])) else { continue };
+                    let k = [a, b, c, d];
+                    let under = k.map(|j| below[j].0 + (1.0 - below[j].1) * self.defaults[p.human[j] as usize]);
+                    if motion::opposed(q.map(|t| acc.sum[t as usize]), under) {
+                        q.iter().for_each(|&t| acc.sum[t as usize] = -acc.sum[t as usize]);
+                    }
                 }
             }
             for (&t, (s0, c0, t0)) in p.human.iter().zip(below) {
@@ -1044,7 +1067,7 @@ impl Animator {
                 (false, true) => prev[t as usize],
                 (false, false) => self.defaults[t as usize],
             };
-            let whole_pose = (!additive || stacked).then(|| layer_pose(&p.rt, li, clips, &self.defaults, &p.bound, &p.slots[li], &self.targets.list, &beneath, &kept, &through, &reset));
+            let whole_pose = (!additive || stacked).then(|| layer_pose(&p.rt, li, clips, &self.defaults, &p.bound, &p.slots[li], &self.targets.list, &self.human_rotations, &beneath, &kept, &through, &reset));
             if additive {
                 if let Some(mut pose) = whole_pose.clone().filter(|_| p.drives_parameters[li]) {
                     self.pull_parameters(&p.rt, &pulled(&p.rt, li, clips, &self.defaults), &mut pose);
@@ -1105,8 +1128,14 @@ impl Animator {
             }
             // An override layer in a state gives the whole human pose: what the state does not write, or a
             // transition leaves uncovered, stays where the layer last wrote it, at rest until it has. A layer
-            // without states, or playing no humanoid clip, gives nothing.
-            if p.rt.layers[li].current.is_some() && p.poses[li] {
+            // without states, or in a state whose motion holds no humanoid clip, gives nothing.
+            let posing = &p.poses[li];
+            let l = &p.rt.layers[li];
+            let gives_pose = match &l.active {
+                Some(a) => posing.contains(&a.to.state) || matches!(&a.from, From::State(s) if posing.contains(&s.state)) || (matches!(&a.from, From::Frozen(_)) && !posing.is_empty()),
+                None => l.current.as_ref().is_some_and(|c| posing.contains(&c.state)),
+            };
+            if gives_pose {
                 let last = &mut layer_human[li];
                 for x in pose.iter_mut().filter(|x| p.whole[x.0 as usize]) {
                     let kept = last.get(&x.0).copied().unwrap_or(self.defaults[x.0 as usize]);
@@ -1120,7 +1149,7 @@ impl Animator {
                     .collect();
                 pose.extend(kept);
             }
-            self.align_rotations(&mut pose, acc);
+            self.align_rotations(&mut pose, acc, lw);
             if !stacked {
                 self.pull_parameters(&p.rt, &pulled(&p.rt, li, clips, &self.defaults), &mut pose);
             }
@@ -1173,11 +1202,26 @@ impl Animator {
     }
 
     /// Negates a layer's rotation lying in the other hemisphere from the rotation beneath it, as Unity's blend does.
-    fn align_rotations(&self, pose: &mut [(u32, f32, f32)], acc: &Accum) {
+    /// The body and the IK goals are negated only in a layer below full weight: a layer at full weight writes them
+    /// with the sign its clips give.
+    fn align_rotations(&self, pose: &mut [(u32, f32, f32)], acc: &Accum, weight: f32) {
         let mut quats: HashMap<u32, [Option<usize>; 4]> = HashMap::new();
+        let mut human = vec![[None; 4]; self.human_rotations.len()];
         for (k, &(t, _, _)) in pose.iter().enumerate() {
             if let Target::Rotation(n, a) = &self.targets.list[t as usize] {
                 quats.entry(*n).or_default()[axis_index(*a)] = Some(k);
+            }
+            for (slots, q) in human.iter_mut().zip(&self.human_rotations) {
+                if let Some(j) = q.iter().position(|&x| x == t) {
+                    slots[j] = Some(k);
+                }
+            }
+        }
+        for (slots, q) in human.into_iter().zip(&self.human_rotations).filter(|_| weight < 1.0) {
+            let [Some(x), Some(y), Some(z), Some(w)] = slots else { continue };
+            let below = q.map(|t| acc.sum[t as usize] + (1.0 - acc.cov[t as usize]) * self.defaults[t as usize]);
+            if motion::opposed([pose[x].1, pose[y].1, pose[z].1, pose[w].1], below) {
+                [x, y, z, w].into_iter().for_each(|i| pose[i].1 = -pose[i].1);
             }
         }
         for (n, slots) in quats {
@@ -1538,7 +1582,7 @@ fn uncovered(rt: &ControllerRt, li: usize, state: crate::model::StateId, clips: 
 /// leaves at weight zero write is covered by none of them, so it keeps the value beneath, as a toggle's far end over a
 /// radial shows; an animator parameter they write still takes the zero share.
 #[allow(clippy::too_many_arguments)]
-fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32], bound: &[u32], slots: &[u32], targets: &[Target], beneath: &dyn Fn(u32) -> f32, held: &dyn Fn(u32) -> f32, through: &dyn Fn(u32) -> f32, reset: &dyn Fn(u32) -> f32) -> Vec<(u32, f32, f32)> {
+fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32], bound: &[u32], slots: &[u32], targets: &[Target], quats: &[[u32; 4]], beneath: &dyn Fn(u32) -> f32, held: &dyn Fn(u32) -> f32, through: &dyn Fn(u32) -> f32, reset: &dyn Fn(u32) -> f32) -> Vec<(u32, f32, f32)> {
     let l = &rt.layers[li];
     let Some(cur) = &l.current else { return vec![] };
     let steady = match &l.active {
@@ -1607,8 +1651,23 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
                 ),
                 From::Frozen(v) => (v.iter().map(|&(t, v, c)| (t, (v, c))).collect(), true),
             };
-            let to = animated(playing_pose(rt, li, &a.to, clips, defaults, false));
+            let mut to = animated(playing_pose(rt, li, &a.to, clips, defaults, false));
             let to_wd = rt.state(li, a.to.state).is_some_and(|s| s.write_defaults);
+            let source = |t: u32| {
+                from.get(&t).copied().or_else(|| {
+                    if from_wd && to_wd {
+                        Some((defaults[t as usize], 1.0))
+                    } else {
+                        (!targets[t as usize].rests_at_default()).then(|| (beneath(t), 1.0))
+                    }
+                })
+            };
+            for q in quats {
+                let (Some(over), Some(under)) = (q.iter().map(|t| to.get(t).copied()).collect::<Option<Vec<f32>>>(), q.iter().map(|&t| source(t).map(|s| s.0)).collect::<Option<Vec<f32>>>()) else { continue };
+                if motion::opposed([over[0], over[1], over[2], over[3]], [under[0], under[1], under[2], under[3]]) {
+                    q.iter().for_each(|t| *to.get_mut(t).unwrap() *= -1.0);
+                }
+            }
             let mut out = Vec::new();
             let written: Vec<u32> = if from_wd && to_wd {
                 let mut w: Vec<u32> = from.keys().chain(to.keys()).copied().collect();
@@ -1620,13 +1679,7 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
             };
             for t in written {
                 let (mut sum, mut cov) = (0.0, 0.0);
-                let f = from.get(&t).copied().or_else(|| {
-                    if from_wd && to_wd {
-                        Some((defaults[t as usize], 1.0))
-                    } else {
-                        (!targets[t as usize].rests_at_default()).then(|| (beneath(t), 1.0))
-                    }
-                });
+                let f = source(t);
                 if let Some((v, c)) = f {
                     sum += v * c * (1.0 - w);
                     cov += c * (1.0 - w);

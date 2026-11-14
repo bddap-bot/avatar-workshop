@@ -295,6 +295,12 @@ impl ControllerRt {
         self.layers[src].flat.as_ref()?.states.get(&id)
     }
 
+    /// The states of a layer, a synced layer's being its source's.
+    pub fn state_ids(&self, layer: usize) -> Vec<StateId> {
+        let src = self.layers[layer].synced.as_ref().map_or(layer, |s| s.0);
+        self.layers[src].flat.as_ref().map_or(Vec::new(), |f| f.states.keys().copied().collect())
+    }
+
     /// The leaves of a state's motion with the state's own time settings applied.
     pub fn state_leaves(&self, layer: usize, id: StateId, out: &mut Vec<Leaf>) {
         let Some(m) = self.motion(layer, id) else { return };

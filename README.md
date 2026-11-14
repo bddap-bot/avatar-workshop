@@ -384,7 +384,8 @@ between 0 and 1 on fewer than 90% of a partial case's frames, or if `composition
 `Coverage.RotationCompositions` lists. Each is keyed by where it plays, whether it moves, the axes it turns about and
 how its root-motion settings depart from the original ones, with `.unnormalized` after the short pose and
 `.mirrored` after a mirrored state (`rotation.action_full+pose.axes_xyz.root_rotation.bake+root_rotation.body+root_height.bake+root_height.offset+root_xz.bake`
-is the emote pose in Action at full weight).
+is the emote pose in Action at full weight). The probe's recording is a reference trace of the core
+(`avatar-core/fixtures/reference/rotation-animator`).
 
 The curve probe plays no avatar. It builds one clip per curve, its only curve on a transform's X position, and
 samples it at seeded random times through an `AnimationClipPlayable`, beside `AnimationCurve.Evaluate` at the same
