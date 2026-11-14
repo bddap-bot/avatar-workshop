@@ -19,6 +19,18 @@ impl AnimationCurve {
     }
 }
 
+/// The time Unity samples a clip's curves at, `seconds` into it, which differs from `seconds` by an ulp on most
+/// lengths. A clip's curves are evaluated at it, never at `seconds`.
+pub fn clip_time(seconds: f32, length: f32, looping: bool) -> f32 {
+    if length <= 0.0 {
+        return 0.0;
+    }
+    let q = seconds / length;
+    let q = if (q as f64) * (length as f64) < seconds as f64 { q.next_up() } else { q };
+    let q = if looping { q - q.floor() } else { q.clamp(0.0, 1.0) };
+    q * length
+}
+
 fn segment(a: &Keyframe, b: &Keyframe, time: f32) -> f32 {
     let span = b.time - a.time;
     if span <= 0.0 || !a.out_tangent.is_finite() || !b.in_tangent.is_finite() {
@@ -29,10 +41,12 @@ fn segment(a: &Keyframe, b: &Keyframe, time: f32) -> f32 {
     let s = (time - a.time) / span;
     if !out_weighted && !in_weighted {
         let dy = b.value - a.value;
-        let length = 1.0 / (span * span);
+        // Unity's operation order, which a division by span * span changes in the last bit.
+        let inv = 1.0 / span;
+        let inv2 = inv * inv;
         let (d1, d2) = (a.out_tangent * span, b.in_tangent * span);
-        let c0 = (d1 + d2 - dy - dy) * length / span;
-        let c1 = (dy + dy + dy - d1 - d1 - d2) * length;
+        let c0 = (d1 + d2 - dy - dy) * inv2 * inv;
+        let c1 = (dy + dy + dy - d1 - d1 - d2) * inv2;
         let (c2, c3) = (a.out_tangent, a.value);
         let x = time - a.time;
         return x * (x * (x * c0 + c1) + c2) + c3;

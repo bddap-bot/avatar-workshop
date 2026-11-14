@@ -335,11 +335,7 @@ impl CompiledClip {
 
     /// The clip time for a normalized state time.
     pub fn time(&self, normalized: f32) -> f32 {
-        if self.looping {
-            normalized.rem_euclid(1.0) * self.length
-        } else {
-            normalized.clamp(0.0, 1.0) * self.length
-        }
+        crate::curve::clip_time(normalized * self.length, self.length, self.looping)
     }
 
     /// `additive` samples for an additive layer, which adds the body as the clip's curves hold it and no IK goal.

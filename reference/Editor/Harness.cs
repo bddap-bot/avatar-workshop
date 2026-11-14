@@ -48,6 +48,13 @@ namespace AvatarWorkshop.Reference
             var output = Env("AW_OUT") ?? throw new Exception("AW_OUT is required");
             var scenePath = Env("AW_SCENE");
             var avatarName = Env("AW_AVATAR");
+            if (scenePath == "curves")
+            {
+                if (avatarName != null || Env("AW_STEPS") != null) throw new Exception("the curve probe plays no avatar and no steps");
+                CurveProbe.Record(output);
+                Finish(0);
+                return;
+            }
             Fixture.Kind? kind = scenePath == null ? Fixture.Kind.Fixture : scenePath == "probe" ? Fixture.Kind.Probe : scenePath == "human" ? Fixture.Kind.Human
                 : scenePath == "blend" ? Fixture.Kind.Blend : scenePath == "writedefaults" ? Fixture.Kind.WriteDefaults
                 : scenePath == "layering" ? Fixture.Kind.Layering : scenePath == "sampletime" ? Fixture.Kind.SampleTime : (Fixture.Kind?)null;

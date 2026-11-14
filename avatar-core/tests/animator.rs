@@ -57,7 +57,7 @@ fn each_humanoid_composition_follows_its_reference_trace() {
 
 /// The blend duration probe plays one blend tree at a time; the core keeps every state's time. The values of every
 /// case but the 2D trees, direct trees of them and the last tree without write defaults (cases 65 to 75) follow the
-/// reference but for the visemes, whose long-running clocks Unity samples an ulp apart.
+/// reference.
 #[test]
 fn each_blend_tree_follows_its_reference_trace() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -76,10 +76,10 @@ fn each_blend_tree_follows_its_reference_trace() {
         if (65..=75).contains(&n) {
             continue;
         }
-        let wrong: Vec<_> = rep.values.samples.range((s.frame, String::new())..(s.frame + s.frames, String::new())).filter(|(_, k)| !k.contains(":vrc.v_")).collect();
+        let wrong: Vec<_> = rep.values.samples.range((s.frame, String::new())..(s.frame + s.frames, String::new())).collect();
         assert!(wrong.is_empty(), "{} differs: {wrong:?}", s.label);
     }
-    assert!(rep.values.wrong <= 15_818, "values: {}", rep.values.summary(20));
+    assert!(rep.values.wrong <= 744, "values: {}", rep.values.summary(20));
 }
 
 /// The write-defaults layering probe plays one composition of write defaults across layers at a time. Every value
@@ -108,8 +108,7 @@ fn each_write_defaults_layering_follows_its_reference_trace() {
 }
 
 /// The clip sample-time probe plays identity clips, whose value is the time Unity sampled them at, at every length,
-/// speed, container and entry frame at once. The tolerance is wider than a long clip's normalized time, so state times
-/// are held to Unity's bits.
+/// speed, container and entry frame at once. State times and values are held to Unity's bits.
 #[test]
 fn each_clip_sample_time_follows_its_reference_trace() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -123,6 +122,48 @@ fn each_clip_sample_time_follows_its_reference_trace() {
     assert_eq!(rep.clock_bits_differ, 0, "state times not the recorded bits");
     assert!(rep.values.compared > 1_700_000, "{} values compared", rep.values.compared);
     assert_eq!(rep.values.wrong, 0, "values: {}", rep.values.summary(20));
+    assert_eq!(rep.worst_value, 0.0, "values not the recorded bits");
+}
+
+/// The curve probe samples clips through Unity's clip playable beside `AnimationCurve.Evaluate`, at identity curves of
+/// the sample-time probe's lengths and at random curves of every span; both match to the bit.
+#[test]
+fn each_curve_sample_follows_its_reference_trace() {
+    use avatar_core::model::{AnimationCurve, Keyframe, WeightedMode};
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/reference/curves");
+    let curves: Vec<(bool, AnimationCurve)> = reference::text(&dir.join("curves.tsv"))
+        .lines()
+        .map(|l| {
+            let f: Vec<&str> = l.split('\t').collect();
+            let keys = f[2..]
+                .iter()
+                .map(|k| {
+                    let v: Vec<f32> = k.split(',').map(|x| x.parse().unwrap()).collect();
+                    Keyframe { time: v[0], value: v[1], in_tangent: v[2], out_tangent: v[3], in_weight: 1.0 / 3.0, out_weight: 1.0 / 3.0, weighted_mode: WeightedMode::None }
+                })
+                .collect();
+            (f[1] == "loop", AnimationCurve { keys })
+        })
+        .collect();
+    assert_eq!(curves.len(), 88);
+    let (mut compared, mut clip_wrong, mut evaluate_wrong) = (0, Vec::new(), Vec::new());
+    for l in reference::text(&dir.join("samples.tsv")).lines().skip(1) {
+        let f: Vec<&str> = l.split('\t').collect();
+        let (c, t, clip, evaluate): (usize, f32, f32, f32) = (f[0].parse().unwrap(), f[1].parse().unwrap(), f[2].parse().unwrap(), f[3].parse().unwrap());
+        let (looping, curve) = &curves[c];
+        let length = curve.keys.last().unwrap().time;
+        compared += 1;
+        let got = curve.evaluate(avatar_core::curve::clip_time(t, length, *looping));
+        if got.to_bits() != clip.to_bits() {
+            clip_wrong.push((c, t, got, clip));
+        }
+        if curve.evaluate(t).to_bits() != evaluate.to_bits() {
+            evaluate_wrong.push((c, t, curve.evaluate(t), evaluate));
+        }
+    }
+    assert_eq!(compared, 35_200);
+    assert!(clip_wrong.is_empty(), "{} clip samples differ: {:?}", clip_wrong.len(), &clip_wrong[..clip_wrong.len().min(10)]);
+    assert!(evaluate_wrong.is_empty(), "{} evaluations differ: {:?}", evaluate_wrong.len(), &evaluate_wrong[..evaluate_wrong.len().min(10)]);
 }
 
 /// A copy of the fixture's recording with one of its files rewritten.
