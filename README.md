@@ -239,7 +239,7 @@ state flags). `UNITY` names the editor command. With no `SCENE`, it generates th
 `PROJECT`'s `Assets/AWFixture` and records it, so point it at a scratch project. With `SCENE` `probe`, it generates and
 records the probe there: the fixture's body with one three-bone chain per PhysBone field value (`Fixture.Probes` lists
 them), so each field's effect has a reference trace of its own. The probe rests 15 s before its motion, so even its lightly damped chains start it settled. With `SCENE` `human`, it generates and records the
-composition probe (`reference/Editor/HumanProbe.cs`), with `SCENE` `blend` the blend duration probe (`reference/Editor/BlendProbe.cs`), with `SCENE` `layering` the write-defaults layering probe (`reference/Editor/LayeringProbe.cs`), with `SCENE` `sampletime` the clip sample-time probe (`reference/Editor/SampleTimeProbe.cs`) and with `SCENE` `rotation` the rotation probe (`reference/Editor/RotationProbe.cs`), all described below, in place of the motion, menu and built-in steps. With `SCENE` `curves` it records the curve probe (`reference/Editor/CurveProbe.cs`), also below, which plays no avatar and refuses `AVATAR` and `AW_STEPS`. With `SCENE` `writedefaults`, it generates and records the write-defaults fixture: the fixture's body under animator controllers built from the environment variable `AW_WD`, which lists each layer's controller, weight, transition time and states, and for each state whether it writes defaults and what it animates (`reference/Editor/WriteDefaults.cs` gives the grammar; `AW_WD='T:de|dHat=1;K:fSmile=50'` is a write-defaults-on toggle of the hat beside a layer that keeps none). The environment variable `AW_STEPS` (`Name=value,...;...`, each step setting those animator parameters and held `AW_STEP_FRAMES` frames, 20 unless set, with a render on its last) replaces the motion, menu and built-in steps after the rest; the write-defaults fixture, which has no menu, requires it, and the composition, blend duration, layering, clip sample-time and rotation probes refuse it. It restores
+composition probe (`reference/Editor/HumanProbe.cs`), with `SCENE` `blend` the blend duration probe (`reference/Editor/BlendProbe.cs`), with `SCENE` `layering` the write-defaults layering probe (`reference/Editor/LayeringProbe.cs`), with `SCENE` `sampletime` the clip sample-time probe (`reference/Editor/SampleTimeProbe.cs`), with `SCENE` `rotation` the rotation probe (`reference/Editor/RotationProbe.cs`) and with `SCENE` `dense` the dense clip probe (`reference/Editor/DenseProbe.cs`), all described below, in place of the motion, menu and built-in steps. With `SCENE` `curves` it records the curve probe (`reference/Editor/CurveProbe.cs`), also below, which plays no avatar and refuses `AVATAR` and `AW_STEPS`. With `SCENE` `writedefaults`, it generates and records the write-defaults fixture: the fixture's body under animator controllers built from the environment variable `AW_WD`, which lists each layer's controller, weight, transition time and states, and for each state whether it writes defaults and what it animates (`reference/Editor/WriteDefaults.cs` gives the grammar; `AW_WD='T:de|dHat=1;K:fSmile=50'` is a write-defaults-on toggle of the hat beside a layer that keeps none). The environment variable `AW_STEPS` (`Name=value,...;...`, each step setting those animator parameters and held `AW_STEP_FRAMES` frames, 20 unless set, with a render on its last) replaces the motion, menu and built-in steps after the rest; the write-defaults fixture, which has no menu, requires it, and the composition, blend duration, layering, clip sample-time, rotation and dense clip probes refuse it. It restores
 `PROJECT`'s package manifest on exit and refuses an `OUT` that holds something other than an earlier recording.
 `OUT` receives:
 
@@ -261,7 +261,7 @@ composition probe (`reference/Editor/HumanProbe.cs`), with `SCENE` `blend` the b
 | `time.tsv` | the time of the emulator's playable graph after each frame's evaluation, every frame from the one the graph is created on, so the first evaluation's delta shows; a recording fails if the graph is gone on a frame |
 | `avatar.glb`, `census.json`, `export.txt` | the exporter's model and census of the build this recording runs, written as the last step of its build preprocess, with the build tools' generated names and ids (and, as the emulator skips the SDK's material locking, unlocked shaders); `cargo run --release --example census -- avatar.glb census.json` in `avatar-core/` checks one; `export.txt` lists what the model does not represent |
 | `coverage.json`, `meta.json` | the avatar's feature counts; versions and totals |
-| `compositions.json` | the composition, blend duration, layering, clip sample-time and rotation probes' only: for each composition the probe is authored to play on its own, how many clips (composition probe), states (clip sample-time and rotation probes) or states and transitions (the others) are authored to play it |
+| `compositions.json` | the composition, blend duration, layering, clip sample-time, rotation and dense clip probes' only: for each composition the probe is authored to play on its own, how many clips (composition probe), states (clip sample-time, rotation and dense clip probes) or states and transitions (the others) are authored to play it |
 
 The fixture (`reference/Editor/Fixture.cs`, licensed as this repository) is a synthetic humanoid
 authored for the harness: PhysBones covering both immobile types, every limit type, gravity with
@@ -386,6 +386,22 @@ how its root-motion settings depart from the original ones, with `.unnormalized`
 `.mirrored` after a mirrored state (`rotation.action_full+pose.axes_xyz.root_rotation.bake+root_rotation.body+root_height.bake+root_height.offset+root_xz.bake`
 is the emote pose in Action at full weight). The probe's recording is a reference trace of the core
 (`avatar-core/fixtures/reference/rotation-animator`).
+
+The dense clip probe is the fixture's body with a Base controller playing humanoid clips and an FX controller playing
+generic ones, one state per case, so `values.tsv` holds the value Unity samples each frame, on keys and between them,
+beside the state's time in `clocks.tsv`. `Case` picks the state and 0 plays the rest pose (Base) or no motion (FX); the harness
+plays each case for 150 frames with 20 frames at rest after each. Every clip is 3 s long, does not loop, and its
+probed curves are keyed on its frame grid (its sample rate, 30 or 60) on every frame, on most frames (frames 3, 8, 13 and every fifth
+after left out), on every other frame, or off the grid (its first and last frame and 0.37 of a frame
+after each frame between); their keys take the same seeded values in the same order in every clip, with flat
+tangents, legacy `Auto` tangents, `Clamped Auto` tangents, or broken
+tangents set apart. A humanoid clip probes three muscles (`Spine Front-Back`,
+`Left Upper Leg Front-Back`, `Right Arm Down-Up`) and holds every other muscle and the body at rest with keys at its
+first and last frame; a generic clip probes the float parameter `Dense` and the `Smile` blendshape. Each clip plays at
+speed 1 and at 0.5. A recording fails if a case never entered its state or if `compositions.json` counts zero for a
+composition `Coverage.DenseCompositions` lists, keyed by kind, keying, sample rate, tangents and speed
+(`dense.humanoid.every_frame.rate_30.auto.speed_1` is a humanoid clip keyed on every 1/30 s with `Auto` tangents at
+speed 1).
 
 The curve probe plays no avatar. It builds one clip per curve, its only curve on a transform's X position, and
 samples it at seeded random times through an `AnimationClipPlayable`, beside `AnimationCurve.Evaluate` at the same

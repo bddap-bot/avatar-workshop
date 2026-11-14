@@ -4238,6 +4238,11 @@
           "type": "number",
           "format": "float"
         },
+        "sampleRate": {
+          "description": "Frames per second of the clip's frame grid, Unity's clip sample rate.",
+          "type": "number",
+          "format": "float"
+        },
         "loop": {
           "type": "boolean"
         },
@@ -4285,6 +4290,7 @@
       "required": [
         "name",
         "length",
+        "sampleRate",
         "loop",
         "cycleOffset",
         "curves",

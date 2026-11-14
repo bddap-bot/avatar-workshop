@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# usage: run.sh <unity project> <output dir> [scene path, "probe", "human", "blend", "layering", "sampletime", "rotation", "writedefaults" or "curves"] [avatar object name]
+# usage: run.sh <unity project> <output dir> [scene path, "probe", "human", "blend", "layering", "sampletime", "rotation", "dense", "writedefaults" or "curves"] [avatar object name]
 # UNITY names the editor command (default: Unity on PATH); it needs a display (e.g. Xvfb).
 set -euo pipefail
 [ -f "$1/Packages/manifest.json" ] || { echo "the project has no Packages/manifest.json" >&2; exit 2; }

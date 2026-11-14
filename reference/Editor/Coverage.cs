@@ -718,6 +718,77 @@ namespace AvatarWorkshop.Reference
             return c;
         }
 
+        // The dense clip probe's compositions: "dense.<kind>.<keying>.rate_<sample rate>.<tangents>.<speed>". A clip's
+        // probed curves are those with more than two keys, and all of them must share a keying and tangents. Keyings
+        // are read against the clip's own frame grid: a key on each frame, on most (a gap of two among gaps of one),
+        // on every other, or keys off the grid between its first and last frame.
+        public static readonly string[] DenseCompositions =
+            (from kind in Fixture.DenseKinds
+             from keying in Fixture.DenseKeyings
+             from rate in Fixture.DenseRates
+             from tangent in Fixture.DenseTangents
+             from speed in Fixture.DenseSpeeds
+             select $"dense.{kind}.{keying}.rate_{rate}.{tangent}.{Fixture.SpeedKey(speed)}").ToArray();
+
+        static string Keying(Keyframe[] keys, float rate)
+        {
+            var frames = keys.Select(k => (double)k.time * rate).ToArray();
+            bool OnGrid(double f) => System.Math.Abs(f - System.Math.Round(f)) < 1e-3;
+            if (!OnGrid(frames[0]) || !OnGrid(frames[frames.Length - 1])) return null;
+            if (frames.Skip(1).Take(frames.Length - 2).All(f => !OnGrid(f))) return "off_grid";
+            if (!frames.All(OnGrid)) return null;
+            var gaps = frames.Zip(frames.Skip(1), (a, b) => (int)System.Math.Round(b - a)).ToList();
+            if (gaps.All(g => g == 1)) return "every_frame";
+            if (gaps.All(g => g == 2)) return "every_other_frame";
+            if (gaps.All(g => g == 1 || g == 2) && gaps.Count(g => g == 1) > gaps.Count(g => g == 2)) return "most_frames";
+            return null;
+        }
+
+        static string Tangents(AnimationCurve curve)
+        {
+            var keys = curve.keys;
+            var all = Enumerable.Range(0, keys.Length).ToList();
+            if (keys.Any(k => k.weightedMode != WeightedMode.None)) return null;
+            if (all.All(i => AnimationUtility.GetKeyBroken(curve, i)) && keys.Any(k => k.inTangent != k.outTangent)
+                && all.All(i => AnimationUtility.GetKeyLeftTangentMode(curve, i) == AnimationUtility.TangentMode.Free && AnimationUtility.GetKeyRightTangentMode(curve, i) == AnimationUtility.TangentMode.Free))
+                return "broken";
+            if (all.Any(i => AnimationUtility.GetKeyBroken(curve, i))) return null;
+            foreach (var (mode, name) in new[] { (AnimationUtility.TangentMode.Auto, "auto"), (AnimationUtility.TangentMode.ClampedAuto, "clamped_auto") })
+                if (all.All(i => AnimationUtility.GetKeyLeftTangentMode(curve, i) == mode && AnimationUtility.GetKeyRightTangentMode(curve, i) == mode))
+                    return name;
+            if (all.All(i => AnimationUtility.GetKeyLeftTangentMode(curve, i) == AnimationUtility.TangentMode.Free && AnimationUtility.GetKeyRightTangentMode(curve, i) == AnimationUtility.TangentMode.Free)
+                && keys.All(k => k.inTangent == 0 && k.outTangent == 0))
+                return "flat";
+            return null;
+        }
+
+        static string DenseClip(AnimationClip clip)
+        {
+            var probed = AnimationUtility.GetCurveBindings(clip).Select(b => AnimationUtility.GetEditorCurve(clip, b)).Where(c => c.length > 2).ToList();
+            if (probed.Any(c => c.keys.Select(k => k.value).Distinct().Count() < 2)) return null;
+            if (probed.Count == 0 || AnimationUtility.GetObjectReferenceCurveBindings(clip).Length > 0 || clip.frameRate != Mathf.Round(clip.frameRate)) return null;
+            var keyings = probed.Select(c => Keying(c.keys, clip.frameRate)).Distinct().ToList();
+            var tangents = probed.Select(Tangents).Distinct().ToList();
+            if (keyings.Count != 1 || keyings[0] == null || tangents.Count != 1 || tangents[0] == null) return null;
+            return $"dense.{(clip.humanMotion ? "humanoid" : "generic")}.{keyings[0]}.rate_{(int)clip.frameRate}.{tangents[0]}";
+        }
+
+        public static SortedDictionary<string, int> CountDenseCompositions(VRCAvatarDescriptor d)
+        {
+            var c = new SortedDictionary<string, int>();
+            foreach (var k in DenseCompositions) c[k] = 0;
+            foreach (var (type, ctrl, mask) in Controllers(d))
+                foreach (var layer in ctrl.layers.Where(l => l.defaultWeight == 1 && l.blendingMode == AnimatorLayerBlendingMode.Override && l.syncedLayerIndex < 0 && l.avatarMask == null && mask == null))
+                    foreach (var s in CaseOf(layer.stateMachine).Keys)
+                    {
+                        if (!(s.motion is AnimationClip clip) || clip.humanMotion != (type == VRCAvatarDescriptor.AnimLayerType.Base) || s.speedParameterActive || s.timeParameterActive || s.cycleOffsetParameterActive || s.cycleOffset != 0) continue;
+                        if (AnimationUtility.GetAnimationClipSettings(clip).loopTime || !(DenseClip(clip) is string key)) continue;
+                        key += "." + Fixture.SpeedKey(s.speed);
+                        c[key] = c.TryGetValue(key, out var n) ? n + 1 : 1;
+                    }
+            return c;
+        }
+
         static string TreeKey(BlendTree bt) => "blendtree." + Snake(bt.blendType.ToString()).Replace("2_d", "2d").Replace("1_d", "1d");
 
         static string Snake(string s) => string.Concat(s.Select((ch, i) => i > 0 && (char.IsUpper(ch) || char.IsDigit(ch) && !char.IsDigit(s[i - 1])) ? "_" + char.ToLowerInvariant(ch) : char.ToLowerInvariant(ch).ToString()));

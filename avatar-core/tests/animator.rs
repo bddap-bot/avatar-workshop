@@ -589,7 +589,7 @@ fn an_uncurved_goal_follows_the_body_and_mirrors_with_its_clip() {
 }
 
 fn clip(name: &str, curves: Vec<avatar_core::model::Curve>) -> avatar_core::model::Clip {
-    avatar_core::model::Clip { name: name.into(), length: 0.0, looping: false, cycle_offset: 0.0, additive_reference_pose: None, humanoid: None, curves, slot_curves: vec![] }
+    avatar_core::model::Clip { name: name.into(), length: 0.0, sample_rate: 60.0, looping: false, cycle_offset: 0.0, additive_reference_pose: None, humanoid: None, curves, slot_curves: vec![] }
 }
 
 /// Under a write-defaults direct tree, a shape only a 1D tree's end at weight zero writes is left to the layers

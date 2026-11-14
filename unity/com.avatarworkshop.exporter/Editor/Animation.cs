@@ -395,7 +395,7 @@ namespace AvatarWorkshop.Exporter
                 else Drop(t == null ? "animation curve on a missing object" : "animated object reference " + binding.type.Name + "." + binding.propertyName.Split('.')[0]);
             }
             var settings = AnimationUtility.GetAnimationClipSettings(clip);
-            var o = new Obj { { "name", clip.name }, { "length", clip.empty ? 0f : clip.length }, { "loop", settings.loopTime }, { "cycleOffset", settings.cycleOffset } };
+            var o = new Obj { { "name", clip.name }, { "length", clip.empty ? 0f : clip.length }, { "sampleRate", clip.frameRate }, { "loop", settings.loopTime }, { "cycleOffset", settings.cycleOffset } };
             if (settings.hasAdditiveReferencePose)
             {
                 if (settings.additiveReferencePoseClip == null) Drop("clip additive reference pose with no clip");

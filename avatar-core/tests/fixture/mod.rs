@@ -139,6 +139,7 @@ fn clip(name: &str, curves: Vec<Curve>) -> Clip {
     Clip {
         name: name.into(),
         length: 1.0 / 60.0,
+        sample_rate: 60.0,
         looping: false,
         cycle_offset: 0.0,
         additive_reference_pose: None,
@@ -1412,6 +1413,7 @@ fn model() -> AwAvatar {
             },
             Clip {
                 length: 2.0,
+                sample_rate: 30.0,
                 looping: true,
                 cycle_offset: 0.25,
                 additive_reference_pose: Some(ReferencePose {

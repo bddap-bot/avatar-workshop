@@ -1351,6 +1351,8 @@ pub struct Clip {
     pub name: String,
     /// Seconds; zero for a clip without curves, which Unity reports as a second long and counts as none in a blend's duration.
     pub length: f32,
+    /// Frames per second of the clip's frame grid, Unity's clip sample rate.
+    pub sample_rate: f32,
     #[serde(rename = "loop")]
     pub looping: bool,
     /// A fraction of the length, added to the time the clip is sampled at.

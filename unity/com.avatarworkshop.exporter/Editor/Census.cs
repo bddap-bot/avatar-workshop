@@ -366,7 +366,7 @@ namespace AvatarWorkshop.Exporter
             static Obj ClipSettings(AnimationClip c)
             {
                 var s = AnimationUtility.GetAnimationClipSettings(c);
-                var o = new Obj { { "name", c.name }, { "loop", s.loopTime }, { "cycleOffset", s.cycleOffset }, { "hasAdditiveReferencePose", s.hasAdditiveReferencePose } };
+                var o = new Obj { { "name", c.name }, { "sampleRate", c.frameRate }, { "loop", s.loopTime }, { "cycleOffset", s.cycleOffset }, { "hasAdditiveReferencePose", s.hasAdditiveReferencePose } };
                 if (s.hasAdditiveReferencePose && s.additiveReferencePoseClip != null)
                     o.Add("additiveReferencePose", new Obj { { "clip", s.additiveReferencePoseClip.name }, { "time", s.additiveReferencePoseTime } });
                 o.Add("humanMotion", c.humanMotion);
