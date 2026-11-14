@@ -3,7 +3,7 @@ mod reference;
 use std::path::Path;
 
 use avatar_core::animator::Animator;
-use reference::animator::Run;
+use reference::animator::{Mismatches, Run};
 
 fn fixture() -> avatar_core::Avatar {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -659,4 +659,16 @@ fn a_layer_of_generic_clips_gives_no_human_pose() {
     let mut a = Animator::new(&avatar);
     run(&mut a, 5);
     assert_eq!(value(&a, "Left Upper Leg Front-Back"), beneath);
+}
+
+#[test]
+fn a_numbered_summary_holds_no_name() {
+    let mut m = Mismatches::default();
+    m.note("active:Armature/Tail", 7, "0 (want 1)".into());
+    m.note("2:0:Sit", 9, "Upright (want Slouch)".into());
+    m.note("2:0:Sit", 10, "Upright (want Slouch)".into());
+    assert_eq!(m.numbered(20), "3 of 0 compared samples differ (0 first-frame samples not compared)\n  0: 1 frames, first at 7\n  1: 2 frames, first at 9");
+    let named = m.summary(20);
+    assert!(named.contains("\n  0 active:Armature/Tail: 1 frames, first at 7: 0 (want 1)"), "{named}");
+    assert!(named.contains("\n  1 2:0:Sit: 2 frames, first at 9: Upright (want Slouch)"), "{named}");
 }

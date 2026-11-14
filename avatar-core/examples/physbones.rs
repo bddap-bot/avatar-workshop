@@ -1,12 +1,12 @@
 //! Replays a reference recording through the core's PhysBones and scores its tips against it.
 //!
-//! usage: physbones RECORDING AVATAR.glb [--rate HZ] [--all] [--out DIR] [--chains]
+//! usage: physbones RECORDING AVATAR.glb [--rate HZ] [--all] [--out DIR] [--chains] [--names]
 //!
 //! RECORDING is a `reference/run.sh` output and AVATAR.glb the same avatar's Unity export. The replay runs at
 //! the host rate (default 60 Hz, the recording's) from the recording's first frame to the end of its scored
 //! window, or to its end with `--all`, and prints the median over chains of tip RMS error over chain length in
-//! that window, as `reference/compare.py` scores it. `--chains` prints each chain's error, and `--out` writes
-//! `tips.tsv` and `params.tsv` (the PhysBone parameters) there in the recording's layout.
+//! that window, as `reference/compare.py` scores it. `--chains` prints each chain's error, by name with `--names`,
+//! and `--out` writes `tips.tsv` and `params.tsv` (the PhysBone parameters) there in the recording's layout.
 
 #[path = "../tests/reference/mod.rs"]
 mod reference;
@@ -16,6 +16,7 @@ use std::fmt::Write;
 use std::path::Path;
 
 fn main() {
+    let names = reference::names();
     let args: Vec<String> = std::env::args().collect();
     let dir = Path::new(&args[1]);
     let avatar = avatar_core::read(&std::fs::read(&args[2]).unwrap()).unwrap();
@@ -48,10 +49,10 @@ fn main() {
     let errors = reference::errors(dir, &trace, window);
     if args.iter().any(|a| a == "--chains") {
         for (e, tip) in &errors {
-            println!("{e:.4}\t{tip}");
+            println!("{e:.4}{}", if names { format!("\t{tip}") } else { String::new() });
         }
     }
     let mean = errors.iter().map(|e| e.0).sum::<f32>() / errors.len().max(1) as f32;
     let median = if errors.is_empty() { f32::NAN } else { reference::median(&errors) };
-    println!("{}\tchains {}\tmedian {median:.4}\tmean {mean:.4}\tworst {:.4}", dir.display(), errors.len(), errors.last().map_or(0.0, |e| e.0));
+    println!("chains {}\tmedian {median:.4}\tmean {mean:.4}\tworst {:.4}", errors.len(), errors.last().map_or(0.0, |e| e.0));
 }

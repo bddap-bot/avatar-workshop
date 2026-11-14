@@ -211,7 +211,7 @@ pub struct Mismatches {
 }
 
 impl Mismatches {
-    fn note(&mut self, key: &str, frame: usize, detail: String) {
+    pub fn note(&mut self, key: &str, frame: usize, detail: String) {
         if std::env::var("AW_TRACE").is_ok_and(|t| key.contains(&t)) {
             eprintln!("{frame}\t{key}\t{detail}");
         }
@@ -222,11 +222,20 @@ impl Mismatches {
     }
 
     pub fn summary(&self, limit: usize) -> String {
+        self.rows(limit, true)
+    }
+
+    /// The summary with each key as its row number and no detail, so it holds no name of the avatar's.
+    pub fn numbered(&self, limit: usize) -> String {
+        self.rows(limit, false)
+    }
+
+    fn rows(&self, limit: usize, names: bool) -> String {
         let mut s = format!("{} of {} compared samples differ ({} first-frame samples not compared)", self.wrong, self.compared, self.skipped);
         let mut v: Vec<_> = self.keys.iter().collect();
         v.sort_by_key(|(_, (_, f, _))| *f);
-        for (k, (n, f, d)) in v.into_iter().take(limit) {
-            s.push_str(&format!("\n  {k}: {n} frames, first at {f}: {d}"));
+        for (i, (k, (n, f, d))) in v.into_iter().take(limit).enumerate() {
+            s.push_str(&if names { format!("\n  {i} {k}: {n} frames, first at {f}: {d}") } else { format!("\n  {i}: {n} frames, first at {f}") });
         }
         s
     }

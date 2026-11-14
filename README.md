@@ -52,7 +52,7 @@ and capsules but not planes.
 fixture's motion and its grabs, trimmed to what the replays read) and checks each field's probe, the fixture's
 median error, grabs, poses and their filters, the parameters, and that 72, 90 and 120 Hz hosts agree with 60 Hz
 within 1% of chain length. `cargo run --release --example physbones -- RECORDING AVATAR.glb [--chains]` scores
-any recording, and `--example physbones_cost -- AVATAR.glb` times a joint step.
+any recording (`--names` prints chain names), and `--example physbones_cost -- AVATAR.glb` times a joint step.
 
 `avatar_core::animator` runs the playable layers as VRChat stacks them: Unity's state machines with crossfades,
 offsets, ordered interruption, sub-machines, synced layers and write defaults, every blend-tree algorithm,
@@ -72,7 +72,8 @@ from `dynamics.tsv`, and requires every parameter but those `dynamics.tsv` drive
 and every recorded node, blendshape and material value, animated or not, to match within 1e-3. It also compares
 each layer's state time from `clocks.tsv`, and the muscle, constraint and contact field values every curve binds,
 and fails if a recording lacks a frame's state times, a bound field's value or a frame's row of `inputs.tsv`.
-`cargo run --release --example animator -- RECORDING AVATAR.glb` scores any recording.
+`cargo run --release --example animator -- RECORDING AVATAR.glb` scores any recording,
+numbering each differing key and menu control; `--names` prints their names.
 
 ## Unity exporter
 
