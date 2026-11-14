@@ -204,7 +204,7 @@ func _overlapping_chains() -> void:
 	var simulation := Springs.new({"springs": [chain, chain.duplicate(true)], "colliders": []}, {1: Bone.new(skeleton, 1), 2: Bone.new(skeleton, 2)})
 	await process_frame
 	await process_frame
-	check(simulation.point_count == 2 and simulation._native[0].setting_count == 2, "overlapping components each get a native setting")
+	check(simulation.point_count() == 2 and simulation._native[0].setting_count == 2, "overlapping components each get a native setting")
 	skeleton.position.x = 0.1
 	tick(skeleton, simulation)
 	check(simulation.chains.all(func(c): return c.current.size() == 1 and c.current[0].is_finite()), "overlapping native chains capture finite independent state")
@@ -232,7 +232,7 @@ func _scaled_components() -> void:
 		var simulation := Springs.new(definition, nodes)
 		await process_frame
 		await process_frame
-		check(simulation.point_count == 2, "scaled and unscaled chains both remain simulated")
+		check(simulation.point_count() == 2, "scaled and unscaled chains both remain simulated")
 		check(simulation.chains[0].native == null, "nonuniform scale uses the constraint solver")
 		check((simulation.chains[1].native == null) == coupled, "only a dependency on the scaled chain requires the other chain to fall back")
 		skeleton.position.x = 0.1
@@ -261,7 +261,7 @@ func _folded_components() -> void:
 	tick(skeleton, simulation)
 	check(simulation.chains[1].native.active, "folding one hand leaves independent native spring components running")
 	check(skeleton.get_bone_pose_scale(1).is_equal_approx(Vector3.ONE * 0.001), "fallback preserves the folded parent scale")
-	check(simulation.point_count == 2, "folded hand retains both authored spring segments")
+	check(simulation.point_count() == 2, "folded hand retains both authored spring segments")
 	check(simulation.state().size() == 2 and simulation.state()[0].is_finite(), "folded hand fallback remains finite")
 	skeleton.free()
 

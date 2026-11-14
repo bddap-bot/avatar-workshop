@@ -14,10 +14,11 @@ const SKIN := 0.002
 var chains: Array = []
 var colliders: Array = []
 var targets := {}
+## Chains that hold the pose they stopped in, by index.
+var idle := {}
 ## World-space capsules {"key", "from", "to", "radius", "who": WEARER or OTHERS}, a sphere where the ends meet, set
 ## before advance; "key" tells a hand from the others across frames.
 var hands: Array = []
-var point_count := 0
 var _owed := 0.0
 var _native: Array[SpringBoneSimulator3D] = []
 var _hands_before := {}
@@ -44,11 +45,10 @@ func _init(definition: Dictionary, nodes: Dictionary) -> void:
 		var count := joints.size() if end_length > 0.0 else joints.size() - 1
 		if count == 0:
 			continue
-		var chain := {"index": chains.size(), "native": null, "native_active": false, "endpoint": nodes[joints[-1].node] if count < joints.size() else null, "joints": [], "colliders": source.colliders, "collide": source.get("collide", EVERYONE), "grab": source.get("grab", EVERYONE), "center": nodes.get(source.center), "current": PackedVector3Array(), "previous": PackedVector3Array(), "reach": 0.0, "gripped": {}, "stepped_center": Transform3D.IDENTITY}
+		var chain := {"source": source, "index": chains.size(), "native": null, "native_active": false, "endpoint": nodes[joints[-1].node] if count < joints.size() else null, "joints": [], "colliders": source.colliders, "collide": source.get("collide", EVERYONE), "grab": source.get("grab", EVERYONE), "center": nodes.get(source.center), "current": PackedVector3Array(), "previous": PackedVector3Array(), "reach": 0.0, "gripped": {}, "stepped_center": Transform3D.IDENTITY}
 		for i in count:
 			var joint: Dictionary = joints[i].duplicate()
 			var node = nodes[joint.node]
-			point_count += 1
 			joint.node = node
 			joint.rest = node.transform
 			var tail := Vector3(0, -end_length, 0)
@@ -183,7 +183,7 @@ func set_rest(node: Variant, rest: Transform3D) -> bool:
 func advance(delta: float) -> void:
 	for simulator in _native:
 		for component: Array in simulator.components:
-			var run: bool = component.all(func(chain: Dictionary) -> bool: return not targets.has(chain.index) and _unit_scale(chain) and not _within_hand(chain))
+			var run: bool = component.all(func(chain: Dictionary) -> bool: return not targets.has(chain.index) and not idle.has(chain.index) and _unit_scale(chain) and not _within_hand(chain))
 			if run == component[0].native_active:
 				continue
 			if run:
@@ -221,6 +221,10 @@ func _advance_physbones(executions: float) -> void:
 	var reaching: Array = hands.map(func(hand: Dictionary) -> PhysBone.Collider: return PhysBone.sphere(hand.from, hand.to, hand.radius, false))
 	for chain: Dictionary in _physbones:
 		var physbone: PhysBone.Chain = chain.physbone
+		if idle.has(chain.index):
+			if physbone.seeded:
+				physbone.unseed()
+			continue
 		if targets.has(chain.index):
 			if physbone.seeded:
 				physbone.unseed()
@@ -265,7 +269,7 @@ static func _place(chain: Dictionary) -> Vector3:
 
 func _step() -> void:
 	for c in chains.size():
-		if chains[c].native_active or chains[c].physbone and not targets.has(c):
+		if idle.has(c) or chains[c].native_active or chains[c].physbone and not targets.has(c):
 			continue
 		var chain: Dictionary = chains[c]
 		var center := _center(chain)
@@ -460,9 +464,20 @@ func touches(c: int, slack: float) -> bool:
 	return false
 
 
+## The points of the chains running, as `apply_state` takes them.
+func point_count() -> int:
+	var count := 0
+	for chain: Dictionary in chains:
+		if not idle.has(chain.index):
+			count += chain.joints.size()
+	return count
+
+
 func state() -> PackedVector3Array:
 	var result := PackedVector3Array()
 	for chain: Dictionary in chains:
+		if idle.has(chain.index):
+			continue
 		var center := _center(chain)
 		for point: Vector3 in chain.current:
 			result.append(center * point)
@@ -470,7 +485,7 @@ func state() -> PackedVector3Array:
 
 
 func apply_state(points: PackedVector3Array) -> bool:
-	if points.size() != point_count:
+	if points.size() != point_count():
 		return false
 	for point in points:
 		if not point.is_finite():
@@ -481,6 +496,8 @@ func apply_state(points: PackedVector3Array) -> bool:
 		simulator.active = false
 	var at := 0
 	for chain: Dictionary in chains:
+		if idle.has(chain.index):
+			continue
 		var placed := PackedVector3Array([chain.joints[0].node.global_position])
 		var inverse := _center(chain).affine_inverse()
 		for i in chain.joints.size():
