@@ -65,7 +65,7 @@ namespace AvatarWorkshop.Reference
 
         // Every root-motion setting starts from keeping the original rotation, height and XZ, nothing baked and no
         // offset or mirror; each variant changes one of them.
-        static void Original(AnimationClipSettings s)
+        internal static void Original(AnimationClipSettings s)
         {
             s.loopBlend = false; s.mirror = false;
             s.loopBlendOrientation = false; s.keepOriginalOrientation = true; s.orientationOffsetY = 0;

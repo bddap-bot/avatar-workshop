@@ -638,6 +638,86 @@ namespace AvatarWorkshop.Reference
         static string Algorithm(BlendTree t) =>
             TreeKey(t) + (t.blendType == BlendTreeType.Direct && AvatarWorkshop.Exporter.Exporter.NormalizedBlendValues(t) ? ".normalized" : "");
 
+        // The rotation probe's compositions: "rotation.<context>+<kind>.axes_<axes>.<setting>", ".unnormalized" after a
+        // pose whose body rotation is not of unit length, and ".mirrored" after each where its state mirrors. A pose
+        // holds one key per curve at time zero; a moving clip's body moves. The axes are those the body and every IK
+        // goal all turn about. The setting joins how the clip's root-motion settings depart from the original ones.
+        // Base plays at full weight from its first layer and at partial weight from a later layer weighted strictly
+        // between 0 and 1; Action at the weight the state's playable-layer control sets.
+        static readonly Dictionary<string, string> RotationSettingKeys = Fixture.RotationSettings.ToDictionary(x => x.name, x =>
+        {
+            var s = new AnimationClipSettings();
+            Fixture.Original(s); x.set(s);
+            return RotationSetting(s);
+        });
+        static readonly string[] RotationUnmirrored =
+            (from kind in Fixture.RotationKinds from setting in RotationSettingKeys.Values select $"rotation.base_full+{kind}.axes_xyz.{setting}")
+            .Concat(from kind in Fixture.RotationKinds from axes in Fixture.RotationAxes.Where(a => a != "xyz") from setting in Fixture.RotationPaired
+                    select $"rotation.base_full+{kind}.axes_{axes}.{RotationSettingKeys[setting]}")
+            .Concat(from context in Fixture.RotationContexts.Where(c => c != "base_full") from kind in Fixture.RotationKinds from setting in Fixture.RotationPaired
+                    select $"rotation.{context}+{kind}.axes_xyz.{RotationSettingKeys[setting]}")
+            .Concat(Fixture.RotationUnnormalizedContexts.Select(c => $"rotation.{c}+pose.axes_xyz.{RotationSettingKeys["emote"]}.unnormalized"))
+            .ToArray();
+        public static readonly string[] RotationCompositions = RotationUnmirrored.Concat(RotationUnmirrored.Select(k => k + ".mirrored")).ToArray();
+
+        static string RotationSetting(AnimationClipSettings s)
+        {
+            var on = new List<string>();
+            Settings(s, k => { if (!k.EndsWith(".original")) on.Add(k.Substring("clip.".Length)); });
+            return on.Count == 0 ? "original" : string.Join("+", on);
+        }
+
+        static Keyframe[][] QuaternionKeys(AnimationClip clip, string prop) =>
+            "xyzw".Select(a => AnimationUtility.GetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), $"{prop}.{a}"))?.keys).ToArray();
+
+        static string TurnAxes(AnimationClip clip, string prop)
+        {
+            var q = QuaternionKeys(clip, prop);
+            if (q.Any(k => k == null)) return null;
+            return string.Concat(Enumerable.Range(0, 3).Where(i => q[i].Any(k => Mathf.Abs(k.value) > 1e-4f)).Select(i => "xyz"[i]));
+        }
+
+        static string RotationKind(AnimationClip clip)
+        {
+            if (Span(clip) == "zero_length" && AnimationUtility.GetCurveBindings(clip).All(b => AnimationUtility.GetEditorCurve(clip, b).keys.All(k => k.time == 0))) return "pose";
+            return Span(clip) == "length" && MovingBody(clip) ? "moving" : null;
+        }
+
+        static string RotationContext(VRCAvatarDescriptor.AnimLayerType type, int li, AnimatorControllerLayer layer, AnimatorState s)
+        {
+            if (type == VRCAvatarDescriptor.AnimLayerType.Base)
+                return li == 0 && layer.defaultWeight == 1 ? "base_full" : li > 0 && layer.defaultWeight > 0 && layer.defaultWeight < 1 ? "base_partial" : null;
+            if (type != VRCAvatarDescriptor.AnimLayerType.Action) return null;
+            var goals = s.behaviours.OfType<VRC_PlayableLayerControl>().Where(b => b.layer == VRC_PlayableLayerControl.BlendableLayer.Action).Select(b => b.goalWeight).ToList();
+            return goals.Count != 1 ? null : goals[0] == 1 ? "action_full" : goals[0] > 0 && goals[0] < 1 ? "action_partial" : null;
+        }
+
+        public static SortedDictionary<string, int> CountRotationCompositions(VRCAvatarDescriptor d)
+        {
+            var c = new SortedDictionary<string, int>();
+            foreach (var k in RotationCompositions) c[k] = 0;
+            foreach (var (type, ctrl, _) in Controllers(d))
+            {
+                var parameters = new HashSet<string>(ctrl.parameters.Select(p => p.name));
+                var layers = ctrl.layers;
+                for (int li = 0; li < layers.Length; li++)
+                    foreach (var s in CaseOf(layers[li].stateMachine).Keys)
+                    {
+                        if (!(s.motion is AnimationClip clip)) continue;
+                        var kind = RotationKind(clip);
+                        var axes = TurnAxes(clip, "RootQ");
+                        var context = RotationContext(type, li, layers[li], s);
+                        if (kind == null || context == null || string.IsNullOrEmpty(axes) || Fixture.Goals.Any(g => TurnAxes(clip, g + "Q") != axes)) continue;
+                        var q = QuaternionKeys(clip, "RootQ").Select(k => k[0].value).ToArray();
+                        var unnormalized = Mathf.Abs(q.Sum(x => x * x) - 1) > 1e-3f;
+                        var key = $"rotation.{context}+{kind}.axes_{axes}.{RotationSetting(AnimationUtility.GetAnimationClipSettings(clip))}{(unnormalized ? ".unnormalized" : "")}";
+                        c[key] = c.TryGetValue(key, out var n) ? n + 1 : 1;
+                        if (s.mirrorParameterActive && parameters.Contains(s.mirrorParameter)) c[key + ".mirrored"] = c.TryGetValue(key + ".mirrored", out var m) ? m + 1 : 1;
+                    }
+            }
+            return c;
+        }
+
         static string TreeKey(BlendTree bt) => "blendtree." + Snake(bt.blendType.ToString()).Replace("2_d", "2d").Replace("1_d", "1d");
 
         static string Snake(string s) => string.Concat(s.Select((ch, i) => i > 0 && (char.IsUpper(ch) || char.IsDigit(ch) && !char.IsDigit(s[i - 1])) ? "_" + char.ToLowerInvariant(ch) : char.ToLowerInvariant(ch).ToString()));

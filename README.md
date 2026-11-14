@@ -237,7 +237,7 @@ state flags). `UNITY` names the editor command. With no `SCENE`, it generates th
 `PROJECT`'s `Assets/AWFixture` and records it, so point it at a scratch project. With `SCENE` `probe`, it generates and
 records the probe there: the fixture's body with one three-bone chain per PhysBone field value (`Fixture.Probes` lists
 them), so each field's effect has a reference trace of its own. The probe rests 15 s before its motion, so even its lightly damped chains start it settled. With `SCENE` `human`, it generates and records the
-composition probe (`reference/Editor/HumanProbe.cs`), with `SCENE` `blend` the blend duration probe (`reference/Editor/BlendProbe.cs`), with `SCENE` `layering` the write-defaults layering probe (`reference/Editor/LayeringProbe.cs`) and with `SCENE` `sampletime` the clip sample-time probe (`reference/Editor/SampleTimeProbe.cs`), all described below, in place of the motion, menu and built-in steps. With `SCENE` `curves` it records the curve probe (`reference/Editor/CurveProbe.cs`), also below, which plays no avatar and refuses `AVATAR` and `AW_STEPS`. With `SCENE` `writedefaults`, it generates and records the write-defaults fixture: the fixture's body under animator controllers built from the environment variable `AW_WD`, which lists each layer's controller, weight, transition time and states, and for each state whether it writes defaults and what it animates (`reference/Editor/WriteDefaults.cs` gives the grammar; `AW_WD='T:de|dHat=1;K:fSmile=50'` is a write-defaults-on toggle of the hat beside a layer that keeps none). The environment variable `AW_STEPS` (`Name=value,...;...`, each step setting those animator parameters and held `AW_STEP_FRAMES` frames, 20 unless set, with a render on its last) replaces the motion, menu and built-in steps after the rest; the write-defaults fixture, which has no menu, requires it, and the composition, blend duration, layering and clip sample-time probes refuse it. It restores
+composition probe (`reference/Editor/HumanProbe.cs`), with `SCENE` `blend` the blend duration probe (`reference/Editor/BlendProbe.cs`), with `SCENE` `layering` the write-defaults layering probe (`reference/Editor/LayeringProbe.cs`), with `SCENE` `sampletime` the clip sample-time probe (`reference/Editor/SampleTimeProbe.cs`) and with `SCENE` `rotation` the rotation probe (`reference/Editor/RotationProbe.cs`), all described below, in place of the motion, menu and built-in steps. With `SCENE` `curves` it records the curve probe (`reference/Editor/CurveProbe.cs`), also below, which plays no avatar and refuses `AVATAR` and `AW_STEPS`. With `SCENE` `writedefaults`, it generates and records the write-defaults fixture: the fixture's body under animator controllers built from the environment variable `AW_WD`, which lists each layer's controller, weight, transition time and states, and for each state whether it writes defaults and what it animates (`reference/Editor/WriteDefaults.cs` gives the grammar; `AW_WD='T:de|dHat=1;K:fSmile=50'` is a write-defaults-on toggle of the hat beside a layer that keeps none). The environment variable `AW_STEPS` (`Name=value,...;...`, each step setting those animator parameters and held `AW_STEP_FRAMES` frames, 20 unless set, with a render on its last) replaces the motion, menu and built-in steps after the rest; the write-defaults fixture, which has no menu, requires it, and the composition, blend duration, layering, clip sample-time and rotation probes refuse it. It restores
 `PROJECT`'s package manifest on exit and refuses an `OUT` that holds something other than an earlier recording.
 `OUT` receives:
 
@@ -259,7 +259,7 @@ composition probe (`reference/Editor/HumanProbe.cs`), with `SCENE` `blend` the b
 | `time.tsv` | the time of the emulator's playable graph after each frame's evaluation, every frame from the one the graph is created on, so the first evaluation's delta shows; a recording fails if the graph is gone on a frame |
 | `avatar.glb`, `census.json`, `export.txt` | the exporter's model and census of the build this recording runs, written as the last step of its build preprocess, with the build tools' generated names and ids (and, as the emulator skips the SDK's material locking, unlocked shaders); `cargo run --release --example census -- avatar.glb census.json` in `avatar-core/` checks one; `export.txt` lists what the model does not represent |
 | `coverage.json`, `meta.json` | the avatar's feature counts; versions and totals |
-| `compositions.json` | the composition, blend duration, layering and clip sample-time probes' only: for each composition the probe is authored to play on its own, how many clips (composition probe), states (clip sample-time probe) or states and transitions (the others) are authored to play it |
+| `compositions.json` | the composition, blend duration, layering, clip sample-time and rotation probes' only: for each composition the probe is authored to play on its own, how many clips (composition probe), states (clip sample-time and rotation probes) or states and transitions (the others) are authored to play it |
 
 The fixture (`reference/Editor/Fixture.cs`, licensed as this repository) is a synthetic humanoid
 authored for the harness: PhysBones covering both immobile types, every limit type, gravity with
@@ -363,6 +363,26 @@ touching one another, and every later one enters on the same frame. The harness 
 probe plays its cases, then holds 3,000 frames. A recording fails if case 1 never entered one of its states, or if
 `compositions.json` counts zero for a composition `Coverage.SampleTimeCompositions` lists. The probe's recording is a
 reference trace of the core (`avatar-core/fixtures/reference/sampletime-animator`).
+
+The rotation probe is the fixture's body with Base and Action controllers whose humanoid clips turn the body
+(`RootQ`) and the four IK goals about X and Z as well as Y, so a goal's pitch and roll meet a turned body. As in
+the composition probe, `Case` picks the composition, 0 plays the rest pose, every state a case enters mirrors on
+`Mirror`, and the harness plays each case for 150 frames unmirrored and then mirrored, with 20 frames at rest after
+each. A moving clip walks for two seconds while its body and every goal turn from rest to a rotation of their own;
+a zero-length pose holds one key per curve at time zero, its body pitched 93° (with 20° of yaw and 15° of roll).
+Each turns about all three axes under every root-motion setting the composition probe changes alone, and under the
+combination emote packs use (rotation baked and based upon body orientation, height baked with an offset of −0.02,
+XZ baked, as the SDK's `proxy_die` sets them); under the original settings and that combination it also turns, in Base at full weight, about
+X alone and Z alone. Both clips, under both of those settings, play in the Base playable at full weight (its first
+layer) and at partial weight (a second layer at weight 0.5, which idles on an empty clip and so gives no human pose
+until a case plays there; no layer control reaches Base's layers), and in the Action playable at full weight and at
+0.5. A pose under that combination whose body and goal quaternions are 0.7 of unit length, about as long as
+`proxy_die`'s, plays in Base and in Action at full weight. A recording fails if a case never entered its state, if the Action playable held a weight strictly
+between 0 and 1 on fewer than 90% of a partial case's frames, or if `compositions.json` counts zero for a composition
+`Coverage.RotationCompositions` lists. Each is keyed by where it plays, whether it moves, the axes it turns about and
+how its root-motion settings depart from the original ones, with `.unnormalized` after the short pose and
+`.mirrored` after a mirrored state (`rotation.action_full+pose.axes_xyz.root_rotation.bake+root_rotation.body+root_height.bake+root_height.offset+root_xz.bake`
+is the emote pose in Action at full weight).
 
 The curve probe plays no avatar. It builds one clip per curve, its only curve on a transform's X position, and
 samples it at seeded random times through an `AnimationClipPlayable`, beside `AnimationCurve.Evaluate` at the same
