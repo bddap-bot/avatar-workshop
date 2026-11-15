@@ -20,6 +20,11 @@ pub fn goal(name: &str) -> Option<(usize, &str)> {
     })
 }
 
+/// Whether a curve is the w of the body's or an IK goal's rotation, whose rest and identity are 1.
+pub fn is_goal_w(name: &str) -> bool {
+    goal(name).is_some_and(|(_, c)| c == "Q.w")
+}
+
 /// The bone a muscle or translation DoF moves; None for the body and IK goals.
 pub fn bone(name: &str) -> Option<HumanBodyBone> {
     let named = |n: &str| serde_json::from_value(serde_json::Value::String(n.to_string())).ok();

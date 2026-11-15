@@ -87,7 +87,7 @@ pub struct Playing {
 #[derive(Clone, Debug)]
 pub enum From {
     State(Playing),
-    /// The blended pose of an interrupted transition, held still.
+    /// The blended pose of an interrupted transition, held still; an additive layer's, the offsets it added.
     Frozen(Vec<(u32, f32, f32)>),
 }
 

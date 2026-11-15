@@ -39,6 +39,7 @@ impl Target {
     pub fn identity(&self) -> f32 {
         match self {
             Target::Scale(..) | Target::Rotation(_, Axis::W) => 1.0,
+            Target::Muscle(n) if super::human::is_goal_w(n) => 1.0,
             _ => 0.0,
         }
     }

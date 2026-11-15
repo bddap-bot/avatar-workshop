@@ -170,10 +170,9 @@ fn each_dense_clip_follows_its_reference_trace() {
 /// The crossfade probe crossfades an additive humanoid layer between states with additive reference poses, whose
 /// body rotation offsets lie in either hemisphere, over fixed and normalised durations and interrupted midway, with a
 /// generic property one side writes, after walks played mirrored and unmirrored, their time driven by a parameter at
-/// several values or by their own clock. Parameters, states and state times follow the reference. Each case's wrong
-/// value and pose samples are held to today's counts, zero where the core already has the rule; the core does not yet
-/// turn a walk's body as Unity does, nor play every mirrored scrubbed loop, negative-w pair, interrupted fade or
-/// one-sided generic property as Unity does.
+/// several values or by their own clock. Parameters, states, state times and pose bindings follow the reference. Each
+/// case's wrong values are held to today's counts, zero where the core already has the rule; the core does not yet add
+/// a generic property only one side of the fade writes as Unity does.
 #[test]
 fn each_additive_crossfade_and_scrubbed_mirror_follows_its_reference_trace() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -186,45 +185,45 @@ fn each_additive_crossfade_and_scrubbed_mirror_follows_its_reference_trace() {
     assert!(rep.clocks.compared > 60_000, "{} state times compared", rep.clocks.compared);
     assert!(rep.values.compared > 700_000, "{} values compared", rep.values.compared);
     assert!(rep.bindings.compared > 600_000, "{} bindings compared", rep.bindings.compared);
-    // (case label, wrong pose samples, wrong value samples) at most, in case order.
-    let held: [(&str, usize, usize); 29] = [
-        ("scrub mirrored loop own_clock", 300, 0),
-        ("scrub mirrored loop time_0", 600, 0),
-        ("scrub mirrored loop time_25", 300, 0),
-        ("scrub mirrored loop time_60", 600, 0),
-        ("scrub mirrored loop time_100", 600, 0),
-        ("scrub mirrored loop time_ramp", 600, 0),
-        ("scrub mirrored once own_clock", 540, 0),
-        ("scrub mirrored once time_0", 300, 0),
-        ("scrub mirrored once time_25", 300, 0),
-        ("scrub mirrored once time_60", 300, 0),
-        ("scrub mirrored once time_100", 300, 0),
-        ("scrub mirrored once time_ramp", 300, 0),
-        ("scrub unmirrored loop own_clock", 300, 0),
-        ("scrub unmirrored loop time_0", 300, 0),
-        ("scrub unmirrored loop time_25", 300, 0),
-        ("scrub unmirrored loop time_ramp", 300, 0),
-        ("crossfade same fixed", 0, 0),
-        ("crossfade other fixed", 0, 0),
-        ("crossfade negative_alike fixed", 263, 0),
-        ("crossfade negative_pair fixed", 601, 0),
-        ("crossfade same normalized", 0, 0),
-        ("crossfade other normalized", 0, 0),
-        ("crossfade negative_alike normalized", 263, 0),
-        ("crossfade negative_pair normalized", 594, 0),
-        ("crossfade same fixed interrupted", 270, 0),
-        ("crossfade other fixed interrupted", 270, 0),
-        ("crossfade other normalized interrupted", 270, 0),
-        ("generic source only", 0, 150),
-        ("generic destination only", 0, 150),
+    assert_eq!(rep.bindings.wrong, 0, "pose bindings: {}", rep.bindings.summary(20));
+    // (case label, wrong value samples) at most, in case order.
+    let held: [(&str, usize); 29] = [
+        ("scrub mirrored loop own_clock", 0),
+        ("scrub mirrored loop time_0", 0),
+        ("scrub mirrored loop time_25", 0),
+        ("scrub mirrored loop time_60", 0),
+        ("scrub mirrored loop time_100", 0),
+        ("scrub mirrored loop time_ramp", 0),
+        ("scrub mirrored once own_clock", 0),
+        ("scrub mirrored once time_0", 0),
+        ("scrub mirrored once time_25", 0),
+        ("scrub mirrored once time_60", 0),
+        ("scrub mirrored once time_100", 0),
+        ("scrub mirrored once time_ramp", 0),
+        ("scrub unmirrored loop own_clock", 0),
+        ("scrub unmirrored loop time_0", 0),
+        ("scrub unmirrored loop time_25", 0),
+        ("scrub unmirrored loop time_ramp", 0),
+        ("crossfade same fixed", 0),
+        ("crossfade other fixed", 0),
+        ("crossfade negative_alike fixed", 0),
+        ("crossfade negative_pair fixed", 0),
+        ("crossfade same normalized", 0),
+        ("crossfade other normalized", 0),
+        ("crossfade negative_alike normalized", 0),
+        ("crossfade negative_pair normalized", 0),
+        ("crossfade same fixed interrupted", 0),
+        ("crossfade other fixed interrupted", 0),
+        ("crossfade other normalized interrupted", 0),
+        ("generic source only", 150),
+        ("generic destination only", 150),
     ];
     let steps = reference::animator::steps(&dir);
     let cases: Vec<_> = steps.iter().filter(|s| s.label.starts_with("case ")).collect();
     assert_eq!(cases.len(), held.len());
-    for (s, (name, poses, values)) in cases.iter().zip(held) {
+    for (s, (name, values)) in cases.iter().zip(held) {
         assert!(s.label.ends_with(&format!(" {name}")) || s.label.contains(&format!(" {name} source;")), "{} is not {name}", s.label);
         let wrong = |samples: &std::collections::BTreeSet<(usize, String)>| samples.range((s.frame, String::new())..(s.frame + s.frames, String::new())).count();
-        assert!(wrong(&rep.bindings.samples) <= poses, "{}: {} wrong pose samples", s.label, wrong(&rep.bindings.samples));
         assert!(wrong(&rep.values.samples) <= values, "{}: {} wrong values", s.label, wrong(&rep.values.samples));
     }
 }
