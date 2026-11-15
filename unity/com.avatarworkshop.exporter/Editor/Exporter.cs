@@ -11,6 +11,11 @@ namespace AvatarWorkshop.Exporter
 {
     public static class Exporter
     {
+        // AnimationUtility lists a clip's bindings in an order that differs from one editor process to the next.
+        public static IEnumerable<UnityEditor.EditorCurveBinding> Ordered(IEnumerable<UnityEditor.EditorCurveBinding> bindings) =>
+            bindings.OrderBy(b => b.path, StringComparer.Ordinal).ThenBy(b => b.type.FullName, StringComparer.Ordinal)
+                .ThenBy(b => b.propertyName, StringComparer.Ordinal);
+
         public static bool NormalizedBlendValues(UnityEditor.Animations.BlendTree tree) =>
             new UnityEditor.SerializedObject(tree).FindProperty("m_NormalizedBlendValues")?.boolValue ?? false;
 

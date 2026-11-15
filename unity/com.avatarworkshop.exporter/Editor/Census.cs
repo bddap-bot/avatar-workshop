@@ -479,7 +479,7 @@ namespace AvatarWorkshop.Exporter
                         else if (component is ContactReceiver) Count("contactReceiver");
                         else Count("other " + b.type.Name + "." + p.Split('.')[0]);
                     }
-                    foreach (var b in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                    foreach (var b in Exporter.Ordered(AnimationUtility.GetObjectReferenceCurveBindings(clip)))
                     {
                         var t = string.IsNullOrEmpty(b.path) ? root : root.Find(b.path);
                         bool slot = t != null && (b.type == typeof(SkinnedMeshRenderer) || b.type == typeof(MeshRenderer)) && b.propertyName.StartsWith("m_Materials.Array.data[") && t.GetComponent(b.type) != null;

@@ -372,7 +372,7 @@ namespace AvatarWorkshop.Exporter
         Obj ClipRecord(AnimationClip clip)
         {
             var curves = new List<object>();
-            foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+            foreach (var binding in Exporter.Ordered(AnimationUtility.GetCurveBindings(clip)))
             {
                 var (target, negate) = Binding(binding);
                 if (target == null) continue;
@@ -381,7 +381,7 @@ namespace AvatarWorkshop.Exporter
                 curves.Add(new Obj { { "binding", target }, { "curve", Curve(negate ? Negated(curve) : curve) } });
             }
             var slots = new List<object>();
-            foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+            foreach (var binding in Exporter.Ordered(AnimationUtility.GetObjectReferenceCurveBindings(clip)))
             {
                 var t = Path(binding.path);
                 const string prefix = "m_Materials.Array.data[";

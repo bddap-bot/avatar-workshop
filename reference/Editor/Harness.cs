@@ -72,6 +72,7 @@ namespace AvatarWorkshop.Reference
             foreach (var go in avatar.scene.GetRootGameObjects())
                 if (go != avatar && !avatar.transform.IsChildOf(go.transform)) go.SetActive(false);
             for (var p = avatar.transform.parent; p != null; p = p.parent) p.gameObject.SetActive(true);
+            Repeatable.SeedParticles(avatar);
 
             var emu = new GameObject("AWEmulator").AddComponent<LyumaAv3Emulator>();
             emu.DisableMirrorClone = true;
@@ -91,6 +92,7 @@ namespace AvatarWorkshop.Reference
             }
             else recorder = new Recorder(output, avatar.name, kind, migrated);
             EditorApplication.playModeStateChanged += OnPlayMode;
+            Repeatable.SeedRandomSources();
             EditorApplication.EnterPlaymode();
         }
 
@@ -102,7 +104,7 @@ namespace AvatarWorkshop.Reference
                 Time.captureDeltaTime = 1f / Rate;
                 Time.fixedDeltaTime = 1f / Rate;
                 Time.maximumDeltaTime = 1f / Rate;
-                UnityEngine.Random.InitState(1);
+                UnityEngine.Random.InitState(Repeatable.Seed);
                 if (sampler != null) InstallSampler();
                 else Install();
             }
@@ -622,7 +624,7 @@ namespace AvatarWorkshop.Reference
                 .Select(l => l.animatorController).Where(c => c != null).Distinct().ToList();
             foreach (var c in Resources.FindObjectsOfTypeAll<AnimatorController>())
                 foreach (var layer in c.layers) Names(layer.stateMachine, layer.name);
-            var bindings = controllers.SelectMany(c => c.animationClips).Distinct().SelectMany(AnimationUtility.GetCurveBindings).ToList();
+            var bindings = AvatarWorkshop.Exporter.Exporter.Ordered(controllers.SelectMany(c => c.animationClips).Distinct().SelectMany(AnimationUtility.GetCurveBindings)).ToList();
             foreach (var g in bindings.Where(b => b.propertyName.StartsWith("material.")).GroupBy(b => (b.path, b.type, Base(b.propertyName))))
             {
                 var t = root.Find(g.Key.path);
@@ -643,7 +645,7 @@ namespace AvatarWorkshop.Reference
             unheld = fields.Where(f => !AnimationUtility.GetFloatValue(root.gameObject, f.binding, out _)).Select(f => f.key)
                 .Concat(Resources.FindObjectsOfTypeAll<RuntimeAnimatorController>().SelectMany(c => c.animationClips).SelectMany(AnimationUtility.GetCurveBindings)
                     .Where(b => b.type == typeof(Animator) && b.path == "").Select(b => "muscle:" + b.propertyName))
-                .Distinct().Except(humanKeys).ToArray();
+                .Distinct().Except(humanKeys).OrderBy(k => k, StringComparer.Ordinal).ToArray();
             var unheldSet = new HashSet<string>(unheld);
             fields = fields.Where(f => !unheldSet.Contains(f.key)).ToArray();
             foreach (var path in bindings.Where(b => b.type == typeof(Transform)).Select(b => b.path).Distinct().OrderBy(p => p, StringComparer.Ordinal))
