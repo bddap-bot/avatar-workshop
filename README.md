@@ -130,7 +130,7 @@ retain every joint, with each joint driven once.
 `Node3D` objects or `skeleton_bone.gd.new(skeleton, bone_index)` handles.
 Their local transforms define the rest pose. Call `advance(delta)` after
 posing the body. `set_rest(node, transform)` moves the pose a joint swings about, as an
-animator that turns a PhysBone's bone does in VRChat; it returns false when no chain swings `node`. A chain whose index is in `idle` holds the pose it stopped in and sets off from there when it leaves; `state()` and `apply_state()` carry the points of the other chains, `point_count()` of them. Adjacent skeleton chains with unit transforms (allowing bind-matrix roundoff) use
+animator that turns a PhysBone's bone does in VRChat; it returns false when no chain swings `node`. A chain whose index is in `idle` holds the pose it stopped in, through a reset too, and sets off from where its bones lie when it leaves; `state()` and `apply_state()` carry the points of the other chains, `point_count()` of them. Adjacent skeleton chains with unit transforms (allowing bind-matrix roundoff) use
 one Godot 4.6 `SpringBoneSimulator3D` per skeleton, sharing colliders. Chains connected
 through driven ancestors, shared joints, centers or colliders stay together. A component
 with skipped bones, materially scaled transforms or a collider dependency unsupported

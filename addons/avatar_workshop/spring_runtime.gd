@@ -16,6 +16,8 @@ var colliders: Array = []
 var targets := {}
 ## Chains that hold the pose they stopped in, by index.
 var idle := {}
+## The chains `advance` last found idle.
+var _held := {}
 ## World-space capsules {"key", "from", "to", "radius", "who": WEARER or OTHERS}, a sphere where the ends meet, set
 ## before advance; "key" tells a hand from the others across frames.
 var hands: Array = []
@@ -143,15 +145,10 @@ static func _depth(node: Variant) -> int:
 
 func reset() -> void:
 	for chain: Dictionary in chains:
-		var center := _center(chain)
-		chain.current = PackedVector3Array()
-		for joint: Dictionary in chain.joints:
-			var node = joint.node
-			node.transform = joint.rest
-			chain.current.append(center.affine_inverse() * (node.global_transform * joint.tail))
-		chain.previous = chain.current.duplicate()
-		chain.gripped = {}
-		chain.stepped_center = center
+		if not idle.has(chain.index):
+			for joint: Dictionary in chain.joints:
+				joint.node.transform = joint.rest
+		_still(chain)
 	_hands_before.clear()
 	for chain: Dictionary in _physbones:
 		chain.physbone.unseed()
@@ -180,7 +177,25 @@ func set_rest(node: Variant, rest: Transform3D) -> bool:
 	return found
 
 
+## Starts `chain`'s points where its bones lie, with no motion.
+func _still(chain: Dictionary) -> void:
+	var center := _center(chain)
+	var inverse := center.affine_inverse()
+	chain.current = PackedVector3Array()
+	for joint: Dictionary in chain.joints:
+		chain.current.append(inverse * (joint.node.global_transform * joint.tail))
+	chain.previous = chain.current.duplicate()
+	chain.gripped = {}
+	chain.stepped_center = center
+
+
 func advance(delta: float) -> void:
+	for index: int in _held.keys():
+		if not idle.has(index):
+			_held.erase(index)
+			_still(chains[index])
+	for index: int in idle:
+		_held[index] = true
 	for simulator in _native:
 		for component: Array in simulator.components:
 			var run: bool = component.all(func(chain: Dictionary) -> bool: return not targets.has(chain.index) and not idle.has(chain.index) and _unit_scale(chain) and not _within_hand(chain))

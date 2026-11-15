@@ -28,6 +28,7 @@ func _run() -> void:
 	_release_sets_off_from_the_grip()
 	_swings_about_the_animated_rest()
 	_an_idle_chain_holds_its_pose()
+	_an_idle_spring_sets_off_from_where_its_bones_lie()
 	print("physbone: ", "ok" if failures == 0 else str(failures) + " failures")
 	quit(0 if failures == 0 else 1)
 
@@ -186,6 +187,28 @@ func _swings_about_the_animated_rest() -> void:
 	check(tail.global_position.distance_to(Vector3(0.1, 0.05, 0.02)) < 1e-3, "a rest that moves the root carries the chain with it: %s" % tail.global_position)
 	anchor.free()
 
+## A chain that is no PhysBone, left idle while its figure travels, sets off from where its bones lie, not toward
+## where they were when it stopped.
+func _an_idle_spring_sets_off_from_where_its_bones_lie() -> void:
+	var anchor := Node3D.new()
+	root.add_child(anchor)
+	var bone := Node3D.new()
+	anchor.add_child(bone)
+	var tail := Node3D.new()
+	tail.position = Vector3(0, -0.1, 0)
+	bone.add_child(tail)
+	var definition := SpringDefinition.read({"nodes": [{}, {}, {}], "extensions": {"VRMC_springBone": {"springs": [{"joints": [{"node": 0, "stiffness": 1.0, "dragForce": 0.4, "gravityPower": 0.0, "hitRadius": 0.0}, {"node": 1}]}]}}})
+	var springs := SpringRuntime.new(definition, {0: bone, 1: tail, 2: anchor})
+	springs.idle[0] = true
+	springs.advance(1.0 / 60.0)
+	anchor.position = Vector3(5, 0, 0)
+	springs.idle.clear()
+	for i in 3:
+		springs.advance(1.0 / 60.0)
+	check(tail.global_position.distance_to(Vector3(5, -0.1, 0)) < 0.005, "a spring left idle while its figure travelled 5 m hangs where its bones lie: %s" % tail.global_position)
+	anchor.free()
+
+
 ## A chain left idle keeps the pose it stopped in, sends no points, and sets off from there when it runs again.
 func _an_idle_chain_holds_its_pose() -> void:
 	var made := strand(settings({"gravity": 1.0}))
@@ -198,6 +221,8 @@ func _an_idle_chain_holds_its_pose() -> void:
 	for i in 60:
 		springs.advance(1.0 / 60.0)
 	check(made[3].global_position.is_equal_approx(stopped), "an idle chain holds the pose it stopped in: %s" % made[3].global_position)
+	springs.advance(0.3)
+	check(made[3].global_position.is_equal_approx(stopped), "a frame long enough to reset the chains running leaves an idle one its pose: %s" % made[3].global_position)
 	check(springs.state().is_empty() and springs.point_count() == 0 and springs.apply_state(PackedVector3Array()), "an idle chain sends and takes no points")
 	springs.idle.clear()
 	springs.advance(1.0 / 60.0)
