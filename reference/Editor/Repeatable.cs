@@ -8,6 +8,7 @@ namespace AvatarWorkshop.Reference
 {
     // Build tools name, number, place and identify what they generate from UnityEngine.Random, System.Random and
     // Guid.NewGuid, and a particle system seeds itself from the clock: unseeded, two recordings of one avatar differ.
+    // So do jobs run on worker threads: the dynamics' first frames came out in the order the threads happened to run.
     static class Repeatable
     {
         public const int Seed = 1;
@@ -15,8 +16,9 @@ namespace AvatarWorkshop.Reference
         static System.Random guidBytes;
         static int mainThread;
 
-        public static void SeedRandomSources()
+        public static void Begin()
         {
+            Unity.Jobs.LowLevel.Unsafe.JobsUtility.JobWorkerCount = 0;
             UnityEngine.Random.InitState(Seed);
             var threadRandom = typeof(System.Random).GetField("t_threadRandom", BindingFlags.NonPublic | BindingFlags.Static)
                 ?? throw new Exception("System.Random has no t_threadRandom to seed new Random() from");

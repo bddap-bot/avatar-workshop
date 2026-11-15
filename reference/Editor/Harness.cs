@@ -93,7 +93,7 @@ namespace AvatarWorkshop.Reference
             }
             else recorder = new Recorder(output, avatar.name, kind, migrated);
             EditorApplication.playModeStateChanged += OnPlayMode;
-            Repeatable.SeedRandomSources();
+            Repeatable.Begin();
             EditorApplication.EnterPlaymode();
         }
 
@@ -102,6 +102,7 @@ namespace AvatarWorkshop.Reference
             if (change != PlayModeStateChange.EnteredPlayMode) return;
             try
             {
+                RestartEmulatorNow();
                 Time.captureDeltaTime = 1f / Rate;
                 Time.fixedDeltaTime = 1f / Rate;
                 Time.maximumDeltaTime = 1f / Rate;
@@ -110,6 +111,20 @@ namespace AvatarWorkshop.Reference
                 else Install();
             }
             catch (Exception e) { Fail(e); }
+        }
+
+        // VRCFury's play-mode build queues an emulator restart that the editor runs in some recordings and not in
+        // others, and the first frames differ with it.
+        static void RestartEmulatorNow()
+        {
+            var queued = EditorApplication.delayCall;
+            if (queued == null) return;
+            foreach (var d in queued.GetInvocationList())
+                if (d.Method.DeclaringType?.FullName?.StartsWith("VF.Hooks.Av3EmuFixes.Av3EmuAnimatorFixHook+", StringComparison.Ordinal) == true)
+                {
+                    EditorApplication.delayCall -= (EditorApplication.CallbackFunction)d;
+                    ((EditorApplication.CallbackFunction)d)();
+                }
         }
 
         struct InputsStage { }
