@@ -1103,30 +1103,59 @@ impl Animator {
                         }
                     }
                 }
-                let (reference, now): (HashMap<u32, f32>, HashMap<u32, (f32, f32)>) = match &p.rt.layers[li].current {
-                    Some(c) => (
-                        motion_pose(&p.rt, li, c.state, Sample::Reference, &[], clips, &self.defaults, true).into_iter().map(|(t, (v, _))| (t, v)).collect(),
-                        playing_pose(&p.rt, li, c, clips, &self.defaults, true).into_iter().map(|(t, (v, _))| (t, (v, 1.0))).collect(),
-                    ),
-                    None => (HashMap::new(), HashMap::new()),
+                let offset = |c: &machine::Playing| -> HashMap<u32, f32> {
+                    let reference = motion_pose(&p.rt, li, c.state, Sample::Reference, &[], clips, &self.defaults, true);
+                    playing_pose(&p.rt, li, c, clips, &self.defaults, true)
+                        .into_iter()
+                        .map(|(t, (v, _))| (t, v - reference.get(&t).map_or(self.defaults[t as usize], |r| r.0)))
+                        .collect()
                 };
+                // Corpus 3's emote pack fades a sitting pose in this way: both offsets by their shares, the
+                // destination's rotation offset in the source's hemisphere until the transition ends.
+                let l = &p.rt.layers[li];
+                let shares: Vec<(HashMap<u32, f32>, f32)> = match (&l.active, &l.current) {
+                    (Some(a @ machine::Active { from: From::State(from), .. }), _) if a.progress() > 0.0 => {
+                        let (under, mut over) = (offset(from), offset(&a.to));
+                        const UNIT: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+                        let turn = |d: &HashMap<u32, f32>, q: &[u32; 4]| -> Option<[f32; 4]> {
+                            let [x, y, z, w] = q.map(|t| d.get(&t).copied());
+                            Some([x?, y?, z?, w? + 1.0])
+                        };
+                        for q in &self.rotations {
+                            let (Some(o), Some(u)) = (turn(&over, q), turn(&under, q)) else { continue };
+                            if motion::opposed(o, u) {
+                                for ((&t, v), unit) in q.iter().zip(o).zip(UNIT) {
+                                    over.insert(t, -v - unit);
+                                }
+                            }
+                        }
+                        vec![(under, 1.0 - a.progress()), (over, a.progress())]
+                    }
+                    (_, Some(c)) => vec![(offset(c), 1.0)],
+                    _ => vec![],
+                };
+                let mut now: HashMap<u32, (f32, f32)> = HashMap::new();
+                for (d, w) in shares {
+                    for (t, v) in d {
+                        let e = now.entry(t).or_default();
+                        e.0 += w * v;
+                        e.1 += w;
+                    }
+                }
                 for &t in &p.bound {
                     let i = t as usize;
                     if !passes(i) || self.targets.list[i].discrete() || self.goals.iter().any(|g| g.0.contains(&t)) || (p.kind == PlayableLayerType::Additive && p.whole[i]) {
                         continue;
                     }
+                    let scale = if p.whole[i] { lw } else { wl };
+                    let unwritten = (self.defaults[i] - self.targets.list[i].identity()) * acc.cov[i];
                     match now.get(&t) {
                         Some(&(v, c)) => {
-                            let r = reference.get(&t).copied().unwrap_or(self.defaults[i]);
-                            acc.sum[i] += (v - r) * if p.whole[i] { lw } else { wl } * c;
+                            acc.sum[i] += (v + (1.0 - c) * unwritten) * scale;
                             acc.touched[i] = true;
                             written[i] = true;
                         }
-                        None => {
-                            if acc.cov[i] > 0.0 {
-                                acc.sum[i] += (self.defaults[i] - self.targets.list[i].identity()) * if p.whole[i] { lw } else { wl } * acc.cov[i];
-                            }
-                        }
+                        None => acc.sum[i] += unwritten * scale,
                     }
                 }
             }
@@ -1494,8 +1523,9 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, sa
     let mut ls: Vec<Leaf> = Vec::new();
     rt.state_leaves(layer, state, &mut ls);
     let offset = rt.cycle_offset(layer, state);
-    // A mirrored state plays its humanoid clips half a cycle on, which the pose an additive layer subtracts does not.
-    let mirror_phase = if rt.state_mirrors(layer, state) { 0.5 } else { 0.0 };
+    // A mirrored state plays its humanoid clips half a cycle on, which neither a time parameter's scrub nor the pose an
+    // additive layer subtracts does.
+    let mirror_phase = if rt.state_mirrors(layer, state) && rt.state(layer, state).is_some_and(|s| s.time_parameter.is_none()) { 0.5 } else { 0.0 };
     let mut acc: HashMap<u32, (f32, bool)> = HashMap::new();
     let direct = ls.iter().any(|l| l.direct);
     for l in &ls {

@@ -783,3 +783,108 @@ fn a_crossfade_turns_a_node_the_short_way() {
     assert!(back.iter().all(|d| *d < 90.01), "interrupted, turned the long way: {back:?}");
     assert!(back.iter().all(|d| *d < 60.0) && back[9] > 30.0 && back.last().unwrap() < &20.0, "interrupted, never turned back: {back:?}");
 }
+
+fn ramp(name: &str) -> avatar_core::model::Curve {
+    use avatar_core::model::{AnimationCurve, Binding, Curve, Keyframe, WeightedMode};
+    let key = |t: f32| Keyframe { time: t, value: t, in_tangent: 1.0, out_tangent: 1.0, in_weight: 1.0 / 3.0, out_weight: 1.0 / 3.0, weighted_mode: WeightedMode::None };
+    Curve { binding: Binding::Muscle { name: name.into() }, curve: AnimationCurve { keys: vec![key(0.0), key(1.0)] } }
+}
+
+fn base_layer(blending: &str, states: Vec<serde_json::Value>) -> avatar_core::model::AnimatorLayer {
+    let id = states[0]["id"].clone();
+    serde_json::from_value(serde_json::json!({"name": "Probe", "defaultWeight": 1, "blending": blending, "ikPass": false,
+        "content": {"type": "stateMachine", "stateMachine": {"id": 9300, "name": "Probe", "states": states, "stateMachines": [], "defaultState": id,
+            "anyStateTransitions": [], "entryTransitions": [], "stateMachineTransitions": [], "behaviours": []}}}))
+    .unwrap()
+}
+
+/// An additive layer crossfading between two states adds each state's offset from its reference by its share of the
+/// transition, the destination's rotation offset turned into the source's hemisphere until the transition ends, when
+/// it takes its own sign: corpus 3 fades a sitting pose in so, its body rotation offset in the other hemisphere. A
+/// destination whose clip and reference turn alike adds no turn, whatever hemisphere both lie in.
+#[test]
+fn an_additive_crossfade_blends_both_states_offsets() {
+    use avatar_core::model::{AnimatorParameter, AnimatorParameterValue, PlayableLayerType};
+    let half = 15f32.to_radians().sin_cos();
+    let body = |w: f32| [muscle("RootQ.x", 0.0), muscle("RootQ.y", w * half.0), muscle("RootQ.z", 0.0), muscle("RootQ.w", w * half.1)];
+    let fade = |reference_turned: bool| {
+        let mut avatar = fixture();
+        let m = &mut avatar.model;
+        let c = m.clips.len() as u32;
+        let settings: avatar_core::model::HumanoidClip = serde_json::from_value(serde_json::json!({"mirror": false, "loopPose": false,
+            "rotation": {"bakeIntoPose": true, "basedUpon": "original", "offsetDegrees": 0},
+            "height": {"bakeIntoPose": true, "basedUpon": "original", "offset": 0}, "xz": {"bakeIntoPose": true, "basedUpon": "original"}}))
+        .unwrap();
+        let mut still = clip("AwStill", vec![muscle("Spine Front-Back", 0.1)]);
+        let mut reference = clip("AwReference", [vec![muscle("Spine Front-Back", 0.1)], body(if reference_turned { -1.0 } else { 0.0 }).into()].concat());
+        if !reference_turned {
+            reference.curves.last_mut().unwrap().curve.keys[0].value = 1.0;
+        }
+        let mut lean = clip("AwLean", [vec![muscle("Spine Front-Back", 0.6)], body(-1.0).into()].concat());
+        for x in [&mut still, &mut reference, &mut lean] {
+            x.humanoid = Some(settings.clone());
+        }
+        lean.additive_reference_pose = Some(serde_json::from_value(serde_json::json!({"clip": c + 1, "time": 0})).unwrap());
+        m.clips.extend([still, reference, lean]);
+        let go = serde_json::json!([{"destination": {"type": "state", "id": 9302}, "conditions": [{"mode": "if", "parameter": "AwGo", "threshold": 0}],
+            "duration": {"fixed": 0.25}, "offset": 0, "interruptionSource": "none", "orderedInterruption": true, "canTransitionToSelf": false, "mute": false, "solo": false}]);
+        let state = |id: u32, clip: u32, transitions: serde_json::Value| {
+            serde_json::json!({"id": id, "name": format!("S{id}"), "speed": 1, "cycleOffset": 0, "mirror": false, "motion": {"clip": clip}, "writeDefaults": true, "ikOnFeet": false, "behaviours": [], "transitions": transitions})
+        };
+        let base = m.layers.get_mut(&PlayableLayerType::Base).unwrap().controller.as_mut().unwrap();
+        base.parameters.push(AnimatorParameter { name: "AwGo".into(), default: AnimatorParameterValue::Bool(false) });
+        base.layers.push(base_layer("additive", vec![state(9301, c, go), state(9302, c + 2, serde_json::json!([]))]));
+        let mut a = Animator::new(&avatar);
+        run(&mut a, 10);
+        let beneath = value(&a, "Spine Front-Back");
+        let turn = |a: &Animator| 2.0 * value(a, "RootQ.w").abs().min(1.0).acos().to_degrees();
+        a.set("AwGo", 1.0);
+        (0..20)
+            .map(|_| {
+                run(&mut a, 1);
+                (value(&a, "Spine Front-Back") - beneath, turn(&a), value(&a, "RootQ.w"))
+            })
+            .collect::<Vec<_>>()
+    };
+    let fading = fade(false);
+    let mid = fading.iter().find(|f| f.0 > 0.2).unwrap();
+    assert!(mid.0 < 0.3 && (10.0..20.0).contains(&mid.1), "halfway: {fading:?}");
+    assert!(fading.iter().all(|f| f.1 < 30.01 && (-0.01..0.51).contains(&f.0)), "{fading:?}");
+    let end = fading.last().unwrap();
+    assert!((end.0 - 0.5).abs() < 1e-5 && (end.1 - 30.0).abs() < 1e-2 && end.2 < 0.0, "after: {end:?}");
+    let alike = fade(true);
+    assert!(alike.iter().all(|f| f.1 < 1e-2), "turned by a destination that adds no turn: {alike:?}");
+    assert!((alike.last().unwrap().0 - 0.5).abs() < 1e-5, "{alike:?}");
+}
+
+/// A mirrored state whose time a parameter drives plays its clip at that time, without the half cycle a mirrored
+/// state's clock otherwise adds: corpus 3 scrubs mirrored sitting poses so.
+#[test]
+fn a_mirrored_state_driven_by_a_time_parameter_plays_at_that_time() {
+    use avatar_core::model::{AnimatorParameter, AnimatorParameterValue, PlayableLayerType};
+    let mut avatar = fixture();
+    let m = &mut avatar.model;
+    let c = m.clips.len() as u32;
+    let mut scrub = clip("AwScrub", vec![ramp("Left Upper Leg Front-Back")]);
+    scrub.length = 1.0;
+    m.clips.push(scrub);
+    let base = m.layers.get_mut(&PlayableLayerType::Base).unwrap().controller.as_mut().unwrap();
+    base.parameters.push(AnimatorParameter { name: "AwTime".into(), default: AnimatorParameterValue::Float(0.0) });
+    let state = |mirror: bool| {
+        serde_json::json!({"id": 9301, "name": "Scrub", "speed": 1, "cycleOffset": 0, "mirror": mirror, "timeParameter": "AwTime", "motion": {"clip": c},
+            "writeDefaults": true, "ikOnFeet": false, "behaviours": [], "transitions": []})
+    };
+    let leg = |mirror: bool, time: f32| {
+        let mut avatar = avatar.clone();
+        let base = avatar.model.layers.get_mut(&PlayableLayerType::Base).unwrap().controller.as_mut().unwrap();
+        base.layers.push(base_layer("override", vec![state(mirror)]));
+        let mut a = Animator::new(&avatar);
+        a.set("AwTime", time);
+        run(&mut a, 3);
+        value(&a, if mirror { "Right Upper Leg Front-Back" } else { "Left Upper Leg Front-Back" })
+    };
+    for time in [0.0, 0.25] {
+        assert!((leg(false, time) - time).abs() < 1e-5, "unmirrored at {time}: {}", leg(false, time));
+        assert!((leg(true, time) - time).abs() < 1e-5, "mirrored at {time}: {}", leg(true, time));
+    }
+}
