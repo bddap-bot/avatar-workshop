@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# usage: run.sh <unity project> <output dir> [scene path, "probe", "human", "blend", "layering", "sampletime", "rotation", "dense", "writedefaults" or "curves"] [avatar object name]
+# usage: run.sh <unity project> <output dir> [scene path, "probe", "human", "blend", "layering", "sampletime", "rotation", "dense", "crossfade", "writedefaults" or "curves"] [avatar object name]
 # AW_CLIPS=<a recording of the scene's avatar> plays each clip it played alone instead of recording (README).
 # UNITY names the editor command (default: Unity on PATH); it needs a display (e.g. Xvfb).
 set -euo pipefail

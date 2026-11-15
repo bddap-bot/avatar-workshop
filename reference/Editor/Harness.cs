@@ -59,7 +59,8 @@ namespace AvatarWorkshop.Reference
             Fixture.Kind? kind = scenePath == null ? Fixture.Kind.Fixture : scenePath == "probe" ? Fixture.Kind.Probe : scenePath == "human" ? Fixture.Kind.Human
                 : scenePath == "blend" ? Fixture.Kind.Blend : scenePath == "writedefaults" ? Fixture.Kind.WriteDefaults
                 : scenePath == "layering" ? Fixture.Kind.Layering : scenePath == "sampletime" ? Fixture.Kind.SampleTime
-                : scenePath == "rotation" ? Fixture.Kind.Rotation : scenePath == "dense" ? Fixture.Kind.Dense : (Fixture.Kind?)null;
+                : scenePath == "rotation" ? Fixture.Kind.Rotation : scenePath == "dense" ? Fixture.Kind.Dense
+                : scenePath == "crossfade" ? Fixture.Kind.Crossfade : (Fixture.Kind?)null;
             if (kind.HasValue) scenePath = Fixture.Build(kind.Value);
 
             EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
@@ -286,8 +287,8 @@ namespace AvatarWorkshop.Reference
         public bool Finished;
         readonly string output;
         readonly string avatarName;
-        readonly bool fixture, probe, human, blend, layering, sampleTime, rotation, dense;
-        bool Cased => human || blend || layering || sampleTime || rotation || dense;
+        readonly bool fixture, probe, human, blend, layering, sampleTime, rotation, dense, crossfade;
+        bool Cased => human || blend || layering || sampleTime || rotation || dense || crossfade;
         readonly bool migratedDynamicBones;
         bool exported;
         StreamWriter timeOut;
@@ -355,6 +356,7 @@ namespace AvatarWorkshop.Reference
             sampleTime = kind == Fixture.Kind.SampleTime;
             rotation = kind == Fixture.Kind.Rotation;
             dense = kind == Fixture.Kind.Dense;
+            crossfade = kind == Fixture.Kind.Crossfade;
             this.output = output;
             this.avatarName = avatarName;
             this.migratedDynamicBones = migratedDynamicBones;
@@ -685,6 +687,7 @@ namespace AvatarWorkshop.Reference
                     : layering ? ("layering", Coverage.LayeringCompositions, Coverage.CountLayeringCompositions(descriptor))
                     : rotation ? ("rotation", Coverage.RotationCompositions, Coverage.CountRotationCompositions(descriptor))
                     : dense ? ("dense clip", Coverage.DenseCompositions, Coverage.CountDenseCompositions(descriptor))
+                    : crossfade ? ("crossfade", Coverage.CrossfadeCompositions, Coverage.CountCrossfadeCompositions(descriptor))
                     : ("clip sample-time", Coverage.SampleTimeCompositions, Coverage.CountSampleTimeCompositions(descriptor));
                 File.WriteAllText(Path.Combine(output, "compositions.json"), Json(compositions) + "\n");
                 var absent = listed.Where(k => compositions[k] == 0).ToList();
@@ -703,6 +706,7 @@ namespace AvatarWorkshop.Reference
                 ["sample_time"] = sampleTime,
                 ["rotation"] = rotation,
                 ["dense"] = dense,
+                ["crossfade"] = crossfade,
                 ["root_scale"] = new[] { root.lossyScale.x, root.lossyScale.y, root.lossyScale.z },
                 ["unity"] = Application.unityVersion,
                 ["dynamic_bones_migrated"] = migratedDynamicBones,

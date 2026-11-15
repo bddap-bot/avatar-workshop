@@ -158,7 +158,7 @@ namespace AvatarWorkshop.Reference
                 if (b.propertyName.StartsWith("m_Materials.Array.data[")) add("curve.material_swap");
             var s = AnimationUtility.GetAnimationClipSettings(clip);
             if (s.cycleOffset != 0) add("clip.cycle_offset");
-            if (s.hasAdditiveReferencePose && s.additiveReferencePoseClip != null) add("clip.additive_reference_pose");
+            if (HasReference(s)) add("clip.additive_reference_pose");
             if (clip.humanMotion) Settings(s, add);
         }
 
@@ -789,6 +789,96 @@ namespace AvatarWorkshop.Reference
                         key += "." + Fixture.SpeedKey(s.speed);
                         c[key] = c.TryGetValue(key, out var n) ? n + 1 : 1;
                     }
+            return c;
+        }
+
+        // The crossfade probe's compositions: "crossfade.<hemisphere>.<fixed|normalized>", ".interrupted" after a fade
+        // the destination's own transition interrupts while it runs, for each fade Pulse starts in an additive Base
+        // layer from the state a case enters to another, both clips subtracting a reference pose; the hemisphere is how
+        // the destination's body rotation offset lies against the source's, or, where the destination's clip and
+        // reference both have negative w, whether they turn alike. "crossfade.generic.<side>_only" where only that
+        // side's clip writes a generic property. "scrub.<mirrored|unmirrored>.<loop|once>.<time>" for each humanoid clip
+        // state of an override Base layer, by the default of the parameter driving its time ("time_ramp" for one the
+        // harness ramps, "own_clock" for none). Only the fades Pulse starts count: a fade back or on from a destination
+        // would otherwise credit a composition whose own case is missing.
+        public static readonly string[] CrossfadeCompositions =
+            (from f in new[] { true, false } from h in Fixture.CrossfadeHemispheres select Fixture.CrossfadeKey(h, f, false))
+            .Concat(Fixture.CrossfadeInterruptedCases.Select(x => Fixture.CrossfadeKey(x.hemisphere, x.fixedDuration, true)))
+            .Concat(new[] { "crossfade.generic.source_only", "crossfade.generic.destination_only" })
+            .Concat(from x in Fixture.ScrubCases from t in x.times select Fixture.ScrubKey(x.mirrored, x.loop, t.key))
+            .ToArray();
+
+        static Vector4 RootQAt(AnimationClip clip, float time)
+        {
+            var q = "xyzw".Select(a => AnimationUtility.GetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), $"RootQ.{a}"))
+                ?? throw new System.Exception($"{clip.name} has no RootQ.{a} curve")).Select(curve => curve.Evaluate(time)).ToArray();
+            return new Vector4(q[0], q[1], q[2], q[3]);
+        }
+
+        static bool HasReference(AnimationClipSettings s) => s.hasAdditiveReferencePose && s.additiveReferencePoseClip != null;
+
+        static AnimationClip Subtracting(Motion m) => m is AnimationClip c && HasReference(AnimationUtility.GetAnimationClipSettings(c)) ? c : null;
+
+        static (Vector4 clip, Vector4 reference) BodyRotations(AnimationClip c)
+        {
+            var s = AnimationUtility.GetAnimationClipSettings(c);
+            return (RootQAt(c, 0), RootQAt(s.additiveReferencePoseClip, s.additiveReferencePoseTime));
+        }
+
+        static Vector4 RotationOffset(AnimationClip c)
+        {
+            var (clip, reference) = BodyRotations(c);
+            return clip - reference + new Vector4(0, 0, 0, 1);
+        }
+
+        static bool WritesGeneric(AnimationClip c) => AnimationUtility.GetCurveBindings(c).Any(b => b.type != typeof(Animator));
+
+        static bool On(AnimatorStateTransition t, AnimatorConditionMode mode) =>
+            t.conditions.Any(x => x.parameter == Fixture.PulseParameter && x.mode == mode);
+
+        public static SortedDictionary<string, int> CountCrossfadeCompositions(VRCAvatarDescriptor d)
+        {
+            var c = new SortedDictionary<string, int>();
+            foreach (var k in CrossfadeCompositions) c[k] = 0;
+            void Add(string key) => c[key] = c.TryGetValue(key, out var n) ? n + 1 : 1;
+            float pulse = (Fixture.PulseOff - Fixture.PulseOn) / (float)Harness.Rate;
+            foreach (var (_, ctrl, _) in Controllers(d).Where(x => x.type == VRCAvatarDescriptor.AnimLayerType.Base && x.mask == null))
+            {
+                var parameters = ctrl.parameters.ToDictionary(p => p.name);
+                foreach (var layer in ctrl.layers.Where(l => l.defaultWeight == 1 && l.avatarMask == null && l.syncedLayerIndex < 0))
+                {
+                    var sm = layer.stateMachine;
+                    var cases = CaseOf(sm);
+                    var entered = new HashSet<AnimatorState>(sm.states.SelectMany(x => x.state.transitions)
+                        .Where(t => t.conditions.Any(x => x.parameter == Fixture.CaseParameter && x.mode == AnimatorConditionMode.Equals)).Select(t => t.destinationState));
+                    foreach (var s in cases.Keys)
+                    {
+                        if (layer.blendingMode == AnimatorLayerBlendingMode.Additive)
+                        {
+                            if (!entered.Contains(s) || !(Subtracting(s.motion) is AnimationClip from)) continue;
+                            foreach (var t in s.transitions.Where(t => t.duration > 0 && On(t, AnimatorConditionMode.If)))
+                            {
+                                if (!(t.destinationState is AnimatorState dst) || !cases.ContainsKey(dst) || !(Subtracting(dst.motion) is AnimationClip to)) continue;
+                                var (target, reference) = BodyRotations(to);
+                                var hemisphere = target.w < 0 && reference.w < 0 ? ((target - reference).magnitude < 1e-4f ? "negative_alike" : "negative_pair")
+                                    : Vector4.Dot(RotationOffset(from), RotationOffset(to)) >= 0 ? "same" : "other";
+                                var seconds = t.hasFixedDuration ? t.duration : t.duration * from.length;
+                                var interrupted = (t.interruptionSource == TransitionInterruptionSource.Destination || t.interruptionSource == TransitionInterruptionSource.DestinationThenSource)
+                                    && seconds > pulse && dst.transitions.Any(x => x.duration > 0 && On(x, AnimatorConditionMode.IfNot) && x.destinationState != null && cases.ContainsKey(x.destinationState));
+                                Add(Fixture.CrossfadeKey(hemisphere, t.hasFixedDuration, interrupted));
+                                if (WritesGeneric(from) != WritesGeneric(to)) Add($"crossfade.generic.{(WritesGeneric(from) ? "source" : "destination")}_only");
+                            }
+                        }
+                        else if (layer.blendingMode == AnimatorLayerBlendingMode.Override && s.motion is AnimationClip clip && clip.humanMotion && Subtracting(clip) == null)
+                        {
+                            string time = !s.timeParameterActive ? "own_clock"
+                                : Fixture.Ramps.Contains(s.timeParameter) ? "time_ramp"
+                                : parameters.TryGetValue(s.timeParameter, out var p) && p.type == AnimatorControllerParameterType.Float ? Fixture.ScrubTime(p.defaultFloat) : null;
+                            if (time != null) Add(Fixture.ScrubKey(s.mirror, AnimationUtility.GetAnimationClipSettings(clip).loopTime, time));
+                        }
+                    }
+                }
+            }
             return c;
         }
 
