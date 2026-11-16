@@ -1108,3 +1108,102 @@ fn each_frame_grid_rule_case_follows_its_reference_trace() {
 
 /// Wrong samples of bindings an earlier case left held through a later one.
 const RULE_HELD_FROM_EARLIER_CASES: usize = 2040;
+
+/// The generic-rig playable probe is the fixture's body under a generic avatar, so no playable carries a human pose. In
+/// each of the Base, Additive, Gesture, Action and FX playables a case plays, in the controller's first layer, in one at
+/// weight 0.5, or in the first layer with its playable at weight 0.5 (every playable but Base), a clip animating a blendshape, a node position and an animator parameter of its own, alone, under an
+/// override layer at weight 0.5 holding them at other values, or under an additive layer offsetting them. Parameters,
+/// states and state times follow the reference; each case's wrong samples of its own bindings, while it plays and in
+/// the reset after it, are held to today's counts, as is the total.
+#[test]
+fn each_generic_rig_playable_case_follows_its_reference_trace() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dir = root.join("fixtures/reference/genericrig-animator");
+    let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-genericrig.glb")).unwrap()).unwrap();
+    assert!(avatar.model.humanoid.bones.is_empty(), "the probe has a humanoid rig");
+    let rep = Run::new(&dir, avatar).run(None);
+    assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
+    assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
+    assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
+    assert_eq!(rep.bindings.wrong, 0, "pose bindings: {}", rep.bindings.summary(20));
+    assert!(rep.values.compared > 1_500_000, "{} values compared", rep.values.compared);
+    let playable = |name: &str| match name {
+        "base" => 0,
+        "additive" => 1,
+        "gesture" => 5,
+        "action" => 6,
+        "fx" => 7,
+        _ => panic!("no playable {name}"),
+    };
+    let steps = reference::animator::steps(&dir);
+    let cases: Vec<_> = steps.iter().enumerate().filter(|(_, s)| s.label.starts_with("case ")).collect();
+    assert_eq!(cases.len(), RIG_HELD.len());
+    let mut found = Vec::new();
+    for (n, ((i, s), (name, _, _))) in cases.iter().zip(RIG_HELD).enumerate() {
+        let id = n + 1;
+        assert!(s.label.contains(&format!(": {id} {name}")), "{} is not {name}", s.label);
+        let reset = &steps[i + 1];
+        assert_eq!(reset.label, "reset");
+        let keys = [
+            format!("shape:Body:Rig{id}"),
+            format!("xform:RigNode{id}"),
+            format!("curve:{}:RigParam{id}", playable(name.split(' ').next().unwrap())),
+        ];
+        for k in &keys {
+            assert!(rep.seen.contains_key(k), "{k} was never compared");
+        }
+        let within = |frame: usize, frames: usize| {
+            rep.values.samples.range((frame, String::new())..(frame + frames, String::new())).filter(|(_, k)| keys.contains(k)).count()
+        };
+        found.push((name, within(s.frame, s.frames), within(reset.frame, reset.frames)));
+    }
+    assert_eq!(found, RIG_HELD, "wrong samples of each case's own bindings while it plays and in the reset after it");
+    assert_eq!(rep.values.samples.len(), RIG_WRONG_SAMPLES, "values: {}", rep.values.summary(20));
+}
+
+const RIG_WRONG_SAMPLES: usize = 654_951;
+
+const RIG_HELD: [(&str, usize, usize); 42] = [
+    ("base alone full", 300, 40),
+    ("base under_override full", 300, 40),
+    ("base under_additive full", 450, 60),
+    ("base alone partial_layer", 450, 60),
+    ("base under_override partial_layer", 450, 60),
+    ("base under_additive partial_layer", 450, 60),
+    ("additive alone full", 300, 40),
+    ("additive under_override full", 300, 40),
+    ("additive under_additive full", 450, 60),
+    ("additive alone partial_layer", 450, 60),
+    ("additive under_override partial_layer", 450, 60),
+    ("additive under_additive partial_layer", 450, 60),
+    ("additive alone partial_playable", 450, 60),
+    ("additive under_override partial_playable", 450, 60),
+    ("additive under_additive partial_playable", 450, 60),
+    ("gesture alone full", 0, 0),
+    ("gesture under_override full", 0, 0),
+    ("gesture under_additive full", 150, 20),
+    ("gesture alone partial_layer", 300, 40),
+    ("gesture under_override partial_layer", 300, 40),
+    ("gesture under_additive partial_layer", 450, 60),
+    ("gesture alone partial_playable", 450, 60),
+    ("gesture under_override partial_playable", 450, 60),
+    ("gesture under_additive partial_playable", 450, 60),
+    ("action alone full", 2, 38),
+    ("action under_override full", 2, 38),
+    ("action under_additive full", 151, 58),
+    ("action alone partial_layer", 301, 59),
+    ("action under_override partial_layer", 301, 59),
+    ("action under_additive partial_layer", 450, 60),
+    ("action alone partial_playable", 450, 60),
+    ("action under_override partial_playable", 450, 60),
+    ("action under_additive partial_playable", 450, 60),
+    ("fx alone full", 0, 0),
+    ("fx under_override full", 0, 0),
+    ("fx under_additive full", 150, 20),
+    ("fx alone partial_layer", 300, 40),
+    ("fx under_override partial_layer", 300, 40),
+    ("fx under_additive partial_layer", 450, 60),
+    ("fx alone partial_playable", 450, 60),
+    ("fx under_override partial_playable", 450, 60),
+    ("fx under_additive partial_playable", 450, 60),
+];

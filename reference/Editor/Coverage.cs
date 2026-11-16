@@ -230,7 +230,7 @@ namespace AvatarWorkshop.Reference
         static bool Partial(AnimatorState s, VRC_PlayableLayerControl.BlendableLayer layer) =>
             s.behaviours.OfType<VRC_PlayableLayerControl>().Any(b => b.layer == layer && b.goalWeight > 0 && b.goalWeight < 1);
 
-        // A state in the Action or Additive controller plays at partial weight when it sets its playable's weight
+        // A state in the Action, Additive, Gesture or FX controller plays at partial weight when it sets its playable's weight
         // strictly between 0 and 1; the Sitting playable's while the harness toggles Seated faster than it blends.
         static VRCAvatarDescriptor.AnimLayerType? PartialPlayable(VRCAvatarDescriptor.AnimLayerType type, AnimatorState s)
         {
@@ -238,6 +238,8 @@ namespace AvatarWorkshop.Reference
             {
                 case VRCAvatarDescriptor.AnimLayerType.Action when Partial(s, VRC_PlayableLayerControl.BlendableLayer.Action):
                 case VRCAvatarDescriptor.AnimLayerType.Additive when Partial(s, VRC_PlayableLayerControl.BlendableLayer.Additive):
+                case VRCAvatarDescriptor.AnimLayerType.Gesture when Partial(s, VRC_PlayableLayerControl.BlendableLayer.Gesture):
+                case VRCAvatarDescriptor.AnimLayerType.FX when Partial(s, VRC_PlayableLayerControl.BlendableLayer.FX):
                 case VRCAvatarDescriptor.AnimLayerType.Sitting:
                     return type;
                 default: return null;
@@ -1186,6 +1188,85 @@ namespace AvatarWorkshop.Reference
                             c[key] = c.TryGetValue(key, out var m) ? m + 1 : 1;
                     }
                 }
+            return c;
+        }
+
+        // The generic-rig playable probe's compositions, read from the authored assets of an avatar whose animator has no
+        // humanoid avatar. "rig.<playable>.<property>.<context>.<weight>" for each case of a playable's controller: a
+        // state its Case value enters in an override layer, at full weight (the controller's first layer, or one at
+        // weight 1) or partial (a later layer strictly between 0 and 1), without write defaults, playing a clip that binds
+        // the case's own blendshape, node position or animator parameter; under_override when a later override layer
+        // strictly between 0 and 1 enters a state of the same case binding the same property, under_additive when a later
+        // additive layer does, alone when no other layer has a state of the case. An Action case's state also sets the Action
+        // playable's weight (1, or 0.5 for partial_playable), which is otherwise 0.
+        public static readonly string[] RigCompositions =
+            (from p in Fixture.RigPlayables
+             from property in Fixture.RigProperties
+             from context in Fixture.RigContexts
+             from weight in Fixture.RigWeights(p)
+             select Fixture.RigKey(p, property, context, weight)).ToArray();
+
+        static string RigProperty(EditorCurveBinding b, int id) =>
+            b.type == typeof(SkinnedMeshRenderer) && b.path == "Body" && b.propertyName == "blendShape." + Fixture.RigShape(id) ? "blendshape"
+            : b.type == typeof(Transform) && b.path == Fixture.RigNode(id) && b.propertyName == "m_LocalPosition.y" ? "position"
+            : b.type == typeof(Animator) && b.path == "" && b.propertyName == Fixture.RigParameter(id) ? "parameter"
+            : null;
+
+        static bool RigPlain(AnimatorState s) =>
+            !s.writeDefaultValues && s.speed == 1 && !s.speedParameterActive && !s.timeParameterActive && !s.cycleOffsetParameterActive && !s.mirror && !s.mirrorParameterActive;
+
+        static HashSet<string> RigBound(AnimatorState s, int id) =>
+            s.motion is AnimationClip clip
+                ? new HashSet<string>(AnimationUtility.GetCurveBindings(clip).Select(b => RigProperty(b, id)).Where(x => x != null))
+                : new HashSet<string>();
+
+        public static SortedDictionary<string, int> CountRigCompositions(VRCAvatarDescriptor d)
+        {
+            var c = new SortedDictionary<string, int>();
+            foreach (var k in RigCompositions) c[k] = 0;
+            var animator = d.GetComponent<Animator>();
+            if (animator == null || animator.avatar == null || animator.avatar.isHuman) return c;
+            foreach (var (type, ctrl, _) in Controllers(d).Where(x => x.mask == null && Fixture.RigPlayables.Contains(x.type)))
+            {
+                var layers = ctrl.layers;
+                var floats = new HashSet<string>(ctrl.parameters.Where(p => p.type == AnimatorControllerParameterType.Float).Select(p => p.name));
+                var states = layers.Select((l, i) => (layer: l, index: i, of: CaseOf(l.stateMachine))).ToList();
+                foreach (var (layer, index, of) in states)
+                {
+                    if (layer.blendingMode != AnimatorLayerBlendingMode.Override || layer.avatarMask != null || layer.syncedLayerIndex >= 0) continue;
+                    string layerWeight = index == 0 || layer.defaultWeight == 1 ? "full" : layer.defaultWeight > 0 && layer.defaultWeight < 1 ? "partial_layer" : null;
+                    if (layerWeight == null) continue;
+                    foreach (var kv in of)
+                    {
+                        var (s, id) = (kv.Key, kv.Value);
+                        var blendable = Fixture.RigBlendable(type);
+                        var sets = s.behaviours.OfType<VRC_PlayableLayerControl>().ToList();
+                        if (sets.Count > 1 || sets.Any(b => blendable == null || (int)b.layer != (int)blendable.Value || b.blendDuration != 0)) continue;
+                        float? goal = sets.Count == 1 ? sets[0].goalWeight : (float?)null;
+                        bool action = type == VRCAvatarDescriptor.AnimLayerType.Action;
+                        string weight = goal == null ? (action ? null : layerWeight)
+                            : goal == 1 ? (action ? layerWeight : null)
+                            : goal > 0 && goal < 1 && layerWeight == "full" ? "partial_playable"
+                            : null;
+                        if (weight == null || !RigPlain(s)) continue;
+                        var bound = RigBound(s, id);
+                        if (!floats.Contains(Fixture.RigParameter(id)) || d.expressionParameters?.FindParameter(Fixture.RigParameter(id)) != null) bound.Remove("parameter");
+                        var others = states.Where(x => x.index != index).SelectMany(x => x.of.Where(o => o.Value == id).Select(o => (x.layer, x.index, state: o.Key))).ToList();
+                        foreach (var property in bound)
+                        {
+                            string context = null;
+                            if (others.Count == 0) context = "alone";
+                            else if (others.Count == 1 && others[0] is var other && other.index > index && other.layer.avatarMask == null && RigPlain(other.state) && other.state.behaviours.Length == 0 && RigBound(other.state, id).Contains(property))
+                                context = other.layer.blendingMode == AnimatorLayerBlendingMode.Additive && other.layer.defaultWeight == 1 ? "under_additive"
+                                    : other.layer.blendingMode == AnimatorLayerBlendingMode.Override && other.layer.defaultWeight > 0 && other.layer.defaultWeight < 1 ? "under_override"
+                                    : null;
+                            if (context == null) continue;
+                            var key = Fixture.RigKey(type, property, context, weight);
+                            c[key] = c.TryGetValue(key, out var n) ? n + 1 : 1;
+                        }
+                    }
+                }
+            }
             return c;
         }
 

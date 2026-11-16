@@ -1,0 +1,86 @@
+0	5	90	-	rest	GestureLeft=0,GestureRight=0,GestureLeftWeight=0,GestureRightWeight=0,Viseme=0,Voice=0,Grounded=1,Seated=0,AFK=0,VelocityX=0,VelocityY=0,VelocityZ=0,AngularY=0,Upright=1,TrackingType=3,VRMode=1,InStation=0,IsOnFriendsList=0
+1	95	150	-	case 1: base/Full: 1 base alone full	Case=1
+2	245	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+3	265	150	-	case 2: base/Full: 2 base under_override full; base/Override: 2 base under_override full override	Case=2
+4	415	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+5	435	150	-	case 3: base/Full: 3 base under_additive full; base/Additive: 3 base under_additive full additive	Case=3
+6	585	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+7	605	150	-	case 4: base/Partial: 4 base alone partial_layer	Case=4
+8	755	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+9	775	150	-	case 5: base/Partial: 5 base under_override partial_layer; base/Override: 5 base under_override partial_layer override	Case=5
+10	925	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+11	945	150	-	case 6: base/Partial: 6 base under_additive partial_layer; base/Additive: 6 base under_additive partial_layer additive	Case=6
+12	1095	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+13	1115	150	-	case 7: additive/Full: 7 additive alone full	Case=7
+14	1265	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+15	1285	150	-	case 8: additive/Full: 8 additive under_override full; additive/Override: 8 additive under_override full override	Case=8
+16	1435	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+17	1455	150	-	case 9: additive/Full: 9 additive under_additive full; additive/Additive: 9 additive under_additive full additive	Case=9
+18	1605	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+19	1625	150	-	case 10: additive/Partial: 10 additive alone partial_layer	Case=10
+20	1775	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+21	1795	150	-	case 11: additive/Partial: 11 additive under_override partial_layer; additive/Override: 11 additive under_override partial_layer override	Case=11
+22	1945	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+23	1965	150	-	case 12: additive/Partial: 12 additive under_additive partial_layer; additive/Additive: 12 additive under_additive partial_layer additive	Case=12
+24	2115	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+25	2135	150	-	case 13: additive/Full: 13 additive alone partial_playable	Case=13
+26	2285	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+27	2305	150	-	case 14: additive/Full: 14 additive under_override partial_playable; additive/Override: 14 additive under_override partial_playable override	Case=14
+28	2455	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+29	2475	150	-	case 15: additive/Full: 15 additive under_additive partial_playable; additive/Additive: 15 additive under_additive partial_playable additive	Case=15
+30	2625	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+31	2645	150	-	case 16: gesture/Full: 16 gesture alone full	Case=16
+32	2795	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+33	2815	150	-	case 17: gesture/Full: 17 gesture under_override full; gesture/Override: 17 gesture under_override full override	Case=17
+34	2965	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+35	2985	150	-	case 18: gesture/Full: 18 gesture under_additive full; gesture/Additive: 18 gesture under_additive full additive	Case=18
+36	3135	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+37	3155	150	-	case 19: gesture/Partial: 19 gesture alone partial_layer	Case=19
+38	3305	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+39	3325	150	-	case 20: gesture/Partial: 20 gesture under_override partial_layer; gesture/Override: 20 gesture under_override partial_layer override	Case=20
+40	3475	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+41	3495	150	-	case 21: gesture/Partial: 21 gesture under_additive partial_layer; gesture/Additive: 21 gesture under_additive partial_layer additive	Case=21
+42	3645	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+43	3665	150	-	case 22: gesture/Full: 22 gesture alone partial_playable	Case=22
+44	3815	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+45	3835	150	-	case 23: gesture/Full: 23 gesture under_override partial_playable; gesture/Override: 23 gesture under_override partial_playable override	Case=23
+46	3985	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+47	4005	150	-	case 24: gesture/Full: 24 gesture under_additive partial_playable; gesture/Additive: 24 gesture under_additive partial_playable additive	Case=24
+48	4155	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+49	4175	150	-	case 25: action/Full: 25 action alone full	Case=25
+50	4325	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+51	4345	150	-	case 26: action/Full: 26 action under_override full; action/Override: 26 action under_override full override	Case=26
+52	4495	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+53	4515	150	-	case 27: action/Full: 27 action under_additive full; action/Additive: 27 action under_additive full additive	Case=27
+54	4665	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+55	4685	150	-	case 28: action/Partial: 28 action alone partial_layer	Case=28
+56	4835	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+57	4855	150	-	case 29: action/Partial: 29 action under_override partial_layer; action/Override: 29 action under_override partial_layer override	Case=29
+58	5005	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+59	5025	150	-	case 30: action/Partial: 30 action under_additive partial_layer; action/Additive: 30 action under_additive partial_layer additive	Case=30
+60	5175	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+61	5195	150	-	case 31: action/Full: 31 action alone partial_playable	Case=31
+62	5345	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+63	5365	150	-	case 32: action/Full: 32 action under_override partial_playable; action/Override: 32 action under_override partial_playable override	Case=32
+64	5515	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+65	5535	150	-	case 33: action/Full: 33 action under_additive partial_playable; action/Additive: 33 action under_additive partial_playable additive	Case=33
+66	5685	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+67	5705	150	-	case 34: fx/Full: 34 fx alone full	Case=34
+68	5855	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+69	5875	150	-	case 35: fx/Full: 35 fx under_override full; fx/Override: 35 fx under_override full override	Case=35
+70	6025	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+71	6045	150	-	case 36: fx/Full: 36 fx under_additive full; fx/Additive: 36 fx under_additive full additive	Case=36
+72	6195	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+73	6215	150	-	case 37: fx/Partial: 37 fx alone partial_layer	Case=37
+74	6365	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+75	6385	150	-	case 38: fx/Partial: 38 fx under_override partial_layer; fx/Override: 38 fx under_override partial_layer override	Case=38
+76	6535	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+77	6555	150	-	case 39: fx/Partial: 39 fx under_additive partial_layer; fx/Additive: 39 fx under_additive partial_layer additive	Case=39
+78	6705	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+79	6725	150	-	case 40: fx/Full: 40 fx alone partial_playable	Case=40
+80	6875	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+81	6895	150	-	case 41: fx/Full: 41 fx under_override partial_playable; fx/Override: 41 fx under_override partial_playable override	Case=41
+82	7045	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+83	7065	150	-	case 42: fx/Full: 42 fx under_additive partial_playable; fx/Additive: 42 fx under_additive partial_playable additive	Case=42
+84	7215	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+85	7235	60	-	final	

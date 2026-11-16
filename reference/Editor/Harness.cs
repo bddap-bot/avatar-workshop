@@ -61,7 +61,8 @@ namespace AvatarWorkshop.Reference
                 : scenePath == "layering" ? Fixture.Kind.Layering : scenePath == "sampletime" ? Fixture.Kind.SampleTime
                 : scenePath == "rotation" ? Fixture.Kind.Rotation : scenePath == "dense" ? Fixture.Kind.Dense
                 : scenePath == "crossfade" ? Fixture.Kind.Crossfade : scenePath == "generic" ? Fixture.Kind.Generic
-                : scenePath == "gridhold" ? Fixture.Kind.GridHold : scenePath == "gridrule" ? Fixture.Kind.GridRule : (Fixture.Kind?)null;
+                : scenePath == "gridhold" ? Fixture.Kind.GridHold : scenePath == "gridrule" ? Fixture.Kind.GridRule
+                : scenePath == "genericrig" ? Fixture.Kind.GenericRig : (Fixture.Kind?)null;
             if (kind.HasValue) scenePath = Fixture.Build(kind.Value);
 
             EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
@@ -303,8 +304,8 @@ namespace AvatarWorkshop.Reference
         public bool Finished;
         readonly string output;
         readonly string avatarName;
-        readonly bool fixture, probe, human, blend, layering, sampleTime, rotation, dense, crossfade, generic, gridHold, gridRule;
-        bool Cased => human || blend || layering || sampleTime || rotation || dense || crossfade || generic || gridHold || gridRule;
+        readonly bool fixture, probe, human, blend, layering, sampleTime, rotation, dense, crossfade, generic, gridHold, gridRule, genericRig;
+        bool Cased => human || blend || layering || sampleTime || rotation || dense || crossfade || generic || gridHold || gridRule || genericRig;
         readonly bool migratedDynamicBones;
         bool exported;
         StreamWriter timeOut;
@@ -376,6 +377,7 @@ namespace AvatarWorkshop.Reference
             generic = kind == Fixture.Kind.Generic;
             gridHold = kind == Fixture.Kind.GridHold;
             gridRule = kind == Fixture.Kind.GridRule;
+            genericRig = kind == Fixture.Kind.GenericRig;
             this.output = output;
             this.avatarName = avatarName;
             this.migratedDynamicBones = migratedDynamicBones;
@@ -710,6 +712,7 @@ namespace AvatarWorkshop.Reference
                     : generic ? ("generic", Coverage.GenericCompositions, Coverage.CountGenericCompositions(descriptor))
                     : gridHold ? ("frame grid, fill and hold", Coverage.GridHoldCompositions, Coverage.CountGridHoldCompositions(descriptor))
                     : gridRule ? ("frame-grid rule", Coverage.GridRuleCompositions, Coverage.CountGridRuleCompositions(descriptor))
+                    : genericRig ? ("generic-rig playable", Coverage.RigCompositions, Coverage.CountRigCompositions(descriptor))
                     : ("clip sample-time", Coverage.SampleTimeCompositions, Coverage.CountSampleTimeCompositions(descriptor));
                 File.WriteAllText(Path.Combine(output, "compositions.json"), Json(compositions) + "\n");
                 var absent = listed.Where(k => compositions[k] == 0).ToList();
@@ -733,6 +736,7 @@ namespace AvatarWorkshop.Reference
                 ["generic"] = generic,
                 ["gridhold"] = gridHold,
                 ["gridrule"] = gridRule,
+                ["genericrig"] = genericRig,
                 ["root_scale"] = new[] { root.lossyScale.x, root.lossyScale.y, root.lossyScale.z },
                 ["unity"] = Application.unityVersion,
                 ["dynamic_bones_migrated"] = migratedDynamicBones,
@@ -1208,7 +1212,8 @@ namespace AvatarWorkshop.Reference
 
         int PlayableIndex(VRCAvatarDescriptor.AnimLayerType type)
         {
-            var field = type == VRCAvatarDescriptor.AnimLayerType.Action ? "actionIndex" : type == VRCAvatarDescriptor.AnimLayerType.Additive ? "additiveIndex" : "sittingIndex";
+            var field = type == VRCAvatarDescriptor.AnimLayerType.Action ? "actionIndex" : type == VRCAvatarDescriptor.AnimLayerType.Additive ? "additiveIndex"
+                : type == VRCAvatarDescriptor.AnimLayerType.Gesture ? "gestureIndex" : type == VRCAvatarDescriptor.AnimLayerType.FX ? "fxIndex" : "sittingIndex";
             var i = (int)typeof(LyumaAv3Runtime).GetField(field, BindingFlags.NonPublic | BindingFlags.Instance).GetValue(runtime);
             if (i < 0) throw new Exception($"the emulator has no {type} playable");
             return i;
