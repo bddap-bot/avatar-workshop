@@ -622,7 +622,6 @@ namespace AvatarWorkshop.Reference
             lastValues = values;
 
             var step = steps[stepIndex];
-            if (genericWeight) Unplayed(step);
             if (step.Case != null) Played(step);
             if (stepFrame == step.Frames - 1 && step.Render) Render(step);
             stepFrame++;
@@ -681,13 +680,6 @@ namespace AvatarWorkshop.Reference
                 if (t != null) animatedTransforms.Add((t, path));
             }
 
-            if (genericWeight)
-                foreach (var l in descriptor.baseAnimationLayers.Where(l => !l.isDefault && l.animatorController is AnimatorController))
-                    foreach (var layer in ((AnimatorController)l.animatorController).layers)
-                        if (l.type == VRCAvatarDescriptor.AnimLayerType.FX || layer.blendingMode == AnimatorLayerBlendingMode.Additive)
-                            foreach (var st in layer.stateMachine.states.Where(x => x.state.motion != null))
-                                forbidden[(l.type, Animator.StringToHash(layer.name + "." + st.state.name))] = $"{l.type}/{layer.name}: {st.state.name}";
-
             var physBones = root.GetComponentsInChildren<VRCPhysBoneBase>(true).OrderBy(p => PathOf(p.transform), StringComparer.Ordinal).ToList();
             foreach (var pb in physBones)
                 Tips(pb, physBones);
@@ -730,6 +722,7 @@ namespace AvatarWorkshop.Reference
                 File.WriteAllText(Path.Combine(output, "compositions.json"), Json(compositions) + "\n");
                 var absent = listed.Where(k => compositions[k] == 0).ToList();
                 if (absent.Count > 0) throw new Exception($"the {name} probe lacks {string.Join(", ", absent)}");
+                if (genericWeight && Coverage.WeightPlays(descriptor) is string plays) throw new Exception($"the {name} probe can play {plays}");
             }
             SetupCamera();
             Schedule(descriptor);
@@ -1230,25 +1223,6 @@ namespace AvatarWorkshop.Reference
             if (full.Count > 0) throw new Exception($"{step.Label}: the {string.Join(", ", full)} playable held a partial weight on fewer than 90% of its frames");
             var unweighted = step.Case.Weights.Where(x => (caseWeights.TryGetValue((x.type, x.layer), out var n) ? n : 0) < 0.9f * step.Frames).ToList();
             if (unweighted.Count > 0) throw new Exception($"{step.Label}: {string.Join(", ", unweighted.Select(x => $"{x.type} layer {x.layer}"))} held its weight on fewer than 90% of its frames");
-        }
-
-        // The playable-weight probe's states with a motion in the FX controller or in an additive layer, which no step may enter.
-        readonly Dictionary<(VRCAvatarDescriptor.AnimLayerType, int), string> forbidden = new Dictionary<(VRCAvatarDescriptor.AnimLayerType, int), string>();
-
-        void Unplayed(Step step)
-        {
-            foreach (var type in forbidden.Keys.Select(k => k.Item1).Distinct())
-            {
-                var pl = playables[PlayableIndex(type)];
-                if (!pl.IsValid()) continue;
-                for (int l = 0; l < pl.GetLayerCount(); l++)
-                {
-                    var now = new List<int> { pl.GetCurrentAnimatorStateInfo(l).fullPathHash };
-                    if (pl.IsInTransition(l)) now.Add(pl.GetNextAnimatorStateInfo(l).fullPathHash);
-                    foreach (var h in now)
-                        if (forbidden.TryGetValue((type, h), out var name)) throw new Exception($"{step.Label}: {name} played a motion");
-                }
-            }
         }
 
         int PlayableIndex(VRCAvatarDescriptor.AnimLayerType type)

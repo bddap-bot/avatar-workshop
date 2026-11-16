@@ -1293,25 +1293,37 @@ namespace AvatarWorkshop.Reference
              from history in Fixture.HoldHistories
              from context in Fixture.HoldContexts
              select Fixture.HoldKey(property, w, history, context))
-            .Concat(from p in Fixture.HoldPlayables
-                    from property in Fixture.HoldProperties
-                    from w in Fixture.HoldWeights
-                    from above in Fixture.HoldAbove
-                    select Fixture.HoldPlayableKey(p, property, w, above)).ToArray();
+            .Concat(PlayableCompositions(Fixture.HoldPlayables)).ToArray();
 
-        // The generic-rig playable-weight probe's compositions: the hold probe's playable-weight compositions of the Additive,
-        // Gesture and Action playables, counted as CountHoldCompositions counts them.
-        public static readonly string[] WeightCompositions =
-            (from p in Fixture.WeightPlayables
-             from property in Fixture.HoldProperties
-             from w in Fixture.HoldWeights
-             from above in Fixture.HoldAbove
-             select Fixture.HoldPlayableKey(p, property, w, above)).ToArray();
+        static IEnumerable<string> PlayableCompositions(IEnumerable<VRCAvatarDescriptor.AnimLayerType> playables) =>
+            from p in playables
+            from property in Fixture.HoldProperties
+            from w in Fixture.HoldWeights
+            from above in Fixture.HoldAbove
+            select Fixture.HoldPlayableKey(p, property, w, above);
+
+        // The generic-rig playable-weight probe's compositions: the hold probe's playable-weight compositions of the playables
+        // below FX, counted as CountHoldCompositions counts them.
+        public static readonly string[] WeightCompositions = PlayableCompositions(Fixture.BelowFxPlayables).ToArray();
 
         public static SortedDictionary<string, int> CountWeightCompositions(VRCAvatarDescriptor d)
         {
             var all = CountHoldCompositions(d);
-            return new SortedDictionary<string, int>(all.Where(kv => kv.Value > 0 || WeightCompositions.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value));
+            return new SortedDictionary<string, int>(WeightCompositions.ToDictionary(k => k, k => all[k]));
+        }
+
+        // A state with a motion in the FX controller or in an additive-blended layer of any controller, which the
+        // playable-weight probe must not be able to play.
+        public static string WeightPlays(VRCAvatarDescriptor d)
+        {
+            IEnumerable<AnimatorState> States(AnimatorStateMachine sm) =>
+                sm.states.Select(s => s.state).Concat(sm.stateMachines.SelectMany(c => States(c.stateMachine)));
+            return (from x in Controllers(d)
+                    from layer in x.controller.layers
+                    where x.type == VRCAvatarDescriptor.AnimLayerType.FX || layer.blendingMode == AnimatorLayerBlendingMode.Additive
+                    from s in States(layer.stateMachine)
+                    where s.motion != null
+                    select $"{Playable[x.type]}/{layer.name}: {s.name}").FirstOrDefault();
         }
 
         static HashSet<string> HoldBound(AnimatorState s, int id)

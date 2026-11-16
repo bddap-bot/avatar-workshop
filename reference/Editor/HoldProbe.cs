@@ -24,7 +24,7 @@ namespace AvatarWorkshop.Reference
             VRCAvatarDescriptor.AnimLayerType.Additive, VRCAvatarDescriptor.AnimLayerType.Gesture,
             VRCAvatarDescriptor.AnimLayerType.Action, VRCAvatarDescriptor.AnimLayerType.FX,
         };
-        public static readonly VRCAvatarDescriptor.AnimLayerType[] WeightPlayables = HoldPlayables.Where(t => t != VRCAvatarDescriptor.AnimLayerType.FX).ToArray();
+        public static readonly VRCAvatarDescriptor.AnimLayerType[] BelowFxPlayables = HoldPlayables.Where(t => t != VRCAvatarDescriptor.AnimLayerType.FX).ToArray();
         public static readonly string[] HoldAbove = { "alone", "under_partial" };
         public static string HoldKey(string property, float weight, string history, string context) =>
             $"hold.{property}.{HoldWeight(weight)}.{history}.{context}";
@@ -160,7 +160,7 @@ namespace AvatarWorkshop.Reference
                         }
                     }
 
-            foreach (var type in fxPlays ? HoldPlayables : WeightPlayables)
+            foreach (var type in fxPlays ? HoldPlayables : BelowFxPlayables)
                 foreach (var above in HoldAbove)
                     foreach (var weight in HoldWeights)
                     {

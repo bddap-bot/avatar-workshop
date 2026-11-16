@@ -565,10 +565,10 @@ frames, or if `compositions.json` counts zero for a composition
 (`avatar-core/fixtures/reference/generichold-animator`).
 
 The generic-rig playable-weight probe is the hold probe's playable-weight cases of the Additive, Gesture and Action
-playables alone: no hold case, no additive layer, and an FX controller whose one layer rests in a state with no
+playables alone: no hold case, no additive-blended layer, and an FX controller whose one layer rests in a state with no
 motion, so FX never plays a motion: `playable.<additive|gesture|action>.<property>.<w25|w50|w75>.<alone|under_partial>`.
 It fails as the hold probe does, if `compositions.json` counts zero for a composition `Coverage.WeightCompositions`
-lists, or if any step enters a state with a motion in the FX controller or in an additive layer. The probe's recording
+lists, or if a state in the FX controller or in an additive-blended layer of any controller has a motion. The probe's recording
 is a reference trace of the core (`avatar-core/fixtures/reference/genericweight-animator`).
 
 The curve probe plays no avatar. It builds one clip per curve, its only curve on a transform's X position, and
