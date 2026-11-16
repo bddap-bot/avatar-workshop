@@ -239,7 +239,7 @@ state flags). `UNITY` names the editor command. With no `SCENE`, it generates th
 `PROJECT`'s `Assets/AWFixture` and records it, so point it at a scratch project. With `SCENE` `probe`, it generates and
 records the probe there: the fixture's body with one three-bone chain per PhysBone field value (`Fixture.Probes` lists
 them), so each field's effect has a reference trace of its own. The probe rests 15 s before its motion, so even its lightly damped chains start it settled. With `SCENE` `human`, it generates and records the
-composition probe (`reference/Editor/HumanProbe.cs`), with `SCENE` `blend` the blend duration probe (`reference/Editor/BlendProbe.cs`), with `SCENE` `layering` the write-defaults layering probe (`reference/Editor/LayeringProbe.cs`), with `SCENE` `sampletime` the clip sample-time probe (`reference/Editor/SampleTimeProbe.cs`), with `SCENE` `rotation` the rotation probe (`reference/Editor/RotationProbe.cs`), with `SCENE` `dense` the dense clip probe (`reference/Editor/DenseProbe.cs`) and with `SCENE` `crossfade` the crossfade probe (`reference/Editor/CrossfadeProbe.cs`), all described below, in place of the motion, menu and built-in steps. With `SCENE` `curves` it records the curve probe (`reference/Editor/CurveProbe.cs`), also below, which plays no avatar and refuses `AVATAR` and `AW_STEPS`. With `SCENE` `writedefaults`, it generates and records the write-defaults fixture: the fixture's body under animator controllers built from the environment variable `AW_WD`, which lists each layer's controller, weight, transition time and states, and for each state whether it writes defaults and what it animates (`reference/Editor/WriteDefaults.cs` gives the grammar; `AW_WD='T:de|dHat=1;K:fSmile=50'` is a write-defaults-on toggle of the hat beside a layer that keeps none). The environment variable `AW_STEPS` (`Name=value,...;...`, each step setting those animator parameters and held `AW_STEP_FRAMES` frames, 20 unless set, with a render on its last) replaces the motion, menu and built-in steps after the rest; the write-defaults fixture, which has no menu, requires it, and the composition, blend duration, layering, clip sample-time, rotation, dense clip and crossfade probes refuse it. It restores
+composition probe (`reference/Editor/HumanProbe.cs`), with `SCENE` `blend` the blend duration probe (`reference/Editor/BlendProbe.cs`), with `SCENE` `layering` the write-defaults layering probe (`reference/Editor/LayeringProbe.cs`), with `SCENE` `sampletime` the clip sample-time probe (`reference/Editor/SampleTimeProbe.cs`), with `SCENE` `rotation` the rotation probe (`reference/Editor/RotationProbe.cs`), with `SCENE` `dense` the dense clip probe (`reference/Editor/DenseProbe.cs`), with `SCENE` `crossfade` the crossfade probe (`reference/Editor/CrossfadeProbe.cs`) and with `SCENE` `generic` the generic probe (`reference/Editor/GenericProbe.cs`), all described below, in place of the motion, menu and built-in steps. With `SCENE` `curves` it records the curve probe (`reference/Editor/CurveProbe.cs`), also below, which plays no avatar and refuses `AVATAR` and `AW_STEPS`. With `SCENE` `writedefaults`, it generates and records the write-defaults fixture: the fixture's body under animator controllers built from the environment variable `AW_WD`, which lists each layer's controller, weight, transition time and states, and for each state whether it writes defaults and what it animates (`reference/Editor/WriteDefaults.cs` gives the grammar; `AW_WD='T:de|dHat=1;K:fSmile=50'` is a write-defaults-on toggle of the hat beside a layer that keeps none). The environment variable `AW_STEPS` (`Name=value,...;...`, each step setting those animator parameters and held `AW_STEP_FRAMES` frames, 20 unless set, with a render on its last) replaces the motion, menu and built-in steps after the rest; the write-defaults fixture, which has no menu, requires it, and the composition, blend duration, layering, clip sample-time, rotation, dense clip, crossfade and generic probes refuse it. It restores
 `PROJECT`'s package manifest on exit and refuses an `OUT` that holds something other than an earlier recording.
 Recordings started on one machine take turns in the order they were asked for, each waiting for those asked
 before it, so callers need not coordinate; a waiting one prints how many are ahead and how long it has waited,
@@ -281,7 +281,7 @@ each muscle sample with the core's sampling of the same clip alone.
 | `time.tsv` | the time of the emulator's playable graph after each frame's evaluation, every frame from the one the graph is created on, so the first evaluation's delta shows; a recording fails if the graph is gone on a frame |
 | `avatar.glb`, `census.json`, `export.txt` | the exporter's model and census of the build this recording runs, written as the last step of its build preprocess, with the build tools' generated names and ids (and, as the emulator skips the SDK's material locking, unlocked shaders); `cargo run --release --example census -- avatar.glb census.json` in `avatar-core/` checks one; `export.txt` lists what the model does not represent |
 | `coverage.json`, `meta.json` | the avatar's feature counts; versions and totals |
-| `compositions.json` | the composition, blend duration, layering, clip sample-time, rotation, dense clip and crossfade probes' only: for each composition the probe is authored to play on its own, how many clips (composition probe), states (clip sample-time, rotation and dense clip probes), transitions and states (crossfade probe) or states and transitions (the others) are authored to play it |
+| `compositions.json` | the composition, blend duration, layering, clip sample-time, rotation, dense clip, crossfade and generic probes' only: for each composition the probe is authored to play on its own, how many clips (composition probe), states (clip sample-time, rotation and dense clip probes), transitions and states (crossfade and generic probes) or states and transitions (the others) are authored to play it |
 
 The fixture (`reference/Editor/Fixture.cs`, licensed as this repository) is a synthetic humanoid
 authored for the harness: PhysBones covering both immobile types, every limit type, gravity with
@@ -449,6 +449,29 @@ recording fails if a case never entered one of its states, or if `compositions.j
 interrupted fade, `crossfade.generic.<source|destination>_only`, each counted only from a fade `Pulse` starts, so a
 fade back or on cannot stand in for a missing case, and `scrub.<mirrored|unmirrored>.<loop|once>.<time>`
 (`scrub.mirrored.loop.time_25` is the looping walk mirrored with its time held at 0.25). The probe's recording is a reference trace of the core (`avatar-core/fixtures/reference/crossfade-animator`).
+
+The generic probe is the fixture's body with its own controller in the Base, Additive and FX playables, each with an
+additive layer idle in a state with no motion; Base's holds the rest pose in an override layer beneath. `Case` picks
+the case; the harness plays each for 150 frames with 20 frames at rest after each, sets `Pulse` on frame 30 and clears
+it on frame 90. Each case probes a blendshape (`Probe<case>`, 15 at rest) or the Y position of a node (`Marker<case>`)
+that no other case animates, as an idle additive layer goes on holding what it last added. Every additive clip
+subtracts a reference pose that holds a shared property (the Z position of `Common<playable>`) at rest, and either holds the probed property off its default (`reference_with`) or not
+(`reference_without`). A case plays the property alone, looping over 2 s, or in a fade both of whose sides write the
+shared property and only one side the probed one: the source fades to the destination over 0.5 s when `Pulse` sets and
+back when it clears. The FX controller's override layer then plays, in states that write defaults, clips at 30 frames per second, each once without
+high-quality curves and once with them, keyed every third frame with seeded values: three seconds of the `Sampled`
+node's position, quaternion rotation, Euler rotation or scale, or of the `Pout` blendshape; a position curve with
+every key stepped, or every other one; a position whose X curve lies on the frame grid beside a Y curve 0.37 of a frame
+off it; a position whose inner keys lie 0.0001, 0.0005, 0.002, 0.01 or 0.1 of a frame after the grid; and a 1.5 s clip,
+looping and not, whose position curve ends 0.4 s before the blendshape curve that sets its length, so
+the case samples it at and past its end. A clip animating some of the node's position channels holds the others at
+rest, as a state writing defaults has Unity write 0 to the ones left out. A recording fails if a case never entered one of its states, or if
+`compositions.json` counts zero for a composition `Coverage.GenericCompositions` lists:
+`additive.<base|additive|fx>.<blendshape|transform>.<reference_with|reference_without>.<alone|source_only|destination_only>`,
+a one-sided fade counted only from a fade `Pulse` starts, and `curves.<kind>.quality_<low|high>`, the kind read from the
+clip's curves (`curves.threshold.offset_5e-4.quality_low` is the clip whose inner keys lie 0.0005 of a frame off the
+grid, without high-quality curves). The probe's recording is a reference trace of the core
+(`avatar-core/fixtures/reference/generic-animator`).
 
 The curve probe plays no avatar. It builds one clip per curve, its only curve on a transform's X position, and
 samples it at seeded random times through an `AnimationClipPlayable`, beside `AnimationCurve.Evaluate` at the same

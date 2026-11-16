@@ -60,7 +60,7 @@ namespace AvatarWorkshop.Reference
                 : scenePath == "blend" ? Fixture.Kind.Blend : scenePath == "writedefaults" ? Fixture.Kind.WriteDefaults
                 : scenePath == "layering" ? Fixture.Kind.Layering : scenePath == "sampletime" ? Fixture.Kind.SampleTime
                 : scenePath == "rotation" ? Fixture.Kind.Rotation : scenePath == "dense" ? Fixture.Kind.Dense
-                : scenePath == "crossfade" ? Fixture.Kind.Crossfade : (Fixture.Kind?)null;
+                : scenePath == "crossfade" ? Fixture.Kind.Crossfade : scenePath == "generic" ? Fixture.Kind.Generic : (Fixture.Kind?)null;
             if (kind.HasValue) scenePath = Fixture.Build(kind.Value);
 
             EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
@@ -302,8 +302,8 @@ namespace AvatarWorkshop.Reference
         public bool Finished;
         readonly string output;
         readonly string avatarName;
-        readonly bool fixture, probe, human, blend, layering, sampleTime, rotation, dense, crossfade;
-        bool Cased => human || blend || layering || sampleTime || rotation || dense || crossfade;
+        readonly bool fixture, probe, human, blend, layering, sampleTime, rotation, dense, crossfade, generic;
+        bool Cased => human || blend || layering || sampleTime || rotation || dense || crossfade || generic;
         readonly bool migratedDynamicBones;
         bool exported;
         StreamWriter timeOut;
@@ -372,6 +372,7 @@ namespace AvatarWorkshop.Reference
             rotation = kind == Fixture.Kind.Rotation;
             dense = kind == Fixture.Kind.Dense;
             crossfade = kind == Fixture.Kind.Crossfade;
+            generic = kind == Fixture.Kind.Generic;
             this.output = output;
             this.avatarName = avatarName;
             this.migratedDynamicBones = migratedDynamicBones;
@@ -703,6 +704,7 @@ namespace AvatarWorkshop.Reference
                     : rotation ? ("rotation", Coverage.RotationCompositions, Coverage.CountRotationCompositions(descriptor))
                     : dense ? ("dense clip", Coverage.DenseCompositions, Coverage.CountDenseCompositions(descriptor))
                     : crossfade ? ("crossfade", Coverage.CrossfadeCompositions, Coverage.CountCrossfadeCompositions(descriptor))
+                    : generic ? ("generic", Coverage.GenericCompositions, Coverage.CountGenericCompositions(descriptor))
                     : ("clip sample-time", Coverage.SampleTimeCompositions, Coverage.CountSampleTimeCompositions(descriptor));
                 File.WriteAllText(Path.Combine(output, "compositions.json"), Json(compositions) + "\n");
                 var absent = listed.Where(k => compositions[k] == 0).ToList();
@@ -722,6 +724,7 @@ namespace AvatarWorkshop.Reference
                 ["rotation"] = rotation,
                 ["dense"] = dense,
                 ["crossfade"] = crossfade,
+                ["generic"] = generic,
                 ["root_scale"] = new[] { root.lossyScale.x, root.lossyScale.y, root.lossyScale.z },
                 ["unity"] = Application.unityVersion,
                 ["dynamic_bones_migrated"] = migratedDynamicBones,
@@ -1156,7 +1159,7 @@ namespace AvatarWorkshop.Reference
             foreach (var c in cases)
                 for (int m = 0; m < (mirrors ? 2 : 1); m++)
                 {
-                    var st = Add(new Step { Label = $"case {c.Id}{(mirrors ? $" mirror={m}" : "")}: {string.Join("; ", c.States.Select(x => x.label))}", Frames = 150, Case = c });
+                    var st = Add(new Step { Label = $"case {c.Id}{(mirrors ? $" mirror={m}" : "")}: {string.Join("; ", c.States.Select(x => x.label))}", Frames = Fixture.CaseFrames, Case = c });
                     st.Set[Fixture.CaseParameter] = c.Id;
                     if (mirrors) st.Set[Fixture.MirrorParameter] = m;
                     st.Each = (r, k) =>

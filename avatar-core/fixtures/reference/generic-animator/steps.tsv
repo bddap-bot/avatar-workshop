@@ -1,0 +1,134 @@
+0	5	90	-	rest	GestureLeft=0,GestureRight=0,GestureLeftWeight=0,GestureRightWeight=0,Viseme=0,Voice=0,Grounded=1,Seated=0,AFK=0,VelocityX=0,VelocityY=0,VelocityZ=0,AngularY=0,Upright=1,TrackingType=3,VRMode=1,InStation=0,IsOnFriendsList=0
+1	95	150	-	case 1: base/Additive: 1 base blendshape reference_with alone	Case=1
+2	245	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+3	265	150	-	case 2: base/Additive: 2 base blendshape reference_with source_only source; base/Additive: 2 base blendshape reference_with source_only destination	Case=2
+4	415	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+5	435	150	-	case 3: base/Additive: 3 base blendshape reference_with destination_only source; base/Additive: 3 base blendshape reference_with destination_only destination	Case=3
+6	585	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+7	605	150	-	case 4: base/Additive: 4 base blendshape reference_without alone	Case=4
+8	755	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+9	775	150	-	case 5: base/Additive: 5 base blendshape reference_without source_only source; base/Additive: 5 base blendshape reference_without source_only destination	Case=5
+10	925	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+11	945	150	-	case 6: base/Additive: 6 base blendshape reference_without destination_only source; base/Additive: 6 base blendshape reference_without destination_only destination	Case=6
+12	1095	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+13	1115	150	-	case 7: base/Additive: 7 base transform reference_with alone	Case=7
+14	1265	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+15	1285	150	-	case 8: base/Additive: 8 base transform reference_with source_only source; base/Additive: 8 base transform reference_with source_only destination	Case=8
+16	1435	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+17	1455	150	-	case 9: base/Additive: 9 base transform reference_with destination_only source; base/Additive: 9 base transform reference_with destination_only destination	Case=9
+18	1605	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+19	1625	150	-	case 10: base/Additive: 10 base transform reference_without alone	Case=10
+20	1775	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+21	1795	150	-	case 11: base/Additive: 11 base transform reference_without source_only source; base/Additive: 11 base transform reference_without source_only destination	Case=11
+22	1945	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+23	1965	150	-	case 12: base/Additive: 12 base transform reference_without destination_only source; base/Additive: 12 base transform reference_without destination_only destination	Case=12
+24	2115	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+25	2135	150	-	case 13: additive/Additive: 13 additive blendshape reference_with alone	Case=13
+26	2285	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+27	2305	150	-	case 14: additive/Additive: 14 additive blendshape reference_with source_only source; additive/Additive: 14 additive blendshape reference_with source_only destination	Case=14
+28	2455	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+29	2475	150	-	case 15: additive/Additive: 15 additive blendshape reference_with destination_only source; additive/Additive: 15 additive blendshape reference_with destination_only destination	Case=15
+30	2625	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+31	2645	150	-	case 16: additive/Additive: 16 additive blendshape reference_without alone	Case=16
+32	2795	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+33	2815	150	-	case 17: additive/Additive: 17 additive blendshape reference_without source_only source; additive/Additive: 17 additive blendshape reference_without source_only destination	Case=17
+34	2965	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+35	2985	150	-	case 18: additive/Additive: 18 additive blendshape reference_without destination_only source; additive/Additive: 18 additive blendshape reference_without destination_only destination	Case=18
+36	3135	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+37	3155	150	-	case 19: additive/Additive: 19 additive transform reference_with alone	Case=19
+38	3305	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+39	3325	150	-	case 20: additive/Additive: 20 additive transform reference_with source_only source; additive/Additive: 20 additive transform reference_with source_only destination	Case=20
+40	3475	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+41	3495	150	-	case 21: additive/Additive: 21 additive transform reference_with destination_only source; additive/Additive: 21 additive transform reference_with destination_only destination	Case=21
+42	3645	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+43	3665	150	-	case 22: additive/Additive: 22 additive transform reference_without alone	Case=22
+44	3815	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+45	3835	150	-	case 23: additive/Additive: 23 additive transform reference_without source_only source; additive/Additive: 23 additive transform reference_without source_only destination	Case=23
+46	3985	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+47	4005	150	-	case 24: additive/Additive: 24 additive transform reference_without destination_only source; additive/Additive: 24 additive transform reference_without destination_only destination	Case=24
+48	4155	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+49	4175	150	-	case 25: fx/Additive: 25 fx blendshape reference_with alone	Case=25
+50	4325	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+51	4345	150	-	case 26: fx/Additive: 26 fx blendshape reference_with source_only source; fx/Additive: 26 fx blendshape reference_with source_only destination	Case=26
+52	4495	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+53	4515	150	-	case 27: fx/Additive: 27 fx blendshape reference_with destination_only source; fx/Additive: 27 fx blendshape reference_with destination_only destination	Case=27
+54	4665	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+55	4685	150	-	case 28: fx/Additive: 28 fx blendshape reference_without alone	Case=28
+56	4835	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+57	4855	150	-	case 29: fx/Additive: 29 fx blendshape reference_without source_only source; fx/Additive: 29 fx blendshape reference_without source_only destination	Case=29
+58	5005	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+59	5025	150	-	case 30: fx/Additive: 30 fx blendshape reference_without destination_only source; fx/Additive: 30 fx blendshape reference_without destination_only destination	Case=30
+60	5175	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+61	5195	150	-	case 31: fx/Additive: 31 fx transform reference_with alone	Case=31
+62	5345	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+63	5365	150	-	case 32: fx/Additive: 32 fx transform reference_with source_only source; fx/Additive: 32 fx transform reference_with source_only destination	Case=32
+64	5515	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+65	5535	150	-	case 33: fx/Additive: 33 fx transform reference_with destination_only source; fx/Additive: 33 fx transform reference_with destination_only destination	Case=33
+66	5685	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+67	5705	150	-	case 34: fx/Additive: 34 fx transform reference_without alone	Case=34
+68	5855	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+69	5875	150	-	case 35: fx/Additive: 35 fx transform reference_without source_only source; fx/Additive: 35 fx transform reference_without source_only destination	Case=35
+70	6025	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+71	6045	150	-	case 36: fx/Additive: 36 fx transform reference_without destination_only source; fx/Additive: 36 fx transform reference_without destination_only destination	Case=36
+72	6195	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+73	6215	150	-	case 37: fx/Curves: 37 curves binding_position low	Case=37
+74	6365	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+75	6385	150	-	case 38: fx/Curves: 38 curves binding_position high	Case=38
+76	6535	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+77	6555	150	-	case 39: fx/Curves: 39 curves binding_rotation low	Case=39
+78	6705	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+79	6725	150	-	case 40: fx/Curves: 40 curves binding_rotation high	Case=40
+80	6875	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+81	6895	150	-	case 41: fx/Curves: 41 curves binding_euler low	Case=41
+82	7045	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+83	7065	150	-	case 42: fx/Curves: 42 curves binding_euler high	Case=42
+84	7215	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+85	7235	150	-	case 43: fx/Curves: 43 curves binding_scale low	Case=43
+86	7385	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+87	7405	150	-	case 44: fx/Curves: 44 curves binding_scale high	Case=44
+88	7555	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+89	7575	150	-	case 45: fx/Curves: 45 curves binding_blendshape low	Case=45
+90	7725	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+91	7745	150	-	case 46: fx/Curves: 46 curves binding_blendshape high	Case=46
+92	7895	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+93	7915	150	-	case 47: fx/Curves: 47 curves stepped_all low	Case=47
+94	8065	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+95	8085	150	-	case 48: fx/Curves: 48 curves stepped_all high	Case=48
+96	8235	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+97	8255	150	-	case 49: fx/Curves: 49 curves stepped_some low	Case=49
+98	8405	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+99	8425	150	-	case 50: fx/Curves: 50 curves stepped_some high	Case=50
+100	8575	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+101	8595	150	-	case 51: fx/Curves: 51 curves mixed_grid low	Case=51
+102	8745	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+103	8765	150	-	case 52: fx/Curves: 52 curves mixed_grid high	Case=52
+104	8915	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+105	8935	150	-	case 53: fx/Curves: 53 curves threshold_offset_1e-4 low	Case=53
+106	9085	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+107	9105	150	-	case 54: fx/Curves: 54 curves threshold_offset_1e-4 high	Case=54
+108	9255	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+109	9275	150	-	case 55: fx/Curves: 55 curves threshold_offset_5e-4 low	Case=55
+110	9425	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+111	9445	150	-	case 56: fx/Curves: 56 curves threshold_offset_5e-4 high	Case=56
+112	9595	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+113	9615	150	-	case 57: fx/Curves: 57 curves threshold_offset_2e-3 low	Case=57
+114	9765	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+115	9785	150	-	case 58: fx/Curves: 58 curves threshold_offset_2e-3 high	Case=58
+116	9935	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+117	9955	150	-	case 59: fx/Curves: 59 curves threshold_offset_1e-2 low	Case=59
+118	10105	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+119	10125	150	-	case 60: fx/Curves: 60 curves threshold_offset_1e-2 high	Case=60
+120	10275	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+121	10295	150	-	case 61: fx/Curves: 61 curves threshold_offset_1e-1 low	Case=61
+122	10445	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+123	10465	150	-	case 62: fx/Curves: 62 curves threshold_offset_1e-1 high	Case=62
+124	10615	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+125	10635	150	-	case 63: fx/Curves: 63 curves end_once low	Case=63
+126	10785	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+127	10805	150	-	case 64: fx/Curves: 64 curves end_once high	Case=64
+128	10955	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+129	10975	150	-	case 65: fx/Curves: 65 curves end_loop low	Case=65
+130	11125	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+131	11145	150	-	case 66: fx/Curves: 66 curves end_loop high	Case=66
+132	11295	20	-	reset	Case=0,Pulse=0,BlendX=0,BlendY=0,BlendU=0
+133	11315	60	-	final	

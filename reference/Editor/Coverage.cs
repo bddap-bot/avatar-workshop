@@ -882,6 +882,98 @@ namespace AvatarWorkshop.Reference
             return c;
         }
 
+        // The generic probe's compositions. "additive.<playable>.<blendshape|transform>.<reference_with|reference_without>.<context>"
+        // for each generic property a state of a full-weight additive layer plays against a reference pose: "alone" when
+        // its state fades nowhere, "<side>_only" where only that side of a fade Pulse starts writes it; the reference is
+        // the writing side's, by whether it holds the property. "curves.<kind>.quality_<low|high>" for each generic clip a
+        // full-weight override FX layer plays at speed one with no reference, by Unity's m_UseHighQualityCurve and by
+        // what its curves hold: stepped keys, one curve on its frame grid beside one off it, inner keys a listed offset
+        // after the grid, a clip a case outlasts (looping or not), or otherwise the one kind of property it binds.
+        public static readonly string[] GenericCompositions =
+            (from t in Fixture.GenericPlayables from p in Fixture.GenericProperties from r in Fixture.GenericReferences from x in Fixture.GenericContexts
+                select Fixture.GenericKey(Fixture.GenericPlayable(t), p, r, x))
+            .Concat(from k in Fixture.CurveKinds from q in Fixture.CurveQualities select Fixture.CurveKey(k, q))
+            .ToArray();
+
+        static string Bound(EditorCurveBinding b) =>
+            b.type == typeof(SkinnedMeshRenderer) && b.propertyName.StartsWith("blendShape.") ? "blendshape"
+            : b.type != typeof(Transform) ? null
+            : b.propertyName.StartsWith("m_LocalPosition.") ? "position" : b.propertyName.StartsWith("m_LocalRotation.") ? "rotation"
+            : b.propertyName.StartsWith("localEulerAngles") ? "euler" : b.propertyName.StartsWith("m_LocalScale.") ? "scale" : null;
+
+        static string GenericProperty(EditorCurveBinding b) => Bound(b) is string p ? (p == "blendshape" ? p : "transform") : null;
+
+        static float OffGrid(AnimationCurve curve, float rate) => curve.keys.Max(k => Mathf.Abs(k.time * rate - Mathf.Round(k.time * rate)));
+
+        static string CurveKind(AnimationClip clip, float caseSeconds)
+        {
+            var bindings = AnimationUtility.GetCurveBindings(clip);
+            if (bindings.Length == 0 || clip.humanMotion || AnimationUtility.GetObjectReferenceCurveBindings(clip).Length > 0 || bindings.Any(b => Bound(b) == null)) return null;
+            var curves = bindings.Select(b => AnimationUtility.GetEditorCurve(clip, b)).Where(c => c.keys.Select(k => k.value).Distinct().Count() > 1).ToList();
+            if (curves.Count == 0) return null;
+            var stepped = curves.SelectMany(c => c.keys).Select(k => float.IsInfinity(k.inTangent) || float.IsInfinity(k.outTangent)).ToList();
+            if (stepped.Any(x => x)) return curves.Count == 1 ? (stepped.All(x => x) ? "stepped.all" : "stepped.some") : null;
+            var off = curves.Select(c => OffGrid(c, clip.frameRate)).ToList();
+            // Above float error in frames over the clip's length, and well below the least listed offset.
+            const float onGrid = 2e-5f;
+            if (off.Any(o => o < onGrid) && off.Any(o => o > 0.3f && o < 0.7f)) return curves.Count == 2 ? "mixed_grid" : null;
+            if (off.All(o => o >= onGrid))
+            {
+                var near = Fixture.CurveOffsets.Where(x => off.All(o => Mathf.Abs(o - x) < 0.25f * x)).ToList();
+                return near.Count == 1 && curves.Count == 1 ? "threshold." + Fixture.CurveOffset(near[0]) : null;
+            }
+            if (off.Any(o => o >= onGrid)) return null;
+            if (clip.length < caseSeconds)
+                return curves.Select(c => c.keys.Last().time).Distinct().Count() > 1 ? (AnimationUtility.GetAnimationClipSettings(clip).loopTime ? "end.loop" : "end.once") : null;
+            if (AnimationUtility.GetAnimationClipSettings(clip).loopTime) return null;
+            var kinds = bindings.Select(Bound).Distinct().ToList();
+            return kinds.Count == 1 ? "binding." + kinds[0] : null;
+        }
+
+        public static SortedDictionary<string, int> CountGenericCompositions(VRCAvatarDescriptor d)
+        {
+            var c = new SortedDictionary<string, int>();
+            foreach (var k in GenericCompositions) c[k] = 0;
+            void Add(string key) => c[key] = c.TryGetValue(key, out var n) ? n + 1 : 1;
+            float caseSeconds = Fixture.CaseFrames / (float)Harness.Rate;
+            foreach (var (type, ctrl, _) in Controllers(d).Where(x => x.mask == null && Fixture.GenericPlayables.Contains(x.type)))
+                foreach (var layer in ctrl.layers.Where(l => l.defaultWeight == 1 && l.avatarMask == null && l.syncedLayerIndex < 0))
+                {
+                    var sm = layer.stateMachine;
+                    var cases = CaseOf(sm);
+                    var entered = new HashSet<AnimatorState>(sm.states.SelectMany(x => x.state.transitions)
+                        .Where(t => t.conditions.Any(x => x.parameter == Fixture.CaseParameter && x.mode == AnimatorConditionMode.Equals)).Select(t => t.destinationState));
+                    foreach (var s in cases.Keys.Where(entered.Contains))
+                    {
+                        if (layer.blendingMode == AnimatorLayerBlendingMode.Additive)
+                        {
+                            if (!(Subtracting(s.motion) is AnimationClip from)) continue;
+                            string Key(AnimationClip writer, EditorCurveBinding b, string context)
+                            {
+                                var held = AnimationUtility.GetCurveBindings(AnimationUtility.GetAnimationClipSettings(writer).additiveReferencePoseClip).Contains(b);
+                                return Fixture.GenericKey(Fixture.GenericPlayable(type), GenericProperty(b), held ? "reference_with" : "reference_without", context);
+                            }
+                            var fades = s.transitions.Where(t => t.duration > 0 && On(t, AnimatorConditionMode.If) && t.destinationState is AnimatorState dst && cases.ContainsKey(dst)).ToList();
+                            if (fades.Count == 0)
+                                foreach (var b in AnimationUtility.GetCurveBindings(from).Where(b => GenericProperty(b) != null)) Add(Key(from, b, "alone"));
+                            foreach (var t in fades)
+                            {
+                                if (!(Subtracting(t.destinationState.motion) is AnimationClip to)) continue;
+                                var a = AnimationUtility.GetCurveBindings(from).Where(b => GenericProperty(b) != null).ToList();
+                                var z = AnimationUtility.GetCurveBindings(to).Where(b => GenericProperty(b) != null).ToList();
+                                foreach (var b in a.Except(z)) Add(Key(from, b, "source_only"));
+                                foreach (var b in z.Except(a)) Add(Key(to, b, "destination_only"));
+                            }
+                        }
+                        else if (type == VRCAvatarDescriptor.AnimLayerType.FX && layer.blendingMode == AnimatorLayerBlendingMode.Override && s.motion is AnimationClip clip
+                            && Subtracting(clip) == null && s.speed == 1 && !s.speedParameterActive && !s.timeParameterActive && !s.cycleOffsetParameterActive && s.cycleOffset == 0
+                            && CurveKind(clip, caseSeconds) is string kind)
+                            Add(Fixture.CurveKey(kind, new SerializedObject(clip).FindProperty("m_UseHighQualityCurve").boolValue ? "high" : "low"));
+                    }
+                }
+            return c;
+        }
+
         static string TreeKey(BlendTree bt) => "blendtree." + Snake(bt.blendType.ToString()).Replace("2_d", "2d").Replace("1_d", "1d");
 
         static string Snake(string s) => string.Concat(s.Select((ch, i) => i > 0 && (char.IsUpper(ch) || char.IsDigit(ch) && !char.IsDigit(s[i - 1])) ? "_" + char.ToLowerInvariant(ch) : char.ToLowerInvariant(ch).ToString()));

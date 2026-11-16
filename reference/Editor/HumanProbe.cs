@@ -17,6 +17,7 @@ namespace AvatarWorkshop.Reference
     public static partial class Fixture
     {
         public const string CaseParameter = "Case";
+        public const int CaseFrames = 150;
         public const string MirrorParameter = "Mirror";
         public const string BlendX = "BlendX", BlendY = "BlendY", BlendU = "BlendU";
         public static readonly string[] Ramps = { BlendX, BlendY, BlendU };
