@@ -1353,8 +1353,9 @@ pub struct Clip {
     pub length: f32,
     /// Frames per second of the clip's frame grid, Unity's clip sample rate.
     pub sample_rate: f32,
-    /// Unity's `m_UseHighQualityCurve`. Off, Unity samples each curve whose keys all lie on the clip's frame grid on
-    /// its frames and linearly between them, in place of the curve's own Hermite cubic.
+    /// Unity's `m_UseHighQualityCurve`. Off, Unity samples each curve no two of whose keys lie less than a frame
+    /// apart, a transform property's components counted as one curve, on its frames and linearly between them, in
+    /// place of the curve's own Hermite cubic.
     pub high_quality_curve: bool,
     #[serde(rename = "loop")]
     pub looping: bool,
@@ -1507,7 +1508,7 @@ pub enum Binding {
     },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum TransformProperty {
     Translation,

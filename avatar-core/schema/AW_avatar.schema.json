@@ -4244,7 +4244,7 @@
           "format": "float"
         },
         "highQualityCurve": {
-          "description": "Unity's `m_UseHighQualityCurve`. Off, Unity samples each curve whose keys all lie on the clip's frame grid on\nits frames and linearly between them, in place of the curve's own Hermite cubic.",
+          "description": "Unity's `m_UseHighQualityCurve`. Off, Unity samples each curve no two of whose keys lie less than a frame\napart, a transform property's components counted as one curve, on its frames and linearly between them, in\nplace of the curve's own Hermite cubic.",
           "type": "boolean"
         },
         "loop": {

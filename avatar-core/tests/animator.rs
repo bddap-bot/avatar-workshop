@@ -991,7 +991,7 @@ fn each_frame_grid_fill_and_hold_case_follows_its_reference_trace() {
     assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
     assert!(rep.clocks.compared > 90_000, "{} state times compared", rep.clocks.compared);
     assert!(rep.values.compared > 1_000_000, "{} values compared", rep.values.compared);
-    assert_eq!(rep.values.wrong, 13_032, "values: {}", rep.values.summary(20));
+    assert_eq!(rep.values.wrong, 10_620, "values: {}", rep.values.summary(20));
     assert_eq!(rep.bindings.wrong, 838, "pose bindings: {}", rep.bindings.summary(20));
     // (case label, wrong samples of its probed values, of its probed pose bindings), in case order.
     let held: [(&str, usize, usize); 38] = HELD;
@@ -1022,29 +1022,29 @@ const HELD: [(&str, usize, usize); 38] = [
     ("body turning", 0, 388),
     ("grid offset_0_15 alone", 0, 0),
     ("grid offset_0_20 alone", 0, 0),
-    ("grid offset_0_25 alone", 76, 0),
-    ("grid offset_0_30 alone", 76, 0),
-    ("grid offset_0_37 alone", 76, 0),
+    ("grid offset_0_25 alone", 0, 0),
+    ("grid offset_0_30 alone", 0, 0),
+    ("grid offset_0_37 alone", 0, 0),
     ("grid offset_0_15 beside_on_grid", 0, 0),
     ("grid offset_0_20 beside_on_grid", 0, 0),
-    ("grid offset_0_25 beside_on_grid", 142, 0),
-    ("grid offset_0_30 beside_on_grid", 142, 0),
-    ("grid offset_0_37 beside_on_grid", 142, 0),
+    ("grid offset_0_25 beside_on_grid", 0, 0),
+    ("grid offset_0_30 beside_on_grid", 0, 0),
+    ("grid offset_0_37 beside_on_grid", 0, 0),
     ("grid offset_0_15 one_key", 0, 0),
     ("grid offset_0_20 one_key", 0, 0),
-    ("grid offset_0_25 one_key", 137, 0),
-    ("grid offset_0_30 one_key", 137, 0),
-    ("grid offset_0_37 one_key", 137, 0),
+    ("grid offset_0_25 one_key", 0, 0),
+    ("grid offset_0_30 one_key", 0, 0),
+    ("grid offset_0_37 one_key", 0, 0),
     ("grid offset_0_15 two_keys", 0, 0),
     ("grid offset_0_20 two_keys", 0, 0),
-    ("grid offset_0_25 two_keys", 137, 0),
-    ("grid offset_0_30 two_keys", 137, 0),
-    ("grid offset_0_37 two_keys", 137, 0),
+    ("grid offset_0_25 two_keys", 0, 0),
+    ("grid offset_0_30 two_keys", 0, 0),
+    ("grid offset_0_37 two_keys", 0, 0),
     ("grid offset_0_15 stepped", 0, 0),
     ("grid offset_0_20 stepped", 0, 0),
-    ("grid offset_0_25 stepped", 132, 0),
-    ("grid offset_0_30 stepped", 132, 0),
-    ("grid offset_0_37 stepped", 132, 0),
+    ("grid offset_0_25 stepped", 0, 0),
+    ("grid offset_0_30 stepped", 0, 0),
+    ("grid offset_0_37 stepped", 0, 0),
     ("grid offset_0_15 muscle", 0, 0),
     ("grid offset_0_20 muscle", 0, 0),
     ("grid offset_0_25 muscle", 0, 0),
@@ -1063,8 +1063,7 @@ const HELD: [(&str, usize, usize); 38] = [
 /// spacing at a fixed range and frame-line error, and the frame-sampled line's error at its keys relative to its range,
 /// each bound to a blendshape, a node position channel, a node scale channel and an animator parameter; and a blendshape
 /// curve and a position curve in one clip, each off the grid with the other on it. Parameters, states, state times and
-/// pose bindings follow the reference; each case's wrong samples of its own bindings, while it plays and in the reset
-/// after it, are held to today's counts, as is the total, which also counts bindings an earlier case left held.
+/// pose bindings follow the reference, and so does each case's own binding while it plays and in the reset after it.
 #[test]
 fn each_frame_grid_rule_case_follows_its_reference_trace() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -1077,83 +1076,35 @@ fn each_frame_grid_rule_case_follows_its_reference_trace() {
     assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
     assert_eq!(rep.bindings.wrong, 0, "pose bindings: {}", rep.bindings.summary(20));
     assert!(rep.values.compared > 1_000_000, "{} values compared", rep.values.compared);
-    let own = |kind: &str| -> &[&str] {
-        match kind {
-            "blendshape" => &["shape:Body:RuleShape"],
-            "position" => &["xform:RuleMover"],
-            "scale" => &["xform:RuleScaled"],
-            "parameter" => &["curve:7:Rule"],
-            _ => &["shape:Body:RuleShape", "xform:RuleMover"],
-        }
-    };
-    for k in ["blendshape", "position", "scale", "parameter"].iter().flat_map(|k| own(k)) {
-        assert!(rep.seen.contains_key(*k), "{k} was never compared");
+    for k in ["shape:Body:RuleShape", "xform:RuleMover", "xform:RuleScaled", "curve:7:Rule"] {
+        assert!(rep.seen.contains_key(k), "{k} was never compared");
     }
+    let own = |case: &str| match case.split(' ').next().unwrap() {
+        "blendshape" => vec!["shape:Body:RuleShape"],
+        "position" => vec!["xform:RuleMover"],
+        "scale" => vec!["xform:RuleScaled"],
+        "parameter" => vec!["curve:7:Rule"],
+        _ => vec!["shape:Body:RuleShape", "xform:RuleMover"],
+    };
     let steps = reference::animator::steps(&dir);
-    let cases: Vec<_> = steps.iter().enumerate().filter(|(_, s)| s.label.starts_with("case ")).collect();
-    assert_eq!(cases.len(), RULE_HELD.len());
-    let mut found = Vec::new();
-    for (n, ((i, s), (name, _, _))) in cases.iter().zip(RULE_HELD).enumerate() {
-        assert!(s.label.contains(&format!(": {} rule {name} err_", n + 1)), "{} is not {name}", s.label);
+    let mut cases = Vec::new();
+    for (i, s) in steps.iter().enumerate().filter(|(_, s)| s.label.starts_with("case ")) {
+        let case = s.label.split(" rule ").nth(1).and_then(|r| r.split(" err_").next()).unwrap().to_string();
         let reset = &steps[i + 1];
         assert_eq!(reset.label, "reset");
-        let keys = own(name.split(' ').next().unwrap());
-        let within = |frame: usize, frames: usize| {
-            rep.values.samples.range((frame, String::new())..(frame + frames, String::new())).filter(|(_, k)| keys.contains(&k.as_str())).count()
-        };
-        found.push((name, within(s.frame, s.frames), within(reset.frame, reset.frames)));
+        let keys = own(&case);
+        let wrong = rep.values.samples.range((s.frame, String::new())..(reset.frame + reset.frames, String::new())).filter(|(_, k)| keys.contains(&k.as_str())).count();
+        assert_eq!(wrong, 0, "{case}: wrong samples of its own bindings while it plays and in the reset after it");
+        cases.push(case);
     }
-    assert_eq!(found, RULE_HELD, "wrong samples of each case's own bindings while it plays and in the reset after it");
-    assert_eq!(rep.values.samples.len(), RULE_WRONG_SAMPLES, "values: {}", rep.values.summary(20));
+    assert_eq!(cases.len(), 46);
+    let kinds = ["blendshape", "position", "scale", "parameter"];
+    for case in kinds.iter().flat_map(|k| ["spacing_1", "spacing_2", "spacing_3"].map(|s| format!("{k} {s}"))) {
+        assert!(cases.contains(&case), "the recording lacks {case}");
+    }
+    assert!(cases.iter().filter(|c| c.starts_with("mixed ")).count() == 2, "the recording lacks a mixed case");
+    assert_eq!(rep.values.wrong, RULE_HELD_FROM_EARLIER_CASES, "values: {}", rep.values.summary(20));
 }
 
-const RULE_WRONG_SAMPLES: usize = 5029;
-
-const RULE_HELD: [(&str, usize, usize); 46] = [
-    ("blendshape amplitude_1", 75, 20),
-    ("blendshape amplitude_100", 76, 20),
-    ("blendshape amplitude_0_01", 0, 0),
-    ("blendshape spacing_1", 0, 0),
-    ("blendshape spacing_2", 75, 20),
-    ("blendshape spacing_3", 75, 20),
-    ("blendshape error_0_030", 75, 20),
-    ("blendshape error_0_040", 75, 20),
-    ("blendshape error_0_045", 75, 20),
-    ("blendshape error_0_050", 75, 20),
-    ("blendshape error_0_060", 75, 20),
-    ("position amplitude_1", 75, 20),
-    ("position amplitude_100", 76, 20),
-    ("position amplitude_0_01", 0, 0),
-    ("position spacing_1", 0, 0),
-    ("position spacing_2", 75, 20),
-    ("position spacing_3", 75, 20),
-    ("position error_0_030", 75, 20),
-    ("position error_0_040", 75, 20),
-    ("position error_0_045", 75, 20),
-    ("position error_0_050", 75, 20),
-    ("position error_0_060", 75, 20),
-    ("scale amplitude_1", 75, 20),
-    ("scale amplitude_100", 76, 20),
-    ("scale amplitude_0_01", 0, 0),
-    ("scale spacing_1", 0, 0),
-    ("scale spacing_2", 75, 20),
-    ("scale spacing_3", 75, 20),
-    ("scale error_0_030", 75, 20),
-    ("scale error_0_040", 75, 20),
-    ("scale error_0_045", 75, 20),
-    ("scale error_0_050", 75, 20),
-    ("scale error_0_060", 75, 20),
-    ("parameter amplitude_1", 75, 20),
-    ("parameter amplitude_100", 76, 20),
-    ("parameter amplitude_0_01", 0, 0),
-    ("parameter spacing_1", 0, 0),
-    ("parameter spacing_2", 75, 20),
-    ("parameter spacing_3", 75, 20),
-    ("parameter error_0_030", 75, 20),
-    ("parameter error_0_040", 75, 20),
-    ("parameter error_0_045", 75, 20),
-    ("parameter error_0_050", 75, 20),
-    ("parameter error_0_060", 75, 20),
-    ("mixed blendshape_off", 125, 40),
-    ("mixed position_off", 120, 40),
-];
+/// Wrong samples of bindings an earlier case left held through a later one.
+const RULE_HELD_FROM_EARLIER_CASES: usize = 2040;

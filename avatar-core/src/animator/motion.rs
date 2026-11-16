@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use crate::curve::frame_spaced;
 
 use glam::{EulerRot, Quat, Vec2};
 
@@ -178,14 +179,25 @@ impl CompiledClip {
     }
 
     fn compile_as_is(clip: &Clip, targets: &mut Targets) -> CompiledClip {
-        // A clip without high-quality curves samples a muscle curve on its frames when that curve is on the grid, and
-        // its other curves when all of them are: keys 0.1 of a frame off count as on it and 0.37 off as off, and one
-        // generic curve off the grid keeps the rest off the frames, as one muscle curve does not.
-        let human = |c: &crate::model::Curve| matches!(c.binding, Binding::Muscle { .. });
-        let generic_framed = clip.curves.iter().filter(|c| !human(c)).all(|c| c.curve.on_frame_grid(clip.sample_rate));
+        // A transform property's components are one curve to Unity: an off-grid component's keys beside an on-grid
+        // one's keep both off the frames.
+        let group = |c: &crate::model::Curve| match &c.binding {
+            Binding::Transform { node, property, .. } => Some((*node, *property)),
+            _ => None,
+        };
+        let times = |c: &crate::model::Curve| c.curve.keys.iter().map(|k| k.time).collect::<Vec<_>>();
+        let mut grouped: HashMap<_, Vec<f32>> = HashMap::new();
+        for c in &clip.curves {
+            if let Some(g) = group(c) {
+                grouped.entry(g).or_default().extend(times(c));
+            }
+        }
+        let spaced: HashMap<_, bool> = grouped.into_iter().map(|(g, t)| (g, frame_spaced(t, clip.sample_rate))).collect();
         let as_played = |c: &crate::model::Curve| {
-            let on = if human(c) { c.curve.on_frame_grid(clip.sample_rate) } else { generic_framed };
-            if !clip.high_quality_curve && on && c.curve.smooth() { c.curve.framed(clip.sample_rate, clip.length) } else { c.curve.clone() }
+            let framed = !clip.high_quality_curve
+                && c.curve.smooth()
+                && group(c).map_or_else(|| frame_spaced(times(c), clip.sample_rate), |g| spaced[&g]);
+            if framed { c.curve.framed(clip.sample_rate, clip.length) } else { c.curve.clone() }
         };
         let mut curves = Vec::new();
         let mut euler: Vec<EulerGroup> = Vec::new();
