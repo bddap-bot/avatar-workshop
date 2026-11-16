@@ -1008,12 +1008,30 @@ impl Animator {
                         }
                         let v = stream.sum[i] + (1.0 - stream.cov[i]) * self.defaults[i];
                         if adds {
-                            acc.sum[i] += (v - self.targets.list[i].identity()) * pw;
+                            // Unity adds the stream itself, not its offset from identity, as the generic-rig
+                            // playable-weight probe shows; rotations compose below.
+                            if !matches!(self.targets.list[i], Target::Rotation(..)) {
+                                acc.sum[i] += v * pw;
+                            }
                         } else {
                             acc.sum[i] = acc.sum[i] * (1.0 - pw) + v * pw;
                             acc.cov[i] = acc.cov[i] * (1.0 - pw) + pw;
                         }
                         acc.touched[i] |= pw > 0.0;
+                    }
+                    if adds && pw > 0.0 {
+                        let bound = |q: &&[u32; 4]| self.playables.iter().any(|o| o.binders[q[0] as usize] > 0);
+                        for q in self.rotations[self.human_rotations..].iter().filter(bound) {
+                            let quat = |a: &Accum| {
+                                let [x, y, z, w] = q.map(|t| a.sum[t as usize] + (1.0 - a.cov[t as usize]) * self.defaults[t as usize]);
+                                motion::unit(glam::Quat::from_xyzw(x, y, z, w))
+                            };
+                            let r = quat(&acc) * motion::weighted(quat(&stream), pw);
+                            for (&t, c) in q.iter().zip([r.x, r.y, r.z, r.w]) {
+                                acc.sum[t as usize] = c;
+                                acc.cov[t as usize] = 1.0;
+                            }
+                        }
                     }
                     for (w, &x) in acc.wrote.iter_mut().zip(&stream.wrote) {
                         *w |= x;
@@ -1039,9 +1057,8 @@ impl Animator {
                     let read = |f: &dyn Fn(u32) -> f32| (glam::Vec3::new(f(ids[0]), f(ids[1]), f(ids[2])), glam::Quat::from_xyzw(f(ids[3]), f(ids[4]), f(ids[5]), f(ids[6])));
                     let (bt, bq) = read(&under);
                     let (at, aq) = read(&|t| acc.sum[t as usize]);
-                    let unit = |q: glam::Quat| if q.length_squared() > 0.0 { q.normalize() } else { glam::Quat::IDENTITY };
-                    let bq = unit(bq);
-                    let (t, q) = (bt + bq * (at * pw), bq * motion::weighted(unit(aq), pw));
+                    let bq = motion::unit(bq);
+                    let (t, q) = (bt + bq * (at * pw), bq * motion::weighted(motion::unit(aq), pw));
                     appended.extend(ids.iter().copied().zip([t.x, t.y, t.z, q.x, q.y, q.z, q.w]));
                 }
             }

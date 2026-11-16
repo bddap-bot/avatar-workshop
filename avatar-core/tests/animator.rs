@@ -1313,21 +1313,21 @@ const HOLD_HELD: [(&str, usize, usize); 36] = [
     ("playable fx w75 under_partial", 0, 0),
 ];
 
-const WEIGHT_WRONG_SAMPLES: usize = 60_055;
+const WEIGHT_WRONG_SAMPLES: usize = 39_585;
 
 const WEIGHT_HELD: [(&str, usize, usize); 18] = [
-    ("playable additive w25 alone", 150, 20),
-    ("playable additive w50 alone", 150, 20),
-    ("playable additive w75 alone", 150, 20),
-    ("playable additive w25 under_partial", 150, 20),
-    ("playable additive w50 under_partial", 150, 20),
-    ("playable additive w75 under_partial", 150, 20),
-    ("playable gesture w25 alone", 149, 1),
-    ("playable gesture w50 alone", 149, 1),
-    ("playable gesture w75 alone", 149, 1),
-    ("playable gesture w25 under_partial", 149, 1),
-    ("playable gesture w50 under_partial", 149, 1),
-    ("playable gesture w75 under_partial", 149, 1),
+    ("playable additive w25 alone", 0, 0),
+    ("playable additive w50 alone", 0, 0),
+    ("playable additive w75 alone", 0, 0),
+    ("playable additive w25 under_partial", 0, 0),
+    ("playable additive w50 under_partial", 0, 0),
+    ("playable additive w75 under_partial", 0, 0),
+    ("playable gesture w25 alone", 0, 0),
+    ("playable gesture w50 alone", 0, 0),
+    ("playable gesture w75 alone", 0, 0),
+    ("playable gesture w25 under_partial", 0, 0),
+    ("playable gesture w50 under_partial", 0, 0),
+    ("playable gesture w75 under_partial", 0, 0),
     ("playable action w25 alone", 0, 0),
     ("playable action w50 alone", 0, 0),
     ("playable action w75 alone", 0, 0),

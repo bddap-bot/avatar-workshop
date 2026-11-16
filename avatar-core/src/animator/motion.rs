@@ -41,7 +41,7 @@ impl Target {
         !matches!(self, Target::Muscle(_) | Target::AnimatorParameter(_))
     }
 
-    /// The value adding nothing in an additive layer.
+    /// The component's value in the identity transform.
     pub fn identity(&self) -> f32 {
         match self {
             Target::Scale(..) | Target::Rotation(_, Axis::W) => 1.0,
@@ -473,8 +473,7 @@ struct Human {
 
 /// A rotation's turn about Y.
 fn twist(q: Quat) -> Quat {
-    let t = Quat::from_xyzw(0.0, q.y, 0.0, q.w);
-    if t.length_squared() > 0.0 { t.normalize() } else { Quat::IDENTITY }
+    unit(Quat::from_xyzw(0.0, q.y, 0.0, q.w))
 }
 
 impl Human {
@@ -608,9 +607,13 @@ pub fn opposed(a: [f32; 4], b: [f32; 4]) -> bool {
     a.iter().zip(b).map(|(x, y)| x * y).sum::<f32>() < 0.0
 }
 
-/// A rotation scaled by a weight as Unity's human pose scales one: its vector part, renormalized.
+/// A rotation scaled by a weight as Unity scales an added one: its vector part, renormalized.
 pub fn weighted(q: Quat, w: f32) -> Quat {
-    let q = Quat::from_xyzw(q.x * w, q.y * w, q.z * w, q.w);
+    unit(Quat::from_xyzw(q.x * w, q.y * w, q.z * w, q.w))
+}
+
+/// A rotation's unit quaternion; the identity for a zero one.
+pub fn unit(q: Quat) -> Quat {
     if q.length_squared() > 0.0 { q.normalize() } else { Quat::IDENTITY }
 }
 
