@@ -1,0 +1,38 @@
+0	5	90	-	rest	GestureLeft=0,GestureRight=0,GestureLeftWeight=0,GestureRightWeight=0,Viseme=0,Voice=0,Grounded=1,Seated=0,AFK=0,VelocityX=0,VelocityY=0,VelocityZ=0,AngularY=0,Upright=1,TrackingType=3,VRMode=1,InStation=0,IsOnFriendsList=0
+1	95	150	-	case 1: additive/Full: 1 playable additive w25 alone	Case=1
+2	245	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+3	265	150	-	case 2: additive/Full: 2 playable additive w50 alone	Case=2
+4	415	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+5	435	150	-	case 3: additive/Full: 3 playable additive w75 alone	Case=3
+6	585	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+7	605	150	-	case 4: additive/Full: 4 playable additive w25 under_partial; additive/Above w25: 4 playable additive w25 under_partial above	Case=4
+8	755	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+9	775	150	-	case 5: additive/Full: 5 playable additive w50 under_partial; additive/Above w50: 5 playable additive w50 under_partial above	Case=5
+10	925	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+11	945	150	-	case 6: additive/Full: 6 playable additive w75 under_partial; additive/Above w75: 6 playable additive w75 under_partial above	Case=6
+12	1095	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+13	1115	150	-	case 7: gesture/Full: 7 playable gesture w25 alone	Case=7
+14	1265	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+15	1285	150	-	case 8: gesture/Full: 8 playable gesture w50 alone	Case=8
+16	1435	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+17	1455	150	-	case 9: gesture/Full: 9 playable gesture w75 alone	Case=9
+18	1605	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+19	1625	150	-	case 10: gesture/Full: 10 playable gesture w25 under_partial; gesture/Above w25: 10 playable gesture w25 under_partial above	Case=10
+20	1775	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+21	1795	150	-	case 11: gesture/Full: 11 playable gesture w50 under_partial; gesture/Above w50: 11 playable gesture w50 under_partial above	Case=11
+22	1945	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+23	1965	150	-	case 12: gesture/Full: 12 playable gesture w75 under_partial; gesture/Above w75: 12 playable gesture w75 under_partial above	Case=12
+24	2115	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+25	2135	150	-	case 13: action/Full: 13 playable action w25 alone	Case=13
+26	2285	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+27	2305	150	-	case 14: action/Full: 14 playable action w50 alone	Case=14
+28	2455	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+29	2475	150	-	case 15: action/Full: 15 playable action w75 alone	Case=15
+30	2625	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+31	2645	150	-	case 16: action/Full: 16 playable action w25 under_partial; action/Above w25: 16 playable action w25 under_partial above	Case=16
+32	2795	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+33	2815	150	-	case 17: action/Full: 17 playable action w50 under_partial; action/Above w50: 17 playable action w50 under_partial above	Case=17
+34	2965	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+35	2985	150	-	case 18: action/Full: 18 playable action w75 under_partial; action/Above w75: 18 playable action w75 under_partial above	Case=18
+36	3135	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+37	3155	60	-	final	

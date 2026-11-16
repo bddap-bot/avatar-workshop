@@ -1218,9 +1218,23 @@ const RIG_HELD: [(&str, usize, usize); 42] = [
 /// bindings, while it plays and in the reset after it, are held to today's counts, as is the total.
 #[test]
 fn each_generic_rig_hold_case_follows_its_reference_trace() {
+    held_cases_follow("generichold", &HOLD_HELD, HOLD_WRONG_SAMPLES);
+}
+
+/// The generic-rig playable-weight probe is the hold probe's playable-weight cases of the Additive, Gesture and Action
+/// controllers alone, beside an FX controller that never plays a motion and with no additive layer: each lowers its
+/// playable to 0.25, 0.5 or 0.75, alone or under a layer at 0.5. Held to the same bar as the hold probe.
+#[test]
+fn each_generic_rig_playable_weight_case_follows_its_reference_trace() {
+    held_cases_follow("genericweight", &WEIGHT_HELD, WEIGHT_WRONG_SAMPLES);
+}
+
+/// Replays a generic-rig probe whose case n plays, among others, `HeldNode<n>`, `Held<n>` and `HeldParam<n>`, and
+/// compares each case's wrong samples of those bindings, while it plays and in the reset after it, and the total.
+fn held_cases_follow(probe: &str, held: &[(&str, usize, usize)], wrong_samples: usize) {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let dir = root.join("fixtures/reference/generichold-animator");
-    let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-generichold.glb")).unwrap()).unwrap();
+    let dir = root.join(format!("fixtures/reference/{probe}-animator"));
+    let avatar = avatar_core::read(&std::fs::read(root.join(format!("fixtures/unity-{probe}.glb"))).unwrap()).unwrap();
     assert!(avatar.model.humanoid.bones.is_empty(), "the probe has a humanoid rig");
     let rep = Run::new(&dir, avatar).run(None);
     assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
@@ -1236,9 +1250,9 @@ fn each_generic_rig_hold_case_follows_its_reference_trace() {
     };
     let steps = reference::animator::steps(&dir);
     let cases: Vec<_> = steps.iter().enumerate().filter(|(_, s)| s.label.starts_with("case ")).collect();
-    assert_eq!(cases.len(), HOLD_HELD.len());
+    assert_eq!(cases.len(), held.len());
     let mut found = Vec::new();
-    for (n, ((i, s), (name, _, _))) in cases.iter().zip(HOLD_HELD).enumerate() {
+    for (n, ((i, s), (name, _, _))) in cases.iter().zip(held).enumerate() {
         let id = n + 1;
         assert!(s.label.contains(&format!(": {id} {name}")), "{} is not {name}", s.label);
         let reset = &steps[i + 1];
@@ -1252,10 +1266,10 @@ fn each_generic_rig_hold_case_follows_its_reference_trace() {
         let within = |frame: usize, frames: usize| {
             rep.values.samples.range((frame, String::new())..(frame + frames, String::new())).filter(|(_, k)| keys.contains(k)).count()
         };
-        found.push((name, within(s.frame, s.frames), within(reset.frame, reset.frames)));
+        found.push((*name, within(s.frame, s.frames), within(reset.frame, reset.frames)));
     }
-    assert_eq!(found, HOLD_HELD, "wrong samples of each case's own bindings while it plays and in the reset after it");
-    assert_eq!(rep.values.samples.len(), HOLD_WRONG_SAMPLES, "values: {}", rep.values.summary(20));
+    assert_eq!(found, held, "wrong samples of each case's own bindings while it plays and in the reset after it");
+    assert_eq!(rep.values.samples.len(), wrong_samples, "values: {}", rep.values.summary(20));
 }
 
 const HOLD_WRONG_SAMPLES: usize = 356_206;
@@ -1297,4 +1311,27 @@ const HOLD_HELD: [(&str, usize, usize); 36] = [
     ("playable fx w25 under_partial", 0, 0),
     ("playable fx w50 under_partial", 0, 0),
     ("playable fx w75 under_partial", 0, 0),
+];
+
+const WEIGHT_WRONG_SAMPLES: usize = 60_055;
+
+const WEIGHT_HELD: [(&str, usize, usize); 18] = [
+    ("playable additive w25 alone", 150, 20),
+    ("playable additive w50 alone", 150, 20),
+    ("playable additive w75 alone", 150, 20),
+    ("playable additive w25 under_partial", 150, 20),
+    ("playable additive w50 under_partial", 150, 20),
+    ("playable additive w75 under_partial", 150, 20),
+    ("playable gesture w25 alone", 149, 1),
+    ("playable gesture w50 alone", 149, 1),
+    ("playable gesture w75 alone", 149, 1),
+    ("playable gesture w25 under_partial", 149, 1),
+    ("playable gesture w50 under_partial", 149, 1),
+    ("playable gesture w75 under_partial", 149, 1),
+    ("playable action w25 alone", 0, 0),
+    ("playable action w50 alone", 0, 0),
+    ("playable action w75 alone", 0, 0),
+    ("playable action w25 under_partial", 0, 0),
+    ("playable action w50 under_partial", 0, 0),
+    ("playable action w75 under_partial", 0, 0),
 ];
