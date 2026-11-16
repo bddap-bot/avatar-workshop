@@ -974,6 +974,130 @@ namespace AvatarWorkshop.Reference
             return c;
         }
 
+        // The frame grid, write-defaults fill and additive hold probe's compositions, read from the authored assets.
+        // "grid.<offset>.<shape>" for a clip without high-quality curves a full-weight override FX layer plays in a
+        // write-defaults state, exactly one of whose varying curves lies off its frame grid, by a listed offset: a
+        // generic curve alone, beside an on-grid curve with all, one or two inner keys off, stepped beside smooth on-grid
+        // curves, or a muscle curve beside on-grid generic ones. "fill.<write_defaults|no_write_defaults>.<above>" for an
+        // override FX state animating one position and one scale channel of a node, "additive_above" when an additive
+        // layer above it plays a motion in the same case. "hold.idle.write_defaults_then_without" for an additive FX layer
+        // whose motion leaves on Pulse for an empty state writing defaults, and that for one without; "hold.fade_out" for
+        // an empty state without write defaults, entered from a motion, that fades on Pulse clearing into a motion.
+        // "body.additive_over.<turned|turning>" for a Base additive state whose clip turns the body from its reference,
+        // over a state of a layer beneath in the same case whose humanoid clip holds or moves a turned body.
+        public static readonly string[] GridHoldCompositions =
+            (from s in Fixture.GridShapes from o in Fixture.GridOffsets select Fixture.GridKey(o, s))
+            .Concat(from s in Fixture.FillStates from a in Fixture.FillAbove select Fixture.FillKey(s, a))
+            .Concat(new[] { Fixture.HoldIdleKey, Fixture.HoldFadeKey })
+            .Concat(Fixture.BodyBeneath.Select(Fixture.BodyKey))
+            .ToArray();
+
+        static bool Muscle(EditorCurveBinding b) => b.type == typeof(Animator) && b.path == "" && System.Array.IndexOf(HumanTrait.MuscleName, b.propertyName) >= 0;
+
+        static (float offset, string shape)? GridShape(AnimationClip clip)
+        {
+            if (new SerializedObject(clip).FindProperty("m_UseHighQualityCurve").boolValue) return null;
+            var bindings = AnimationUtility.GetCurveBindings(clip);
+            if (bindings.Any(b => Bound(b) == null && !Muscle(b))) return null;
+            var curves = bindings.Select(b => (b, curve: AnimationUtility.GetEditorCurve(clip, b))).Where(x => x.curve.keys.Select(k => k.value).Distinct().Count() > 1).ToList();
+            const float onGrid = 2e-5f;
+            float Off(Keyframe k) => Mathf.Abs(k.time * clip.frameRate - Mathf.Round(k.time * clip.frameRate));
+            var off = curves.Where(x => x.curve.keys.Any(k => Off(k) >= onGrid)).ToList();
+            if (off.Count != 1) return null;
+            var (binding, curve) = off[0];
+            var on = curves.Where(x => x.b != binding).ToList();
+            var moved = curve.keys.Where(k => Off(k) >= onGrid).ToList();
+            var offsets = Fixture.GridOffsets.Where(o => moved.All(k => Mathf.Abs(Off(k) - o) < 0.01f)).ToList();
+            if (offsets.Count != 1) return null;
+            string Shape()
+            {
+                bool Stepped(AnimationCurve c) => c.keys.All(k => float.IsInfinity(k.inTangent) || float.IsInfinity(k.outTangent));
+                int inner = curve.length - 2;
+                if (Muscle(binding)) return on.Count > 0 && on.All(x => Bound(x.b) != null) && moved.Count == inner ? "muscle" : null;
+                if (on.Any(x => Muscle(x.b))) return null;
+                if (Stepped(curve)) return on.Count > 1 && on.All(x => !Stepped(x.curve)) && moved.Count == inner ? "stepped" : null;
+                if (curve.keys.Any(k => float.IsInfinity(k.inTangent) || float.IsInfinity(k.outTangent))) return null;
+                if (on.Count == 0) return moved.Count == inner ? "alone" : null;
+                return moved.Count == inner ? "beside_on_grid" : moved.Count == 1 ? "one_key" : moved.Count == 2 ? "two_keys" : null;
+            }
+            return Shape() is string shape ? (offsets[0], shape) : ((float, string)?)null;
+        }
+
+        static bool Fills(AnimationClip clip)
+        {
+            var b = AnimationUtility.GetCurveBindings(clip);
+            return b.Length == 2 && b.All(x => x.type == typeof(Transform)) && b.Select(x => x.path).Distinct().Count() == 1
+                && b.Count(x => x.propertyName.StartsWith("m_LocalPosition.")) == 1 && b.Count(x => x.propertyName.StartsWith("m_LocalScale.")) == 1;
+        }
+
+        static bool Turned(AnimationClip clip, out bool turning)
+        {
+            var q = "xyzw".Select(a => AnimationUtility.GetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), $"RootQ.{a}"))).ToArray();
+            turning = false;
+            if (q.Any(c => c == null)) return false;
+            turning = q.Any(c => c.keys.Any(k => k.value != c.keys[0].value));
+            return turning || Quaternion.Angle(new Quaternion(q[0].keys[0].value, q[1].keys[0].value, q[2].keys[0].value, q[3].keys[0].value), Quaternion.identity) > 1;
+        }
+
+        public static SortedDictionary<string, int> CountGridHoldCompositions(VRCAvatarDescriptor d)
+        {
+            var c = new SortedDictionary<string, int>();
+            foreach (var k in GridHoldCompositions) c[k] = 0;
+            void Add(string key) => c[key] = c.TryGetValue(key, out var n) ? n + 1 : 1;
+            foreach (var (type, ctrl, _) in Controllers(d).Where(x => x.mask == null))
+            {
+                var layers = ctrl.layers.Where(l => l.defaultWeight == 1 && l.avatarMask == null && l.syncedLayerIndex < 0).ToList();
+                var cased = layers.Select(l =>
+                {
+                    var sm = l.stateMachine;
+                    var entered = new HashSet<AnimatorState>(sm.states.SelectMany(x => x.state.transitions)
+                        .Where(t => t.conditions.Any(x => x.parameter == Fixture.CaseParameter && x.mode == AnimatorConditionMode.Equals)).Select(t => t.destinationState));
+                    var of = CaseOf(sm);
+                    return (layer: l, of, entered);
+                }).ToList();
+                bool PlaysAbove(int index, int id, System.Func<AnimatorState, bool> what) =>
+                    cased.Skip(index + 1).Any(x => x.layer.blendingMode == AnimatorLayerBlendingMode.Additive && x.of.Any(kv => kv.Value == id && x.entered.Contains(kv.Key) && what(kv.Key)));
+                for (int i = 0; i < cased.Count; i++)
+                {
+                    var (layer, of, entered) = cased[i];
+                    foreach (var kv in of)
+                    {
+                        var s = kv.Key;
+                        bool plain = s.speed == 1 && !s.speedParameterActive && !s.timeParameterActive && !s.cycleOffsetParameterActive && s.cycleOffset == 0;
+                        if (type == VRCAvatarDescriptor.AnimLayerType.FX && layer.blendingMode == AnimatorLayerBlendingMode.Override && entered.Contains(s) && plain
+                            && s.motion is AnimationClip clip && Subtracting(clip) == null)
+                        {
+                            if (s.writeDefaultValues && GridShape(clip) is { } grid) Add(Fixture.GridKey(grid.offset, grid.shape));
+                            if (Fills(clip))
+                                Add(Fixture.FillKey(s.writeDefaultValues ? "write_defaults" : "no_write_defaults",
+                                    PlaysAbove(i, kv.Value, x => x.motion is AnimationClip) ? "additive_above" : "alone"));
+                        }
+                        if (type == VRCAvatarDescriptor.AnimLayerType.FX && layer.blendingMode == AnimatorLayerBlendingMode.Additive)
+                        {
+                            bool Empty(AnimatorState x) => x != null && x.motion == null && of.TryGetValue(x, out var id) && id == kv.Value;
+                            if (entered.Contains(s) && Subtracting(s.motion) != null)
+                                foreach (var t in s.transitions.Where(t => t.duration == 0 && On(t, AnimatorConditionMode.If) && Empty(t.destinationState) && t.destinationState.writeDefaultValues))
+                                    if (t.destinationState.transitions.Any(u => On(u, AnimatorConditionMode.IfNot) && Empty(u.destinationState) && !u.destinationState.writeDefaultValues))
+                                        Add(Fixture.HoldIdleKey);
+                            if (Empty(s) && !s.writeDefaultValues && of.Keys.Any(x => entered.Contains(x) && Subtracting(x.motion) != null && x.transitions.Any(t => t.destinationState == s && On(t, AnimatorConditionMode.If))))
+                                foreach (var t in s.transitions.Where(t => t.duration > 0 && t.duration <= (Fixture.CaseFrames - Fixture.PulseOff) / (float)Harness.Rate
+                                    && t.hasFixedDuration && On(t, AnimatorConditionMode.IfNot) && t.destinationState is AnimatorState dst && Subtracting(dst.motion) != null))
+                                    Add(Fixture.HoldFadeKey);
+                        }
+                        if (type == VRCAvatarDescriptor.AnimLayerType.Base && layer.blendingMode == AnimatorLayerBlendingMode.Additive && entered.Contains(s)
+                            && Subtracting(s.motion) is AnimationClip turn && Quaternion.Angle(ToQ(RotationOffset(turn)), Quaternion.identity) > 1)
+                            foreach (var (beneath, bOf, bEntered) in cased.Take(i).Where(x => x.layer.blendingMode == AnimatorLayerBlendingMode.Override))
+                                foreach (var b in bOf.Where(x => x.Value == kv.Value && bEntered.Contains(x.Key)))
+                                    if (b.Key.motion is AnimationClip under && under.humanMotion && Turned(under, out var turning))
+                                        Add(Fixture.BodyKey(turning ? "turning" : "turned"));
+                    }
+                }
+            }
+            return c;
+        }
+
+        static Quaternion ToQ(Vector4 v) => new Quaternion(v.x, v.y, v.z, v.w).normalized;
+
         static string TreeKey(BlendTree bt) => "blendtree." + Snake(bt.blendType.ToString()).Replace("2_d", "2d").Replace("1_d", "1d");
 
         static string Snake(string s) => string.Concat(s.Select((ch, i) => i > 0 && (char.IsUpper(ch) || char.IsDigit(ch) && !char.IsDigit(s[i - 1])) ? "_" + char.ToLowerInvariant(ch) : char.ToLowerInvariant(ch).ToString()));

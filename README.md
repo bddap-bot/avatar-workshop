@@ -239,7 +239,7 @@ state flags). `UNITY` names the editor command. With no `SCENE`, it generates th
 `PROJECT`'s `Assets/AWFixture` and records it, so point it at a scratch project. With `SCENE` `probe`, it generates and
 records the probe there: the fixture's body with one three-bone chain per PhysBone field value (`Fixture.Probes` lists
 them), so each field's effect has a reference trace of its own. The probe rests 15 s before its motion, so even its lightly damped chains start it settled. With `SCENE` `human`, it generates and records the
-composition probe (`reference/Editor/HumanProbe.cs`), with `SCENE` `blend` the blend duration probe (`reference/Editor/BlendProbe.cs`), with `SCENE` `layering` the write-defaults layering probe (`reference/Editor/LayeringProbe.cs`), with `SCENE` `sampletime` the clip sample-time probe (`reference/Editor/SampleTimeProbe.cs`), with `SCENE` `rotation` the rotation probe (`reference/Editor/RotationProbe.cs`), with `SCENE` `dense` the dense clip probe (`reference/Editor/DenseProbe.cs`), with `SCENE` `crossfade` the crossfade probe (`reference/Editor/CrossfadeProbe.cs`) and with `SCENE` `generic` the generic probe (`reference/Editor/GenericProbe.cs`), all described below, in place of the motion, menu and built-in steps. With `SCENE` `curves` it records the curve probe (`reference/Editor/CurveProbe.cs`), also below, which plays no avatar and refuses `AVATAR` and `AW_STEPS`. With `SCENE` `writedefaults`, it generates and records the write-defaults fixture: the fixture's body under animator controllers built from the environment variable `AW_WD`, which lists each layer's controller, weight, transition time and states, and for each state whether it writes defaults and what it animates (`reference/Editor/WriteDefaults.cs` gives the grammar; `AW_WD='T:de|dHat=1;K:fSmile=50'` is a write-defaults-on toggle of the hat beside a layer that keeps none). The environment variable `AW_STEPS` (`Name=value,...;...`, each step setting those animator parameters and held `AW_STEP_FRAMES` frames, 20 unless set, with a render on its last) replaces the motion, menu and built-in steps after the rest; the write-defaults fixture, which has no menu, requires it, and the composition, blend duration, layering, clip sample-time, rotation, dense clip, crossfade and generic probes refuse it. It restores
+composition probe (`reference/Editor/HumanProbe.cs`), with `SCENE` `blend` the blend duration probe (`reference/Editor/BlendProbe.cs`), with `SCENE` `layering` the write-defaults layering probe (`reference/Editor/LayeringProbe.cs`), with `SCENE` `sampletime` the clip sample-time probe (`reference/Editor/SampleTimeProbe.cs`), with `SCENE` `rotation` the rotation probe (`reference/Editor/RotationProbe.cs`), with `SCENE` `dense` the dense clip probe (`reference/Editor/DenseProbe.cs`), with `SCENE` `crossfade` the crossfade probe (`reference/Editor/CrossfadeProbe.cs`), with `SCENE` `generic` the generic probe (`reference/Editor/GenericProbe.cs`) and with `SCENE` `gridhold` the frame grid, fill and hold probe (`reference/Editor/GridHoldProbe.cs`), all described below, in place of the motion, menu and built-in steps. With `SCENE` `curves` it records the curve probe (`reference/Editor/CurveProbe.cs`), also below, which plays no avatar and refuses `AVATAR` and `AW_STEPS`. With `SCENE` `writedefaults`, it generates and records the write-defaults fixture: the fixture's body under animator controllers built from the environment variable `AW_WD`, which lists each layer's controller, weight, transition time and states, and for each state whether it writes defaults and what it animates (`reference/Editor/WriteDefaults.cs` gives the grammar; `AW_WD='T:de|dHat=1;K:fSmile=50'` is a write-defaults-on toggle of the hat beside a layer that keeps none). The environment variable `AW_STEPS` (`Name=value,...;...`, each step setting those animator parameters and held `AW_STEP_FRAMES` frames, 20 unless set, with a render on its last) replaces the motion, menu and built-in steps after the rest; the write-defaults fixture, which has no menu, requires it, and the composition, blend duration, layering, clip sample-time, rotation, dense clip, crossfade, generic and frame grid, fill and hold probes refuse it. It restores
 `PROJECT`'s package manifest on exit and refuses an `OUT` that holds something other than an earlier recording.
 Recordings started on one machine take turns in the order they were asked for, each waiting for those asked
 before it, so callers need not coordinate; a waiting one prints how many are ahead and how long it has waited,
@@ -281,7 +281,7 @@ each muscle sample with the core's sampling of the same clip alone.
 | `time.tsv` | the time of the emulator's playable graph after each frame's evaluation, every frame from the one the graph is created on, so the first evaluation's delta shows; a recording fails if the graph is gone on a frame |
 | `avatar.glb`, `census.json`, `export.txt` | the exporter's model and census of the build this recording runs, written as the last step of its build preprocess, with the build tools' generated names and ids (and, as the emulator skips the SDK's material locking, unlocked shaders); `cargo run --release --example census -- avatar.glb census.json` in `avatar-core/` checks one; `export.txt` lists what the model does not represent |
 | `coverage.json`, `meta.json` | the avatar's feature counts; versions and totals |
-| `compositions.json` | the composition, blend duration, layering, clip sample-time, rotation, dense clip, crossfade and generic probes' only: for each composition the probe is authored to play on its own, how many clips (composition probe), states (clip sample-time, rotation and dense clip probes), transitions and states (crossfade and generic probes) or states and transitions (the others) are authored to play it |
+| `compositions.json` | the composition, blend duration, layering, clip sample-time, rotation, dense clip, crossfade, generic and frame grid, fill and hold probes' only: for each composition the probe is authored to play on its own, how many clips (composition probe), states (clip sample-time, rotation, dense clip and frame grid, fill and hold probes), transitions and states (crossfade and generic probes) or states and transitions (the others) are authored to play it |
 
 The fixture (`reference/Editor/Fixture.cs`, licensed as this repository) is a synthetic humanoid
 authored for the harness: PhysBones covering both immobile types, every limit type, gravity with
@@ -472,6 +472,33 @@ a one-sided fade counted only from a fade `Pulse` starts, and `curves.<kind>.qua
 clip's curves (`curves.threshold.offset_5e-4.quality_low` is the clip whose inner keys lie 0.0005 of a frame off the
 grid, without high-quality curves). The probe's recording is a reference trace of the core
 (`avatar-core/fixtures/reference/generic-animator`).
+
+The frame grid, fill and hold probe is the fixture's body with its own controllers in the Base and FX playables; every
+layer rests in a state with no motion that keeps what it last wrote, and Base's override layer holds the rest pose.
+`Case` picks the case and `Pulse` is set and cleared as in the generic probe. The two body cases come first: in the Base
+controller an additive layer adds a body offset (a turn of the body and a spine muscle against the rest pose) over an
+override layer beneath that holds the body turned (`body.additive_over.turned`) or turns it over 2 s
+(`body.additive_over.turning`). The FX cases follow in the order below, those without an additive motion first: while an FX
+additive layer plays a motion it adds their rest value to generic properties no state writes (`GridOff` 50.04 to 65.04
+when the first hold case starts), and a state without write defaults beneath it makes some of them grow each frame
+(`GridOff` by 30 a frame in the last case), so that case comes last. An override layer plays, in states that write defaults, 3 s clips
+without high-quality curves at 30 frames per second, keyed every third frame with seeded values, one per offset of
+0.15, 0.2, 0.25, 0.3 and 0.37 of a frame and shape: the `GridOff` blendshape with every inner key that far after the
+grid, alone (`alone`) or beside the on-grid `GridOn` (`beside_on_grid`); with only its 10th inner key (`one_key`) or its
+10th and 20th (`two_keys`) off, beside `GridOn`; stepped, beside `GridOn` and `GridOnOther` (`stepped`); or a muscle
+curve (Chest Left-Right) off the grid beside those two (`muscle`), which in the FX playable moves no muscle. A second
+override layer plays a looping clip of a `Fill<case>` node's X position and Y scale, the node resting off zero and off
+unit scale, in a state with and without write defaults. An additive layer then plays the `Hold<case>` blendshape and `Holder<case>` node's Y position against a
+reference holding them: in `hold.idle.write_defaults_then_without` the motion leaves when `Pulse` sets for an empty state
+that writes defaults, and that for one without when `Pulse` clears; in `hold.fade_out` the motion leaves when `Pulse`
+sets for an empty state without write defaults, which fades over 0.5 s into a second motion when it clears. Last, the fill cases play again, with and then without
+write defaults, under an additive layer above that plays a motion of a `Mover<case>` node in the same case
+(`additive_above`). A recording fails if a case never entered one of its states, or if
+`compositions.json` counts zero for a composition `Coverage.GridHoldCompositions` lists:
+`grid.offset_<0_15|0_20|0_25|0_30|0_37>.<alone|beside_on_grid|one_key|two_keys|stepped|muscle>`, each read from the
+clip's curves, `fill.<write_defaults|no_write_defaults>.<alone|additive_above>`, the two hold compositions and the two
+body compositions. The probe's recording is a reference trace of the core
+(`avatar-core/fixtures/reference/gridhold-animator`).
 
 The curve probe plays no avatar. It builds one clip per curve, its only curve on a transform's X position, and
 samples it at seeded random times through an `AnimationClipPlayable`, beside `AnimationCurve.Evaluate` at the same

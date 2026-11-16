@@ -971,3 +971,89 @@ fn each_generic_additive_and_curve_quality_case_follows_its_reference_trace() {
     assert!(rep.values.compared > 2_000_000, "{} values compared", rep.values.compared);
     assert_eq!(rep.values.wrong, 0, "values: {}", rep.values.summary(20));
 }
+
+/// The frame grid, fill and hold probe plays an additive body offset over a body a layer beneath holds turned or
+/// turns; low-quality clips whose one curve lies 0.15 to 0.37 of a frame off the grid, alone, beside on-grid curves with
+/// all, one or two inner keys off, stepped, or as a muscle curve; override states with and without write defaults
+/// animating one position and one scale channel of a node, with and without an additive layer above; and an additive
+/// layer idling after a motion in empty states with and without write defaults, and leaving a held empty state through
+/// a fade. Parameters, states and state times follow the reference; each case's wrong samples of the values and pose
+/// bindings it probes are held to today's counts.
+#[test]
+fn each_frame_grid_fill_and_hold_case_follows_its_reference_trace() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dir = root.join("fixtures/reference/gridhold-animator");
+    let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-gridhold.glb")).unwrap()).unwrap();
+    assert_eq!(avatar.model.clips.iter().filter(|c| !c.high_quality_curve).count(), 30);
+    let rep = Run::new(&dir, avatar).run(None);
+    assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
+    assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
+    assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
+    assert!(rep.clocks.compared > 90_000, "{} state times compared", rep.clocks.compared);
+    assert!(rep.values.compared > 1_000_000, "{} values compared", rep.values.compared);
+    assert_eq!(rep.values.wrong, 20_112, "values: {}", rep.values.summary(20));
+    assert_eq!(rep.bindings.wrong, 838, "pose bindings: {}", rep.bindings.summary(20));
+    // (case label, wrong samples of its probed values, of its probed pose bindings), in case order.
+    let held: [(&str, usize, usize); 38] = HELD;
+    let probed = |id: usize, label: &str| -> Vec<String> {
+        let w: Vec<&str> = label.split(' ').collect();
+        match w[0] {
+            "body" => ["x", "y", "z", "w"].iter().map(|a| format!("muscle:RootQ.{a}")).collect(),
+            "grid" => ["GridOff", "GridOn", "GridOnOther"].iter().map(|s| format!("shape:Body:{s}")).collect(),
+            "fill" => vec![format!("xform:Fill{id}"), format!("xform:Mover{id}")],
+            _ => vec![format!("shape:Body:Hold{id}"), format!("xform:Holder{id}")],
+        }
+    };
+    let steps = reference::animator::steps(&dir);
+    let cases: Vec<_> = steps.iter().filter(|s| s.label.starts_with("case ")).collect();
+    assert_eq!(cases.len(), held.len());
+    let mut found = Vec::new();
+    for (i, (s, (name, _, _))) in cases.iter().zip(held).enumerate() {
+        assert!(s.label.contains(&format!(": {} {name}", i + 1)), "{} is not {name}", s.label);
+        let keys = probed(i + 1, name);
+        let within = |m: &Mismatches| m.samples.range((s.frame, String::new())..(s.frame + s.frames, String::new())).filter(|(_, k)| keys.contains(k)).count();
+        found.push((name, within(&rep.values), within(&rep.bindings)));
+    }
+    assert_eq!(found, held, "wrong samples of each case's probed values and bindings");
+}
+
+const HELD: [(&str, usize, usize); 38] = [
+    ("body turned", 0, 450),
+    ("body turning", 0, 388),
+    ("grid offset_0_15 alone", 0, 0),
+    ("grid offset_0_20 alone", 0, 0),
+    ("grid offset_0_25 alone", 76, 0),
+    ("grid offset_0_30 alone", 76, 0),
+    ("grid offset_0_37 alone", 76, 0),
+    ("grid offset_0_15 beside_on_grid", 0, 0),
+    ("grid offset_0_20 beside_on_grid", 0, 0),
+    ("grid offset_0_25 beside_on_grid", 142, 0),
+    ("grid offset_0_30 beside_on_grid", 142, 0),
+    ("grid offset_0_37 beside_on_grid", 142, 0),
+    ("grid offset_0_15 one_key", 0, 0),
+    ("grid offset_0_20 one_key", 0, 0),
+    ("grid offset_0_25 one_key", 137, 0),
+    ("grid offset_0_30 one_key", 137, 0),
+    ("grid offset_0_37 one_key", 137, 0),
+    ("grid offset_0_15 two_keys", 0, 0),
+    ("grid offset_0_20 two_keys", 0, 0),
+    ("grid offset_0_25 two_keys", 137, 0),
+    ("grid offset_0_30 two_keys", 137, 0),
+    ("grid offset_0_37 two_keys", 137, 0),
+    ("grid offset_0_15 stepped", 0, 0),
+    ("grid offset_0_20 stepped", 0, 0),
+    ("grid offset_0_25 stepped", 132, 0),
+    ("grid offset_0_30 stepped", 132, 0),
+    ("grid offset_0_37 stepped", 132, 0),
+    ("grid offset_0_15 muscle", 0, 0),
+    ("grid offset_0_20 muscle", 0, 0),
+    ("grid offset_0_25 muscle", 0, 0),
+    ("grid offset_0_30 muscle", 0, 0),
+    ("grid offset_0_37 muscle", 0, 0),
+    ("fill write_defaults alone", 150, 0),
+    ("fill no_write_defaults alone", 150, 0),
+    ("hold idle", 240, 0),
+    ("hold fade_out", 60, 0),
+    ("fill write_defaults additive_above", 150, 0),
+    ("fill no_write_defaults additive_above", 300, 0),
+];

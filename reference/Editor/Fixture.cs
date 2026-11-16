@@ -110,8 +110,9 @@ namespace AvatarWorkshop.Reference
         // its PhysBones, so each field's effect has a reference trace of its own. Human: the composition probe.
         // Blend: the blend duration probe. WriteDefaults: the body under the controllers AW_WD describes. Layering: the
         // write-defaults layering probe. SampleTime: the clip sample-time probe. Rotation: the rotation probe.
-        // Dense: the dense clip probe. Crossfade: the crossfade probe. Generic: the generic probe.
-        public enum Kind { Fixture, Probe, Human, Blend, WriteDefaults, Layering, SampleTime, Rotation, Dense, Crossfade, Generic }
+        // Dense: the dense clip probe. Crossfade: the crossfade probe. Generic: the generic probe. GridHold: the frame grid,
+        // write-defaults fill and additive hold probe.
+        public enum Kind { Fixture, Probe, Human, Blend, WriteDefaults, Layering, SampleTime, Rotation, Dense, Crossfade, Generic, GridHold }
 
         // Generates the avatar into Dir and returns its scene's path.
         public static string Build(Kind kind)
@@ -181,6 +182,7 @@ namespace AvatarWorkshop.Reference
             if (kind == Kind.Dense) DenseLayers(d);
             if (kind == Kind.Crossfade) CrossfadeLayers(d);
             if (kind == Kind.Generic) GenericLayers(d);
+            if (kind == Kind.GridHold) GridHoldLayers(d);
             if (kind != Kind.Fixture)
             {
                 AssetDatabase.SaveAssets();
