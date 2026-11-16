@@ -1299,6 +1299,21 @@ namespace AvatarWorkshop.Reference
                     from above in Fixture.HoldAbove
                     select Fixture.HoldPlayableKey(p, property, w, above)).ToArray();
 
+        // The generic-rig playable-weight probe's compositions: the hold probe's playable-weight compositions of the Additive,
+        // Gesture and Action playables, counted as CountHoldCompositions counts them.
+        public static readonly string[] WeightCompositions =
+            (from p in Fixture.WeightPlayables
+             from property in Fixture.HoldProperties
+             from w in Fixture.HoldWeights
+             from above in Fixture.HoldAbove
+             select Fixture.HoldPlayableKey(p, property, w, above)).ToArray();
+
+        public static SortedDictionary<string, int> CountWeightCompositions(VRCAvatarDescriptor d)
+        {
+            var all = CountHoldCompositions(d);
+            return new SortedDictionary<string, int>(all.Where(kv => kv.Value > 0 || WeightCompositions.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value));
+        }
+
         static HashSet<string> HoldBound(AnimatorState s, int id)
         {
             var found = new HashSet<string>();

@@ -10,7 +10,8 @@ namespace AvatarWorkshop.Reference
 {
     // The generic-rig hold probe. A rest state without write defaults holds every property its controller binds, so a
     // layer resting at a partial weight would hold every other case's properties too: every layer but the first rests at
-    // weight 0 and is raised only by its own case.
+    // weight 0 and is raised only by its own case. The playable-weight probe is its playable-weight cases of the
+    // Additive, Gesture and Action controllers alone, beside an FX controller that never plays a motion.
     public static partial class Fixture
     {
         public static readonly string[] HoldProperties = { "position", "rotation", "scale", "blendshape", "parameter" };
@@ -23,6 +24,7 @@ namespace AvatarWorkshop.Reference
             VRCAvatarDescriptor.AnimLayerType.Additive, VRCAvatarDescriptor.AnimLayerType.Gesture,
             VRCAvatarDescriptor.AnimLayerType.Action, VRCAvatarDescriptor.AnimLayerType.FX,
         };
+        public static readonly VRCAvatarDescriptor.AnimLayerType[] WeightPlayables = HoldPlayables.Where(t => t != VRCAvatarDescriptor.AnimLayerType.FX).ToArray();
         public static readonly string[] HoldAbove = { "alone", "under_partial" };
         public static string HoldKey(string property, float weight, string history, string context) =>
             $"hold.{property}.{HoldWeight(weight)}.{history}.{context}";
@@ -65,7 +67,7 @@ namespace AvatarWorkshop.Reference
         static VRCAnimatorLayerControl.BlendableLayer HoldLayerControl(VRCAvatarDescriptor.AnimLayerType t) =>
             (VRCAnimatorLayerControl.BlendableLayer)System.Enum.Parse(typeof(VRCAnimatorLayerControl.BlendableLayer), RigBlendable(t).Value.ToString());
 
-        static void HoldLayers(VRCAvatarDescriptor d)
+        static void HoldLayers(VRCAvatarDescriptor d, bool fxPlays)
         {
             var root = d.transform;
             var smr = root.Find("Body").GetComponent<SkinnedMeshRenderer>();
@@ -123,7 +125,7 @@ namespace AvatarWorkshop.Reference
             }
 
             var fx = VRCAvatarDescriptor.AnimLayerType.FX;
-            foreach (var context in HoldContexts)
+            foreach (var context in fxPlays ? HoldContexts : new string[0])
                 foreach (var history in HoldHistories)
                     foreach (var weight in HoldWeights)
                     {
@@ -158,7 +160,7 @@ namespace AvatarWorkshop.Reference
                         }
                     }
 
-            foreach (var type in HoldPlayables)
+            foreach (var type in fxPlays ? HoldPlayables : WeightPlayables)
                 foreach (var above in HoldAbove)
                     foreach (var weight in HoldWeights)
                     {

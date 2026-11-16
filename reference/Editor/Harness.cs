@@ -62,7 +62,8 @@ namespace AvatarWorkshop.Reference
                 : scenePath == "rotation" ? Fixture.Kind.Rotation : scenePath == "dense" ? Fixture.Kind.Dense
                 : scenePath == "crossfade" ? Fixture.Kind.Crossfade : scenePath == "generic" ? Fixture.Kind.Generic
                 : scenePath == "gridhold" ? Fixture.Kind.GridHold : scenePath == "gridrule" ? Fixture.Kind.GridRule
-                : scenePath == "genericrig" ? Fixture.Kind.GenericRig : scenePath == "generichold" ? Fixture.Kind.GenericHold : (Fixture.Kind?)null;
+                : scenePath == "genericrig" ? Fixture.Kind.GenericRig : scenePath == "generichold" ? Fixture.Kind.GenericHold
+                : scenePath == "genericweight" ? Fixture.Kind.GenericWeight : (Fixture.Kind?)null;
             if (kind.HasValue) scenePath = Fixture.Build(kind.Value);
 
             EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
@@ -304,8 +305,8 @@ namespace AvatarWorkshop.Reference
         public bool Finished;
         readonly string output;
         readonly string avatarName;
-        readonly bool fixture, probe, human, blend, layering, sampleTime, rotation, dense, crossfade, generic, gridHold, gridRule, genericRig, genericHold;
-        bool Cased => human || blend || layering || sampleTime || rotation || dense || crossfade || generic || gridHold || gridRule || genericRig || genericHold;
+        readonly bool fixture, probe, human, blend, layering, sampleTime, rotation, dense, crossfade, generic, gridHold, gridRule, genericRig, genericHold, genericWeight;
+        bool Cased => human || blend || layering || sampleTime || rotation || dense || crossfade || generic || gridHold || gridRule || genericRig || genericHold || genericWeight;
         readonly bool migratedDynamicBones;
         bool exported;
         StreamWriter timeOut;
@@ -379,6 +380,7 @@ namespace AvatarWorkshop.Reference
             gridRule = kind == Fixture.Kind.GridRule;
             genericRig = kind == Fixture.Kind.GenericRig;
             genericHold = kind == Fixture.Kind.GenericHold;
+            genericWeight = kind == Fixture.Kind.GenericWeight;
             this.output = output;
             this.avatarName = avatarName;
             this.migratedDynamicBones = migratedDynamicBones;
@@ -620,6 +622,7 @@ namespace AvatarWorkshop.Reference
             lastValues = values;
 
             var step = steps[stepIndex];
+            if (genericWeight) Unplayed(step);
             if (step.Case != null) Played(step);
             if (stepFrame == step.Frames - 1 && step.Render) Render(step);
             stepFrame++;
@@ -678,6 +681,13 @@ namespace AvatarWorkshop.Reference
                 if (t != null) animatedTransforms.Add((t, path));
             }
 
+            if (genericWeight)
+                foreach (var l in descriptor.baseAnimationLayers.Where(l => !l.isDefault && l.animatorController is AnimatorController))
+                    foreach (var layer in ((AnimatorController)l.animatorController).layers)
+                        if (l.type == VRCAvatarDescriptor.AnimLayerType.FX || layer.blendingMode == AnimatorLayerBlendingMode.Additive)
+                            foreach (var st in layer.stateMachine.states.Where(x => x.state.motion != null))
+                                forbidden[(l.type, Animator.StringToHash(layer.name + "." + st.state.name))] = $"{l.type}/{layer.name}: {st.state.name}";
+
             var physBones = root.GetComponentsInChildren<VRCPhysBoneBase>(true).OrderBy(p => PathOf(p.transform), StringComparer.Ordinal).ToList();
             foreach (var pb in physBones)
                 Tips(pb, physBones);
@@ -715,6 +725,7 @@ namespace AvatarWorkshop.Reference
                     : gridRule ? ("frame-grid rule", Coverage.GridRuleCompositions, Coverage.CountGridRuleCompositions(descriptor))
                     : genericRig ? ("generic-rig playable", Coverage.RigCompositions, Coverage.CountRigCompositions(descriptor))
                     : genericHold ? ("generic-rig hold", Coverage.HoldCompositions, Coverage.CountHoldCompositions(descriptor))
+                    : genericWeight ? ("generic-rig playable-weight", Coverage.WeightCompositions, Coverage.CountWeightCompositions(descriptor))
                     : ("clip sample-time", Coverage.SampleTimeCompositions, Coverage.CountSampleTimeCompositions(descriptor));
                 File.WriteAllText(Path.Combine(output, "compositions.json"), Json(compositions) + "\n");
                 var absent = listed.Where(k => compositions[k] == 0).ToList();
@@ -740,6 +751,7 @@ namespace AvatarWorkshop.Reference
                 ["gridrule"] = gridRule,
                 ["genericrig"] = genericRig,
                 ["generichold"] = genericHold,
+                ["genericweight"] = genericWeight,
                 ["root_scale"] = new[] { root.lossyScale.x, root.lossyScale.y, root.lossyScale.z },
                 ["unity"] = Application.unityVersion,
                 ["dynamic_bones_migrated"] = migratedDynamicBones,
@@ -1218,6 +1230,25 @@ namespace AvatarWorkshop.Reference
             if (full.Count > 0) throw new Exception($"{step.Label}: the {string.Join(", ", full)} playable held a partial weight on fewer than 90% of its frames");
             var unweighted = step.Case.Weights.Where(x => (caseWeights.TryGetValue((x.type, x.layer), out var n) ? n : 0) < 0.9f * step.Frames).ToList();
             if (unweighted.Count > 0) throw new Exception($"{step.Label}: {string.Join(", ", unweighted.Select(x => $"{x.type} layer {x.layer}"))} held its weight on fewer than 90% of its frames");
+        }
+
+        // The playable-weight probe's states with a motion in the FX controller or in an additive layer, which no step may enter.
+        readonly Dictionary<(VRCAvatarDescriptor.AnimLayerType, int), string> forbidden = new Dictionary<(VRCAvatarDescriptor.AnimLayerType, int), string>();
+
+        void Unplayed(Step step)
+        {
+            foreach (var type in forbidden.Keys.Select(k => k.Item1).Distinct())
+            {
+                var pl = playables[PlayableIndex(type)];
+                if (!pl.IsValid()) continue;
+                for (int l = 0; l < pl.GetLayerCount(); l++)
+                {
+                    var now = new List<int> { pl.GetCurrentAnimatorStateInfo(l).fullPathHash };
+                    if (pl.IsInTransition(l)) now.Add(pl.GetNextAnimatorStateInfo(l).fullPathHash);
+                    foreach (var h in now)
+                        if (forbidden.TryGetValue((type, h), out var name)) throw new Exception($"{step.Label}: {name} played a motion");
+                }
+            }
         }
 
         int PlayableIndex(VRCAvatarDescriptor.AnimLayerType type)
