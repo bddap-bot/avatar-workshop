@@ -561,7 +561,8 @@ default weight (0 for Action, 1 for the others); every other layer's rest state 
 fails if the avatar is humanoid, if a case never entered its states, if a playable-weight case's playable held a
 partial weight on fewer than 90% of its frames, if a layer a case raises held that weight on fewer than 90% of its
 frames, or if `compositions.json` counts zero for a composition
-`Coverage.HoldCompositions` lists.
+`Coverage.HoldCompositions` lists. The probe's recording is a reference trace of the core
+(`avatar-core/fixtures/reference/generichold-animator`).
 
 The curve probe plays no avatar. It builds one clip per curve, its only curve on a transform's X position, and
 samples it at seeded random times through an `AnimationClipPlayable`, beside `AnimationCurve.Evaluate` at the same

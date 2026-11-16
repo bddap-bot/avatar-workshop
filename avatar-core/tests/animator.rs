@@ -1207,3 +1207,94 @@ const RIG_HELD: [(&str, usize, usize); 42] = [
     ("fx under_override partial_playable", 449, 41),
     ("fx under_additive partial_playable", 450, 60),
 ];
+
+/// The generic-rig hold probe is the fixture's body under a generic avatar whose controllers rest every layer but the
+/// first at weight 0 until a case raises it, so each case's layers are the only ones that compose. Each case plays, in
+/// its controller's first layer, a clip animating a node's position, rotation and scale, a blendshape and an animator
+/// parameter of its own. A hold case, in FX, adds one layer of its own raised to 0.25, 0.5 or 0.75 that holds those
+/// properties in a state with no motion, before or after it has played a clip of them, alone or under an additive layer
+/// that has played; a playable case lowers the Additive, Gesture, Action or FX playable to 0.25, 0.5 or 0.75, alone or
+/// under a layer at 0.5. Parameters, states and state times follow the reference; each case's wrong samples of its own
+/// bindings, while it plays and in the reset after it, are held to today's counts, as is the total.
+#[test]
+fn each_generic_rig_hold_case_follows_its_reference_trace() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dir = root.join("fixtures/reference/generichold-animator");
+    let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-generichold.glb")).unwrap()).unwrap();
+    assert!(avatar.model.humanoid.bones.is_empty(), "the probe has a humanoid rig");
+    let rep = Run::new(&dir, avatar).run(None);
+    assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
+    assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
+    assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
+    assert_eq!(rep.bindings.wrong, 0, "pose bindings: {}", rep.bindings.summary(20));
+    let playable = |name: &str| match name {
+        "hold" | "fx" => 7,
+        "additive" => 1,
+        "gesture" => 5,
+        "action" => 6,
+        _ => panic!("no playable {name}"),
+    };
+    let steps = reference::animator::steps(&dir);
+    let cases: Vec<_> = steps.iter().enumerate().filter(|(_, s)| s.label.starts_with("case ")).collect();
+    assert_eq!(cases.len(), HOLD_HELD.len());
+    let mut found = Vec::new();
+    for (n, ((i, s), (name, _, _))) in cases.iter().zip(HOLD_HELD).enumerate() {
+        let id = n + 1;
+        assert!(s.label.contains(&format!(": {id} {name}")), "{} is not {name}", s.label);
+        let reset = &steps[i + 1];
+        assert_eq!(reset.label, "reset");
+        let words: Vec<_> = name.split(' ').collect();
+        let owner = if words[0] == "hold" { "hold" } else { words[1] };
+        let keys = [format!("shape:Body:Held{id}"), format!("xform:HeldNode{id}"), format!("curve:{}:HeldParam{id}", playable(owner))];
+        for k in &keys {
+            assert!(rep.seen.contains_key(k), "{k} was never compared");
+        }
+        let within = |frame: usize, frames: usize| {
+            rep.values.samples.range((frame, String::new())..(frame + frames, String::new())).filter(|(_, k)| keys.contains(k)).count()
+        };
+        found.push((name, within(s.frame, s.frames), within(reset.frame, reset.frames)));
+    }
+    assert_eq!(found, HOLD_HELD, "wrong samples of each case's own bindings while it plays and in the reset after it");
+    assert_eq!(rep.values.samples.len(), HOLD_WRONG_SAMPLES, "values: {}", rep.values.summary(20));
+}
+
+const HOLD_WRONG_SAMPLES: usize = 460_847;
+
+const HOLD_HELD: [(&str, usize, usize); 36] = [
+    ("hold w25 before alone", 0, 0),
+    ("hold w50 before alone", 0, 0),
+    ("hold w75 before alone", 0, 0),
+    ("hold w25 after alone", 118, 1),
+    ("hold w50 after alone", 118, 1),
+    ("hold w75 after alone", 120, 1),
+    ("hold w25 before under_additive", 286, 2),
+    ("hold w50 before under_additive", 286, 2),
+    ("hold w75 before under_additive", 286, 2),
+    ("hold w25 after under_additive", 281, 2),
+    ("hold w50 after under_additive", 293, 2),
+    ("hold w75 after under_additive", 296, 2),
+    ("playable additive w25 alone", 449, 60),
+    ("playable additive w50 alone", 446, 60),
+    ("playable additive w75 alone", 442, 60),
+    ("playable additive w25 under_partial", 448, 60),
+    ("playable additive w50 under_partial", 446, 41),
+    ("playable additive w75 under_partial", 445, 60),
+    ("playable gesture w25 alone", 449, 60),
+    ("playable gesture w50 alone", 446, 60),
+    ("playable gesture w75 alone", 442, 60),
+    ("playable gesture w25 under_partial", 448, 60),
+    ("playable gesture w50 under_partial", 446, 41),
+    ("playable gesture w75 under_partial", 445, 60),
+    ("playable action w25 alone", 449, 60),
+    ("playable action w50 alone", 446, 60),
+    ("playable action w75 alone", 442, 60),
+    ("playable action w25 under_partial", 448, 60),
+    ("playable action w50 under_partial", 446, 60),
+    ("playable action w75 under_partial", 445, 60),
+    ("playable fx w25 alone", 447, 22),
+    ("playable fx w50 alone", 444, 22),
+    ("playable fx w75 alone", 440, 22),
+    ("playable fx w25 under_partial", 446, 22),
+    ("playable fx w50 under_partial", 444, 3),
+    ("playable fx w75 under_partial", 443, 22),
+];
