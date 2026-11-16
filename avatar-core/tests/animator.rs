@@ -736,7 +736,7 @@ fn lip_sync_handed_to_animation_leaves_its_last_shape() {
     };
     assert_eq!(speak_then_hand_over(&fixture()), 100.0);
     let mut bound = fixture();
-    clip_mut(&mut bound, "Stand").curves.push(blend_shape("vrc.v_aa", 25.0));
+    clip_mut(&mut bound, "Spin").curves.push(blend_shape("vrc.v_aa", 25.0));
     assert_eq!(speak_then_hand_over(&bound), 25.0);
 }
 
@@ -955,9 +955,7 @@ fn a_mirrored_state_driven_by_a_time_parameter_plays_at_that_time() {
 /// crossfade; then clips with and without high-quality curves binding position, rotation, Euler rotation, scale and a
 /// blendshape, stepped keys, curves on and off the frame grid in one clip, inner keys at offsets either side of the
 /// grid threshold, and clips sampled at and past their end. Parameters, states, state times and pose bindings follow
-/// the reference. Each case's wrong samples of the properties it probes, and the recording's, are held to today's
-/// counts: the core does not yet leave generic properties to the FX playable alone, adds an idle additive layer's
-/// default to every generic property, and frames fewer low-quality curves than Unity does.
+/// the reference, and so does every value.
 #[test]
 fn each_generic_additive_and_curve_quality_case_follows_its_reference_trace() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -971,96 +969,5 @@ fn each_generic_additive_and_curve_quality_case_follows_its_reference_trace() {
     assert_eq!(rep.bindings.wrong, 0, "pose bindings: {}", rep.bindings.summary(20));
     assert!(rep.clocks.compared > 130_000, "{} state times compared", rep.clocks.compared);
     assert!(rep.values.compared > 2_000_000, "{} values compared", rep.values.compared);
-    assert_eq!(rep.values.wrong, 461_028, "values: {}", rep.values.summary(20));
-    // (case label, wrong samples of its probed properties), in case order.
-    let held: [(&str, usize); 66] = [
-        ("base blendshape reference_with alone", 150),
-        ("base blendshape reference_with source_only", 150),
-        ("base blendshape reference_with destination_only", 150),
-        ("base blendshape reference_without alone", 150),
-        ("base blendshape reference_without source_only", 150),
-        ("base blendshape reference_without destination_only", 150),
-        ("base transform reference_with alone", 150),
-        ("base transform reference_with source_only", 150),
-        ("base transform reference_with destination_only", 150),
-        ("base transform reference_without alone", 150),
-        ("base transform reference_without source_only", 150),
-        ("base transform reference_without destination_only", 150),
-        ("additive blendshape reference_with alone", 150),
-        ("additive blendshape reference_with source_only", 150),
-        ("additive blendshape reference_with destination_only", 150),
-        ("additive blendshape reference_without alone", 150),
-        ("additive blendshape reference_without source_only", 150),
-        ("additive blendshape reference_without destination_only", 150),
-        ("additive transform reference_with alone", 150),
-        ("additive transform reference_with source_only", 150),
-        ("additive transform reference_with destination_only", 150),
-        ("additive transform reference_without alone", 150),
-        ("additive transform reference_without source_only", 150),
-        ("additive transform reference_without destination_only", 150),
-        ("fx blendshape reference_with alone", 0),
-        ("fx blendshape reference_with source_only", 60),
-        ("fx blendshape reference_with destination_only", 90),
-        ("fx blendshape reference_without alone", 150),
-        ("fx blendshape reference_without source_only", 150),
-        ("fx blendshape reference_without destination_only", 150),
-        ("fx transform reference_with alone", 0),
-        ("fx transform reference_with source_only", 89),
-        ("fx transform reference_with destination_only", 119),
-        ("fx transform reference_without alone", 150),
-        ("fx transform reference_without source_only", 150),
-        ("fx transform reference_without destination_only", 150),
-        ("curves binding_position low", 0),
-        ("curves binding_position high", 0),
-        ("curves binding_rotation low", 0),
-        ("curves binding_rotation high", 0),
-        ("curves binding_euler low", 0),
-        ("curves binding_euler high", 0),
-        ("curves binding_scale low", 0),
-        ("curves binding_scale high", 0),
-        ("curves binding_blendshape low", 0),
-        ("curves binding_blendshape high", 0),
-        ("curves stepped_all low", 0),
-        ("curves stepped_all high", 0),
-        ("curves stepped_some low", 0),
-        ("curves stepped_some high", 0),
-        ("curves mixed_grid low", 29),
-        ("curves mixed_grid high", 0),
-        ("curves threshold_offset_1e-4 low", 0),
-        ("curves threshold_offset_1e-4 high", 0),
-        ("curves threshold_offset_5e-4 low", 0),
-        ("curves threshold_offset_5e-4 high", 0),
-        ("curves threshold_offset_2e-3 low", 29),
-        ("curves threshold_offset_2e-3 high", 0),
-        ("curves threshold_offset_1e-2 low", 29),
-        ("curves threshold_offset_1e-2 high", 0),
-        ("curves threshold_offset_1e-1 low", 30),
-        ("curves threshold_offset_1e-1 high", 0),
-        ("curves end_once low", 0),
-        ("curves end_once high", 0),
-        ("curves end_loop low", 0),
-        ("curves end_loop high", 0),
-    ];
-    let probed = |id: usize, label: &str| -> Vec<String> {
-        let w: Vec<&str> = label.split(' ').collect();
-        match (w[0], w[1]) {
-            ("curves", "binding_blendshape") => vec!["shape:Body:Pout".into()],
-            ("curves", k) if k.starts_with("end_") => vec!["xform:Sampled".into(), "shape:Body:Pout".into()],
-            ("curves", _) => vec!["xform:Sampled".into()],
-            (_, "blendshape") => vec![format!("shape:Body:Probe{id}")],
-            _ => vec![format!("xform:Marker{id}")],
-        }
-    };
-    let steps = reference::animator::steps(&dir);
-    let cases: Vec<_> = steps.iter().filter(|s| s.label.starts_with("case ")).collect();
-    assert_eq!(cases.len(), held.len());
-    let mut found = Vec::new();
-    for (i, (s, (name, _))) in cases.iter().zip(held).enumerate() {
-        assert!(s.label.starts_with(&format!("case {}:", i + 1)), "{} is not case {}", s.label, i + 1);
-        assert!(s.label.ends_with(&format!(" {name}")) || s.label.contains(&format!(" {name} source;")), "{} is not {name}", s.label);
-        let keys = probed(i + 1, name);
-        let wrong = rep.values.samples.range((s.frame, String::new())..(s.frame + s.frames, String::new())).filter(|(_, k)| keys.contains(k)).count();
-        found.push((name, wrong));
-    }
-    assert_eq!(found, held, "wrong samples of each case's probed properties");
+    assert_eq!(rep.values.wrong, 0, "values: {}", rep.values.summary(20));
 }

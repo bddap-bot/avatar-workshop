@@ -123,6 +123,14 @@ struct Playable {
     poses: Vec<std::collections::HashSet<crate::model::StateId>>,
     /// Per layer, every slot of each renderer it binds a slot of: Unity writes a renderer's slots together.
     slots: Vec<Vec<u32>>,
+    /// Per layer, the transform components each state's clips only fill beside an animated one, which Unity writes at
+    /// their identity: an additive layer above adds their default to that, giving the rest the core keeps for them.
+    fills: Vec<HashMap<crate::model::StateId, Vec<u32>>>,
+    /// Per layer, whether it has played a motion.
+    played: Vec<bool>,
+    /// The targets an additive layer of this controller adds to: those it binds, and every generic property another
+    /// controller binds that no later playable does, which would write over it.
+    reach: Vec<u32>,
     layer_masks: Vec<Option<Mask>>,
     /// The humanoid targets the controller binds that its masks admit.
     human: Vec<u32>,
@@ -142,6 +150,8 @@ struct Accum {
     touched: Vec<bool>,
     /// Whether a layer wrote the target this frame, with some weight.
     wrote: Vec<bool>,
+    /// Whether an override layer filled the target this frame.
+    filled: Vec<bool>,
 }
 
 /// The parts a tracking-control behaviour sets, in the order of its fields.
@@ -380,6 +390,18 @@ pub fn compile_clips(avatar: &Avatar) -> (Targets, Vec<CompiledClip>) {
     for c in &mut clips {
         c.complete_human_pose(&muscle_targets, &targets, m.humanoid.rest.as_ref());
     }
+    for i in 0..clips.len() {
+        let Some((r, _)) = clips[i].reference else { continue };
+        let referenced = clips[r as usize].writes.clone();
+        let unreferenced = |v: &CompiledClip| -> Vec<(u32, f32)> {
+            v.writes.iter().filter(|t| targets.list[**t as usize].generic() && !v.fill.contains(t) && referenced.binary_search(t).is_err()).map(|&t| (t, targets.list[t as usize].identity())).collect()
+        };
+        let c = &mut clips[i];
+        c.unreferenced = unreferenced(c);
+        if let Some(m) = c.mirrored.as_deref_mut() {
+            m.unreferenced = unreferenced(m);
+        }
+    }
     (targets, clips)
 }
 
@@ -416,6 +438,22 @@ impl Animator {
                         .filter_map(|&t| if let Target::Slot(n, _) = targets.list[t as usize] { Some(n) } else { None })
                         .collect();
                     (0..targets.len() as u32).filter(|&t| matches!(targets.list[t as usize], Target::Slot(n, _) if renderers.contains(&n))).collect()
+                })
+                .collect();
+            let fills = (0..c.layers.len())
+                .map(|li| {
+                    rt.state_ids(li)
+                        .into_iter()
+                        .filter_map(|s| {
+                            let mut ids = Vec::new();
+                            machine::clip_ids(&rt.motion(li, s)?, &mut ids);
+                            let curved = |t: &u32| ids.iter().any(|&k| clips[k as usize].writes.binary_search(t).is_ok() && !clips[k as usize].fill.contains(t));
+                            let mut f: Vec<u32> = ids.iter().flat_map(|&k| clips[k as usize].fill.iter().copied()).filter(|t| !curved(t)).collect();
+                            f.sort_unstable();
+                            f.dedup();
+                            (!f.is_empty()).then_some((s, f))
+                        })
+                        .collect()
                 })
                 .collect();
             let muscles = layer.mask.as_ref().map(|mk| mk.body_parts.iter().copied().collect());
@@ -484,6 +522,9 @@ impl Animator {
                 muscles,
                 bound,
                 slots,
+                fills,
+                played: vec![false; c.layers.len()],
+                reach: Vec::new(),
                 layer_human: vec![HashMap::new(); c.layers.len()],
                 said: vec![Vec::new(); c.layers.len()],
                 layer_masks,
@@ -537,6 +578,14 @@ impl Animator {
             let rest_m = crate::physbones::Transform { translation: s * rest.translation, ..rest };
             Some((s, rest_m.rotation.inverse() * (s * view - rest_m.translation)))
         });
+        for pi in 0..playables.len() {
+            let bound_by = |ps: &[Playable], t: &u32| ps.iter().any(|p| p.bound.binary_search(t).is_ok());
+            let mut reach: Vec<u32> = playables[pi].bound.clone();
+            reach.extend(playables[..pi].iter().flat_map(|p| p.bound.iter().copied()).filter(|t| targets.list[*t as usize].generic() && !bound_by(&playables[pi..], t)));
+            reach.sort_unstable();
+            reach.dedup();
+            playables[pi].reach = reach;
+        }
         let mut curved = vec![false; targets.list.len()];
         for c in clips.iter().flat_map(|c| std::iter::once(c).chain(c.mirrored.as_deref())) {
             for &t in c.writes.iter().filter(|t| !c.fill.contains(t)) {
@@ -917,7 +966,7 @@ impl Animator {
         let n = self.targets.len();
         let cov: Vec<f32> = (0..n).map(|i| (!self.targets.list[i].rests_at_default() || self.curved[i]) as u8 as f32).collect();
         let sum = (0..n).map(|i| cov[i] * self.defaults[i]).collect();
-        let mut acc = Accum { sum, cov, touched: vec![false; n], wrote: vec![false; n] };
+        let mut acc = Accum { sum, cov, touched: vec![false; n], wrote: vec![false; n], filled: vec![false; n] };
         for pi in 0..self.playables.len() {
             let pw = self.playables[pi].weight;
             let below: Vec<(f32, f32, bool)> = self.playables[pi]
@@ -932,9 +981,11 @@ impl Animator {
                 .collect();
             let mut layer_human = std::mem::take(&mut self.playables[pi].layer_human);
             let mut said = std::mem::take(&mut self.playables[pi].said);
-            let params = self.evaluate(pi, &clips, &prev, &mut acc, &mut layer_human, &mut said);
+            let mut played = std::mem::take(&mut self.playables[pi].played);
+            let params = self.evaluate(pi, &clips, &prev, &mut acc, &mut layer_human, &mut said, &mut played);
             self.playables[pi].layer_human = layer_human;
             self.playables[pi].said = said;
+            self.playables[pi].played = played;
             if self.playables[pi].kind == PlayableLayerType::Additive {
                 for &t in &self.playables[pi].human {
                     acc.sum[t as usize] += (1.0 - acc.cov[t as usize]) * self.defaults[t as usize];
@@ -1026,11 +1077,13 @@ impl Animator {
 
     /// Blends one playable's layers into the frame's accumulation, returning the values its animator-parameter
     /// curves give its own parameters.
-    fn evaluate(&self, pi: usize, clips: &[CompiledClip], prev: &[f32], acc: &mut Accum, layer_human: &mut [HashMap<u32, f32>], said: &mut [Vec<(u32, f32, f32)>]) -> Vec<(usize, f32)> {
+    fn evaluate(&self, pi: usize, clips: &[CompiledClip], prev: &[f32], acc: &mut Accum, layer_human: &mut [HashMap<u32, f32>], said: &mut [Vec<(u32, f32, f32)>], played: &mut [bool]) -> Vec<(usize, f32)> {
         let p = &self.playables[pi];
         let mut own: HashMap<u32, (f32, f32)> = HashMap::new();
         let mut written = vec![false; self.targets.len()];
         let mut held = false;
+        // The Base and Additive playables write the human pose and animator parameters alone.
+        let writes_generic = !matches!(p.kind, PlayableLayerType::Base | PlayableLayerType::Additive);
         let holdable = |i: usize| !(self.targets.list[i].rests_at_default() && !self.curved[i]) && !matches!(self.targets.list[i], Target::AnimatorParameter(_)) && !p.whole[i];
         for li in 0..p.rt.layers.len() {
             let lw = if li == 0 { 1.0 } else { p.rt.layers[li].weight };
@@ -1044,6 +1097,9 @@ impl Animator {
             let stacked = p.kind == PlayableLayerType::Additive && p.rt.layer_defs[li].blending != LayerBlending::Additive;
             let mask = &p.layer_masks[li];
             let passes = |i: usize| -> bool {
+                if !writes_generic && self.targets.list[i].generic() {
+                    return false;
+                }
                 if let (Target::Muscle(name), Some(parts)) = (&self.targets.list[i], &p.muscles) {
                     if !parts.contains(&human::part(name)) {
                         return false;
@@ -1058,7 +1114,7 @@ impl Animator {
                     },
                 }
             };
-            let holding = p.rt.layers[li].current.as_ref().filter(|c| !held && p.rt.motion(li, c.state).is_some() && p.rt.state(li, c.state).is_some_and(|s| !s.write_defaults));
+            let holding = p.rt.layers[li].current.as_ref().filter(|c| !held && !additive && p.rt.motion(li, c.state).is_some() && p.rt.state(li, c.state).is_some_and(|s| !s.write_defaults));
             if let Some(c) = holding {
                 held = true;
                 let own_keys = playing_pose(&p.rt, li, c, clips, &self.defaults, false);
@@ -1126,6 +1182,7 @@ impl Animator {
                         HashMap::new()
                     }
                     None => {
+                        played[li] = true;
                         let now = additive_offsets(&p.rt, li, clips, &self.defaults, self.body, &self.rotations);
                         if !stacked {
                             said[li] = now.iter().map(|(&t, &(v, c))| (t, v, c)).collect();
@@ -1133,24 +1190,42 @@ impl Animator {
                         now
                     }
                 };
-                for &t in &p.bound {
+                // Until it has played a motion, a layer idle in an empty state without write defaults adds no generic
+                // property's default.
+                let adds_defaults = played[li] || idle == Some(true);
+                for &t in &p.reach {
                     let i = t as usize;
                     if !passes(i) || self.targets.list[i].discrete() || self.goals.iter().any(|g| g.0.contains(&t)) || (p.kind == PlayableLayerType::Additive && p.whole[i]) {
                         continue;
                     }
+                    let (v, c) = now.get(&t).copied().unwrap_or((0.0, 0.0));
+                    let generic = self.targets.list[i].generic();
+                    if c == 0.0 && generic && !adds_defaults {
+                        continue;
+                    }
                     let scale = if p.whole[i] { lw } else { wl };
-                    let unwritten = (self.defaults[i] - self.targets.list[i].identity()) * acc.cov[i];
-                    match now.get(&t) {
-                        Some(&(v, c)) => {
-                            acc.sum[i] += (v + (1.0 - c) * unwritten) * scale;
-                            acc.touched[i] = true;
-                            written[i] = true;
-                        }
-                        None => acc.sum[i] += unwritten * scale,
+                    // Unity's stream holds every generic property it binds at its default, a transform's components a
+                    // clip leaves out beside one it animates included.
+                    let cover = if generic && !acc.filled[i] { 1.0 } else { acc.cov[i] };
+                    let unwritten = (self.defaults[i] - self.targets.list[i].identity()) * cover;
+                    acc.sum[i] += (v + (1.0 - c) * unwritten) * scale;
+                    if c > 0.0 {
+                        acc.touched[i] = true;
+                        written[i] = true;
                     }
                 }
             }
             let Some(mut pose) = whole_pose else { continue };
+            let l = &p.rt.layers[li];
+            let playing: Vec<crate::model::StateId> = match &l.active {
+                Some(a) => std::iter::once(a.to.state).chain(if let From::State(f) = &a.from { Some(f.state) } else { None }).collect(),
+                None => l.current.iter().map(|c| c.state).collect(),
+            };
+            for s in playing {
+                for &t in p.fills[li].get(&s).into_iter().flatten() {
+                    acc.filled[t as usize] |= passes(t as usize);
+                }
+            }
             if stacked {
                 pose.retain(|x| p.whole[x.0 as usize]);
             }
@@ -1599,6 +1674,7 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, sa
                         own.insert(t, v);
                     }
                 });
+                own.extend(c.unreferenced.iter().copied());
             }
             // The first frame an additive layer subtracts is the clip's own, whatever mirrors the state.
             (Sample::Reference, None) => clips[l.clip as usize].variant(false).sample(at + l.cycle_offset, defaults, additive, &mut |t, v| {

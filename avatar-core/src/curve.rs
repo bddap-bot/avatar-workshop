@@ -18,11 +18,15 @@ impl AnimationCurve {
         segment(&keys[i - 1], &keys[i], time)
     }
 
-    /// Whether every key lies on the frame grid of `rate`, with finite tangents: the curves a clip without
-    /// high-quality curves samples on its frames.
+    /// Whether every key lies within a quarter frame of the frame grid of `rate`.
     pub fn on_frame_grid(&self, rate: f32) -> bool {
-        let on_grid = |t: f32| ((t * rate) - (t * rate).round()).abs() < 1e-3;
-        rate > 0.0 && self.keys.iter().all(|k| on_grid(k.time) && k.in_tangent.is_finite() && k.out_tangent.is_finite())
+        let on_grid = |t: f32| ((t * rate) - (t * rate).round()).abs() < 0.25;
+        rate > 0.0 && self.keys.iter().all(|k| on_grid(k.time))
+    }
+
+    /// Whether every key's tangents are finite: a stepped key keeps a curve off the frames.
+    pub fn smooth(&self) -> bool {
+        self.keys.iter().all(|k| k.in_tangent.is_finite() && k.out_tangent.is_finite())
     }
 
     /// The curve's value on each frame of `rate` from 0 to `length`, and the straight line between neighbouring frames.
@@ -153,6 +157,6 @@ mod tests {
         assert!(!off.on_frame_grid(60.0));
         let mut stepped = ease.clone();
         stepped.keys[0].out_tangent = f32::INFINITY;
-        assert!(!stepped.on_frame_grid(60.0));
+        assert!(stepped.on_frame_grid(60.0) && !stepped.smooth());
     }
 }

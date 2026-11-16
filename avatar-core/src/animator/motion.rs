@@ -35,6 +35,11 @@ impl Target {
         matches!(self, Target::Translation(..) | Target::Rotation(..) | Target::Scale(..) | Target::Muscle(_))
     }
 
+    /// Whether the target is a property of the avatar's scene other than the human pose, which only some playables write.
+    pub fn generic(&self) -> bool {
+        !matches!(self, Target::Muscle(_) | Target::AnimatorParameter(_))
+    }
+
     /// The value adding nothing in an additive layer.
     pub fn identity(&self) -> f32 {
         match self {
@@ -112,6 +117,9 @@ pub struct CompiledClip {
     pub cycle_offset: f32,
     /// What an additive layer measures the clip from: a clip index and seconds into it.
     pub reference: Option<(u32, f32)>,
+    /// The generic properties this clip has curves for that its reference pose leaves out, at their identity: Unity
+    /// measures them from nothing, as the generic probe shows. A filled component adds nothing either way.
+    pub unreferenced: Vec<(u32, f32)>,
 }
 
 /// The rest value of a node's local rotation as Unity's Euler angles (ZXY order), in degrees, in glTF axes.
@@ -168,8 +176,14 @@ impl CompiledClip {
     }
 
     fn compile_as_is(clip: &Clip, targets: &mut Targets) -> CompiledClip {
-        let as_played = |c: &AnimationCurve| {
-            if clip.high_quality_curve || !c.on_frame_grid(clip.sample_rate) { c.clone() } else { c.framed(clip.sample_rate, clip.length) }
+        // A clip without high-quality curves samples a muscle curve on its frames when that curve is on the grid, and
+        // its other curves when all of them are: keys 0.1 of a frame off count as on it and 0.37 off as off, and one
+        // generic curve off the grid keeps the rest off the frames, as one muscle curve does not.
+        let human = |c: &crate::model::Curve| matches!(c.binding, Binding::Muscle { .. });
+        let generic_framed = clip.curves.iter().filter(|c| !human(c)).all(|c| c.curve.on_frame_grid(clip.sample_rate));
+        let as_played = |c: &crate::model::Curve| {
+            let on = if human(c) { c.curve.on_frame_grid(clip.sample_rate) } else { generic_framed };
+            if !clip.high_quality_curve && on && c.curve.smooth() { c.curve.framed(clip.sample_rate, clip.length) } else { c.curve.clone() }
         };
         let mut curves = Vec::new();
         let mut euler: Vec<EulerGroup> = Vec::new();
@@ -186,12 +200,12 @@ impl CompiledClip {
                 };
                 let i = axis_index(*component);
                 if i < 3 {
-                    euler[at].axes[i] = Some(as_played(&c.curve));
+                    euler[at].axes[i] = Some(as_played(c));
                 }
                 continue;
             }
             if let Some(t) = target_of(&c.binding) {
-                curves.push((targets.id(t), as_played(&c.curve)));
+                curves.push((targets.id(t), as_played(c)));
             }
         }
         let stepped = clip
@@ -263,6 +277,7 @@ impl CompiledClip {
             mirror: clip.humanoid.as_ref().is_some_and(|h| h.mirror),
             cycle_offset: clip.cycle_offset,
             reference: clip.additive_reference_pose.as_ref().map(|r| (r.clip.0, r.time)),
+            unreferenced: Vec::new(),
         }
     }
 
