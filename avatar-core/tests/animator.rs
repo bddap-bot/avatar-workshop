@@ -79,6 +79,43 @@ fn each_humanoid_rotation_follows_its_reference_trace() {
     assert!(rep.bindings.wrong <= 8882, "bindings: {}", rep.bindings.summary(20));
 }
 
+/// The Loop Pose drift probe plays a looping walk under Loop Pose whose body ends turned from its start by 10, 45 or
+/// 120 degrees about X, Y, Z, the X-Y diagonal or the diagonal of all three, with its rotation baked or not and based
+/// upon body orientation or the original, in Base at full weight and Action at partial weight, unmirrored and
+/// mirrored. Parameters, states, values and state times follow the reference, and so does every case that turns about
+/// one axis, with the reset after it; the cases turning about two or three axes are held to today's wrong samples.
+#[test]
+fn each_loop_pose_drift_follows_its_reference_trace() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dir = root.join("fixtures/reference/loopdrift-animator");
+    let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-loopdrift.glb")).unwrap()).unwrap();
+    let rep = Run::new(&dir, avatar).run(None);
+    assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
+    assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
+    assert_eq!(rep.values.wrong, 0, "values: {}", rep.values.summary(20));
+    assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
+    assert!(rep.bindings.compared > 4_900_000, "{} bindings compared", rep.bindings.compared);
+    let steps = reference::animator::steps(&dir);
+    let cases: Vec<_> = steps.iter().enumerate().filter(|(_, s)| s.label.starts_with("case ")).collect();
+    assert_eq!(cases.len(), 240, "120 cases, each unmirrored and mirrored");
+    let mut multi = 0;
+    for (i, s) in cases {
+        let reset = &steps[i + 1];
+        assert_eq!(reset.label, "reset");
+        let wrong = rep.bindings.samples.range((s.frame, String::new())..(reset.frame + reset.frames, String::new())).count();
+        let axes = s.label.split(" drift ").nth(1).unwrap().split(' ').next().unwrap();
+        if axes.len() == 1 {
+            assert_eq!(wrong, 0, "{} differs", s.label);
+        } else {
+            multi += wrong;
+        }
+    }
+    assert_eq!(multi, rep.bindings.wrong, "wrong samples outside the cases and their resets");
+    assert!(rep.bindings.wrong <= LOOP_DRIFT_WRONG, "bindings: {}", rep.bindings.summary(20));
+}
+
+const LOOP_DRIFT_WRONG: usize = 130_214;
+
 /// The blend duration probe plays one blend tree at a time; the core keeps every state's time. The values of every
 /// case but the first tree without write defaults (case 75), which starts from what the case before it left, follow
 /// the reference, released zero-length children of 2D trees included.
