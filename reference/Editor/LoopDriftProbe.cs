@@ -26,31 +26,45 @@ namespace AvatarWorkshop.Reference
             ("baked original", s => s.loopBlendOrientation = true),
             ("baked body", s => { s.loopBlendOrientation = true; s.keepOriginalOrientation = false; }),
         };
-        internal static readonly string[] DriftContexts = { "base_full", "action_partial" };
+        internal static readonly string[] CaseContexts = { "base_full", "action_partial" };
         const float DriftLength = 1;
 
-        // A one-second walk whose body ends turned by `degrees` about `axis`, higher and moved in XZ. Its IK goals turn
-        // with the body from rests of their own and end where they started, so the body's turn is the only drift.
-        static void DriftingWalk(AnimationClip c, Vector3 axis, float degrees)
+        // A walk of `length` seconds whose body ends turned by `degrees` about `axis`, higher and moved in XZ. Its IK
+        // goals turn with the body from rests of their own and end where they started, so the body's turn is the only drift.
+        static void DriftingWalk(AnimationClip c, Vector3 axis, float degrees, float length)
         {
+            float half = length / 2;
             Muscles(c);
-            Curve(c, "", typeof(Animator), "Left Upper Leg Front-Back", (0, 0.3f), (0.5f, -0.3f), (DriftLength, 0.3f));
-            Curve(c, "", typeof(Animator), "Right Upper Leg Front-Back", (0, -0.3f), (0.5f, 0.3f), (DriftLength, -0.3f));
-            Curve(c, "", typeof(Animator), "RootT.x", (0, 0), (DriftLength, 0.12f));
-            Curve(c, "", typeof(Animator), "RootT.y", (0, 1), (0.5f, 0.95f), (DriftLength, 1.06f));
-            Curve(c, "", typeof(Animator), "RootT.z", (0, 0), (DriftLength, 0.4f));
+            Curve(c, "", typeof(Animator), "Left Upper Leg Front-Back", (0, 0.3f), (half, -0.3f), (length, 0.3f));
+            Curve(c, "", typeof(Animator), "Right Upper Leg Front-Back", (0, -0.3f), (half, 0.3f), (length, -0.3f));
+            Curve(c, "", typeof(Animator), "RootT.x", (0, 0), (length, 0.12f));
+            Curve(c, "", typeof(Animator), "RootT.y", (0, 1), (half, 0.95f), (length, 1.06f));
+            Curve(c, "", typeof(Animator), "RootT.z", (0, 0), (length, 0.4f));
             Quaternion At(float f) => Quaternion.AngleAxis(degrees * f, axis);
-            Rotation(c, "RootQ", 1, (0, At(0)), (0.5f, At(0.5f)), (DriftLength, At(1)));
+            Rotation(c, "RootQ", 1, (0, At(0)), (half, At(0.5f)), (length, At(1)));
             foreach (var g in Goals)
             {
                 var p = GoalPlaces[g];
                 var rest = Quaternion.Euler(GoalTurns[g] * 0.25f);
-                for (int i = 0; i < 3; i++) Curve(c, "", typeof(Animator), $"{g}T.{"xyz"[i]}", (0, p[i]), (0.5f, p[i] + 0.05f), (DriftLength, p[i]));
-                Rotation(c, g + "Q", 1, (0, At(0) * rest), (0.5f, At(0.5f) * rest), (DriftLength, At(1) * rest));
+                for (int i = 0; i < 3; i++) Curve(c, "", typeof(Animator), $"{g}T.{"xyz"[i]}", (0, p[i]), (half, p[i] + 0.05f), (length, p[i]));
+                Rotation(c, g + "Q", 1, (0, At(0) * rest), (half, At(0.5f) * rest), (length, At(1) * rest));
             }
         }
 
-        static void LoopDriftLayers(VRCAvatarDescriptor d)
+        static void LoopDriftLayers(VRCAvatarDescriptor d) => CaseLayers(d, "Drift", k =>
+        {
+            var clips = new List<AnimationClip>();
+            foreach (var (axes, axis) in DriftAxes)
+                foreach (var degrees in DriftDegrees)
+                    foreach (var (setting, set) in DriftSettings)
+                        clips.Add(k.Make($"drift {axes} {degrees} {setting}", c => DriftingWalk(c, axis, degrees, DriftLength), loop: true,
+                            settings: s => { Original(s); s.loopBlend = true; set(s); }));
+            return clips;
+        });
+
+        // The Base and Action controllers `<name>Base` and `<name>Action`, each with one state per clip `make` makes,
+        // played in each of CaseContexts by its own case, unmirrored and mirrored.
+        static void CaseLayers(VRCAvatarDescriptor d, string name, Func<Clips, List<AnimationClip>> make)
         {
             AssetDatabase.CreateFolder(Dir, "Clips");
             var k = new Clips(Dir + "/Clips");
@@ -74,23 +88,18 @@ namespace AvatarWorkshop.Reference
                 return s;
             }
 
-            var baseCtl = Controller("DriftBase");
+            var baseCtl = Controller(name + "Base");
             var body = baseCtl.Layer("Body").stateMachine;
             var bodyOff = Off(body, rest);
-            var actionCtl = Controller("DriftAction");
+            var actionCtl = Controller(name + "Action");
             var action = actionCtl.Layer("Action").stateMachine;
             var actionOff = Off(action, null);
             PlayableControl(actionOff, VRCPlayableLayerControl.BlendableLayer.Action, 0, 0);
 
-            var clips = new List<AnimationClip>();
-            foreach (var (axes, axis) in DriftAxes)
-                foreach (var degrees in DriftDegrees)
-                    foreach (var (setting, set) in DriftSettings)
-                        clips.Add(k.Make($"drift {axes} {degrees} {setting}", c => DriftingWalk(c, axis, degrees), loop: true,
-                            settings: s => { Original(s); s.loopBlend = true; set(s); }));
+            var clips = make(k);
 
             int next = 1;
-            foreach (var context in DriftContexts)
+            foreach (var context in CaseContexts)
                 foreach (var clip in clips)
                 {
                     int id = next++;

@@ -740,7 +740,7 @@ namespace AvatarWorkshop.Reference
         // non-zero component. A clip counts only where it has length, its body ends higher or lower and moved in XZ,
         // and it loops under Loop Pose. The contexts are the rotation probe's.
         static readonly string[] DriftUnmirrored =
-            (from context in Fixture.DriftContexts from a in Fixture.DriftAxes from deg in Fixture.DriftDegrees from x in Fixture.DriftSettings
+            (from context in Fixture.CaseContexts from a in Fixture.DriftAxes from deg in Fixture.DriftDegrees from x in Fixture.DriftSettings
              select $"loopdrift.{context}+axes_{a.name}.deg_{deg}.{DriftSetting(x.set)}").ToArray();
         public static readonly string[] DriftCompositions = DriftUnmirrored.Concat(DriftUnmirrored.Select(k => k + ".mirrored")).ToArray();
 
@@ -755,15 +755,23 @@ namespace AvatarWorkshop.Reference
         {
             var settings = AnimationUtility.GetAnimationClipSettings(clip);
             if (Span(clip) != "length" || !settings.loopTime || !settings.loopBlend) return null;
-            var q = QuaternionKeys(clip, "RootQ");
             var t = "xyz".Select(a => AnimationUtility.GetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), $"RootT.{a}"))?.keys).ToArray();
-            if (q.Any(k => k == null) || t.Any(k => k == null)) return null;
+            if (t.Any(k => k == null)) return null;
             bool Moved(Keyframe[] k) => k[k.Length - 1].value != k[0].value;
             if (!Moved(t[1]) || !(Moved(t[0]) || Moved(t[2]))) return null;
+            return TurnKey(clip, fromIdentity: false);
+        }
+
+        // "axes_<axes>.deg_<degrees>": the turn from the body's first rotation (or identity) to its last in the first's
+        // frame; the axes are those of the turn's axis with a non-zero component.
+        static string TurnKey(AnimationClip clip, bool fromIdentity)
+        {
+            var q = QuaternionKeys(clip, "RootQ");
+            if (q.Any(k => k == null)) return null;
             Quaternion At(int i) => new Quaternion(q[0][i].value, q[1][i].value, q[2][i].value, q[3][i].value);
             int last = q[0].Length - 1;
             if (q.Any(k => k.Length != last + 1)) return null;
-            (Quaternion.Inverse(At(0)) * At(last)).ToAngleAxis(out var degrees, out var axis);
+            (Quaternion.Inverse(fromIdentity ? Quaternion.identity : At(0)) * At(last)).ToAngleAxis(out var degrees, out var axis);
             var axes = string.Concat(Enumerable.Range(0, 3).Where(i => Mathf.Abs(axis[i]) > 1e-3f).Select(i => "xyz"[i]));
             return axes.Length == 0 ? null : $"axes_{axes}.deg_{Mathf.RoundToInt(degrees)}";
         }
@@ -771,6 +779,30 @@ namespace AvatarWorkshop.Reference
         public static SortedDictionary<string, int> CountDriftCompositions(VRCAvatarDescriptor d) =>
             CountHumanCases(d, DriftCompositions, clip => DriftTurn(clip) is string turn
                 ? $"loopdrift.{{0}}+{turn}.{RotationSetting(AnimationUtility.GetAnimationClipSettings(clip))}" : null);
+
+        // The Feet height basis probe's compositions: "feet.<context>+<kind>.axes_<axes>.deg_<degrees>.<setting>", and
+        // ".mirrored" after each where its state mirrors. The turn is read from the clip as the drift probe's is, a
+        // pose's from identity. A clip counts only where its height is based upon Feet and it loops.
+        static readonly string[] FeetUnmirrored =
+            (from context in Fixture.CaseContexts from kind in Fixture.FeetKinds from a in Fixture.FeetAxes from deg in Fixture.DriftDegrees
+             from loopPose in Fixture.FeetLoopPose from baked in Fixture.FeetHeightBaked
+             select $"feet.{context}+{kind}.axes_{a.name}.deg_{deg}.{FeetSetting(loopPose, baked)}").ToArray();
+        public static readonly string[] FeetCompositions = FeetUnmirrored.Concat(FeetUnmirrored.Select(k => k + ".mirrored")).ToArray();
+
+        static string FeetSetting(bool loopPose, bool baked)
+        {
+            var s = new AnimationClipSettings();
+            Fixture.FeetSettings(s, loopPose, baked);
+            return RotationSetting(s);
+        }
+
+        public static SortedDictionary<string, int> CountFeetCompositions(VRCAvatarDescriptor d) => CountHumanCases(d, FeetCompositions, clip =>
+        {
+            var settings = AnimationUtility.GetAnimationClipSettings(clip);
+            var kind = RotationKind(clip);
+            if (kind == null || settings.keepOriginalPositionY || !settings.heightFromFeet || !settings.loopTime) return null;
+            return TurnKey(clip, kind == "pose") is string turn ? $"feet.{{0}}+{kind}.{turn}.{RotationSetting(settings)}" : null;
+        });
 
         // The dense clip probe's compositions: "dense.<kind>.<keying>.rate_<sample rate>.<tangents>.<speed>". A clip's
         // probed curves are those with more than two keys, and all of them must share a keying and tangents. Keyings

@@ -67,8 +67,12 @@ namespace AvatarWorkshop.Reference
             }
         }
 
-        // Every curve holds one key, at time zero, as an emote pack's zero-length pose does.
-        static void TurnedPose(AnimationClip c, string axes, float scale)
+        static void TurnedPose(AnimationClip c, string axes, float scale) =>
+            HeldPose(c, Turn(BodyTurn, axes, 1), g => Turn(GoalTurns[g], axes, 1), scale);
+
+        // Every curve holds one key, at time zero, as an emote pack's zero-length pose does: the body turned by `body`
+        // and each IK goal by `goal`, its quaternion scaled by `scale`.
+        static void HeldPose(AnimationClip c, Quaternion body, Func<string, Quaternion> goal, float scale)
         {
             var bend = new Dictionary<string, float> { ["Spine Front-Back"] = 0.4f, ["Left Upper Leg Front-Back"] = 0.5f, ["Right Arm Down-Up"] = -0.3f };
             foreach (var m in bend.Keys) if (Array.IndexOf(HumanTrait.MuscleName, m) < 0) throw new Exception("no humanoid muscle " + m);
@@ -79,11 +83,11 @@ namespace AvatarWorkshop.Reference
             }
             var at = new Vector3(0.05f, 0.3f, -0.1f);
             for (int i = 0; i < 3; i++) Curve(c, "", typeof(Animator), $"RootT.{"xyz"[i]}", (0, at[i]));
-            Rotation(c, "RootQ", scale, (0, Turn(BodyTurn, axes, 1)));
+            Rotation(c, "RootQ", scale, (0, body));
             foreach (var g in Goals)
             {
                 for (int i = 0; i < 3; i++) Curve(c, "", typeof(Animator), $"{g}T.{"xyz"[i]}", (0, GoalPlaces[g][i] + 0.1f));
-                Rotation(c, g + "Q", scale, (0, Turn(GoalTurns[g], axes, 1)));
+                Rotation(c, g + "Q", scale, (0, goal(g)));
             }
         }
 
