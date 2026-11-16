@@ -1,0 +1,94 @@
+0	5	90	-	rest	GestureLeft=0,GestureRight=0,GestureLeftWeight=0,GestureRightWeight=0,Viseme=0,Voice=0,Grounded=1,Seated=0,AFK=0,VelocityX=0,VelocityY=0,VelocityZ=0,AngularY=0,Upright=1,TrackingType=3,VRMode=1,InStation=0,IsOnFriendsList=0
+1	95	150	-	case 1: fx/Rule: 1 rule blendshape amplitude_1 err_0_0411	Case=1
+2	245	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+3	265	150	-	case 2: fx/Rule: 2 rule blendshape amplitude_100 err_0_0411	Case=2
+4	415	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+5	435	150	-	case 3: fx/Rule: 3 rule blendshape amplitude_0_01 err_0_0411	Case=3
+6	585	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+7	605	150	-	case 4: fx/Rule: 4 rule blendshape spacing_1 err_0_0450	Case=4
+8	755	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+9	775	150	-	case 5: fx/Rule: 5 rule blendshape spacing_2 err_0_0450	Case=5
+10	925	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+11	945	150	-	case 6: fx/Rule: 6 rule blendshape spacing_3 err_0_0450	Case=6
+12	1095	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+13	1115	150	-	case 7: fx/Rule: 7 rule blendshape error_0_030 err_0_0300	Case=7
+14	1265	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+15	1285	150	-	case 8: fx/Rule: 8 rule blendshape error_0_040 err_0_0400	Case=8
+16	1435	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+17	1455	150	-	case 9: fx/Rule: 9 rule blendshape error_0_045 err_0_0450	Case=9
+18	1605	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+19	1625	150	-	case 10: fx/Rule: 10 rule blendshape error_0_050 err_0_0500	Case=10
+20	1775	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+21	1795	150	-	case 11: fx/Rule: 11 rule blendshape error_0_060 err_0_0600	Case=11
+22	1945	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+23	1965	150	-	case 12: fx/Rule: 12 rule position amplitude_1 err_0_0411	Case=12
+24	2115	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+25	2135	150	-	case 13: fx/Rule: 13 rule position amplitude_100 err_0_0411	Case=13
+26	2285	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+27	2305	150	-	case 14: fx/Rule: 14 rule position amplitude_0_01 err_0_0411	Case=14
+28	2455	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+29	2475	150	-	case 15: fx/Rule: 15 rule position spacing_1 err_0_0450	Case=15
+30	2625	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+31	2645	150	-	case 16: fx/Rule: 16 rule position spacing_2 err_0_0450	Case=16
+32	2795	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+33	2815	150	-	case 17: fx/Rule: 17 rule position spacing_3 err_0_0450	Case=17
+34	2965	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+35	2985	150	-	case 18: fx/Rule: 18 rule position error_0_030 err_0_0300	Case=18
+36	3135	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+37	3155	150	-	case 19: fx/Rule: 19 rule position error_0_040 err_0_0400	Case=19
+38	3305	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+39	3325	150	-	case 20: fx/Rule: 20 rule position error_0_045 err_0_0450	Case=20
+40	3475	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+41	3495	150	-	case 21: fx/Rule: 21 rule position error_0_050 err_0_0500	Case=21
+42	3645	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+43	3665	150	-	case 22: fx/Rule: 22 rule position error_0_060 err_0_0600	Case=22
+44	3815	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+45	3835	150	-	case 23: fx/Rule: 23 rule scale amplitude_1 err_0_0411	Case=23
+46	3985	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+47	4005	150	-	case 24: fx/Rule: 24 rule scale amplitude_100 err_0_0411	Case=24
+48	4155	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+49	4175	150	-	case 25: fx/Rule: 25 rule scale amplitude_0_01 err_0_0411	Case=25
+50	4325	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+51	4345	150	-	case 26: fx/Rule: 26 rule scale spacing_1 err_0_0450	Case=26
+52	4495	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+53	4515	150	-	case 27: fx/Rule: 27 rule scale spacing_2 err_0_0450	Case=27
+54	4665	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+55	4685	150	-	case 28: fx/Rule: 28 rule scale spacing_3 err_0_0450	Case=28
+56	4835	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+57	4855	150	-	case 29: fx/Rule: 29 rule scale error_0_030 err_0_0300	Case=29
+58	5005	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+59	5025	150	-	case 30: fx/Rule: 30 rule scale error_0_040 err_0_0400	Case=30
+60	5175	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+61	5195	150	-	case 31: fx/Rule: 31 rule scale error_0_045 err_0_0450	Case=31
+62	5345	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+63	5365	150	-	case 32: fx/Rule: 32 rule scale error_0_050 err_0_0500	Case=32
+64	5515	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+65	5535	150	-	case 33: fx/Rule: 33 rule scale error_0_060 err_0_0600	Case=33
+66	5685	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+67	5705	150	-	case 34: fx/Rule: 34 rule parameter amplitude_1 err_0_0411	Case=34
+68	5855	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+69	5875	150	-	case 35: fx/Rule: 35 rule parameter amplitude_100 err_0_0411	Case=35
+70	6025	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+71	6045	150	-	case 36: fx/Rule: 36 rule parameter amplitude_0_01 err_0_0411	Case=36
+72	6195	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+73	6215	150	-	case 37: fx/Rule: 37 rule parameter spacing_1 err_0_0450	Case=37
+74	6365	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+75	6385	150	-	case 38: fx/Rule: 38 rule parameter spacing_2 err_0_0450	Case=38
+76	6535	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+77	6555	150	-	case 39: fx/Rule: 39 rule parameter spacing_3 err_0_0450	Case=39
+78	6705	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+79	6725	150	-	case 40: fx/Rule: 40 rule parameter error_0_030 err_0_0300	Case=40
+80	6875	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+81	6895	150	-	case 41: fx/Rule: 41 rule parameter error_0_040 err_0_0400	Case=41
+82	7045	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+83	7065	150	-	case 42: fx/Rule: 42 rule parameter error_0_045 err_0_0450	Case=42
+84	7215	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+85	7235	150	-	case 43: fx/Rule: 43 rule parameter error_0_050 err_0_0500	Case=43
+86	7385	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+87	7405	150	-	case 44: fx/Rule: 44 rule parameter error_0_060 err_0_0600	Case=44
+88	7555	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+89	7575	150	-	case 45: fx/Rule: 45 rule mixed blendshape_off err_0_0626	Case=45
+90	7725	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+91	7745	150	-	case 46: fx/Rule: 46 rule mixed position_off err_0_0476	Case=46
+92	7895	20	-	reset	Case=0,BlendX=0,BlendY=0,BlendU=0
+93	7915	60	-	final	

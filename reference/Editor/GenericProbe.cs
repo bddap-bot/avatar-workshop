@@ -97,10 +97,7 @@ namespace AvatarWorkshop.Reference
 
         static void CurveClip(AnimationClip c, string kind, string quality)
         {
-            c.frameRate = CurveRate;
-            var serialized = new SerializedObject(c);
-            serialized.FindProperty("m_UseHighQualityCurve").boolValue = quality == "high";
-            serialized.ApplyModifiedPropertiesWithoutUndo();
+            Quality(c, CurveRate, quality == "high");
             switch (kind)
             {
                 case "binding.position": SampledPosition(c, 1, CurveLength, axes: "xyz"); break;

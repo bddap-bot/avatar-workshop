@@ -1098,6 +1098,97 @@ namespace AvatarWorkshop.Reference
 
         static Quaternion ToQ(Vector4 v) => new Quaternion(v.x, v.y, v.z, v.w).normalized;
 
+        // The frame-grid rule probe's compositions, read from the authored assets: a 30 Hz clip without high-quality curves
+        // a full-weight override FX layer plays in a write-defaults state, exactly one of whose curves has every
+        // inner key Fixture.RuleOffset of a frame after the grid. "rule.<kind>.<variant>" when that curve is the clip's only
+        // one, bound to the probe's blendshape, node position channel, node scale channel or animator parameter, and keyed
+        // every third frame over a listed range (amplitude), every listed number of frames over the spacing family's range
+        // at its frame-line error (spacing), or every third frame over the error family's range at a listed frame-line
+        // error (error). "rule.mixed.<blendshape|position>_off" for the probe's blendshape and position curves in one clip,
+        // both keyed every third frame over the mixed range, the named one off the grid and the other on it.
+        public static readonly string[] GridRuleCompositions =
+            (from k in Fixture.RuleKinds
+             from v in Fixture.RuleAmplitudes.Select(Fixture.RuleAmplitude)
+                 .Concat(Fixture.RuleSpacings.Select(Fixture.RuleSpacing))
+                 .Concat(Fixture.RuleErrors.Select(Fixture.RuleError))
+             select Fixture.RuleKey(k, v))
+            .Concat(Fixture.RuleMixed.Select(Fixture.RuleMixedKey))
+            .ToArray();
+
+        static string RuleKind(EditorCurveBinding b) =>
+            b.type == typeof(Animator) && b.path == "" && b.propertyName == Fixture.RuleParameter ? "parameter"
+            : b.type == typeof(SkinnedMeshRenderer) && b.path == "Body" && b.propertyName == "blendShape." + Fixture.RuleShape ? "blendshape"
+            : b.type == typeof(Transform) && b.path == Fixture.RuleMover && b.propertyName == "m_LocalPosition.x" ? "position"
+            : b.type == typeof(Transform) && b.path == Fixture.RuleScaled && b.propertyName == "m_LocalScale.y" ? "scale"
+            : null;
+
+        // A rule curve's key spacing in frames and value range: its ends on the grid, every inner key Fixture.RuleOffset
+        // after the grid (or on it, for `onGrid`) and evenly spaced.
+        static (int spacing, float range)? RuleKeys(AnimationCurve curve, float rate, bool onGrid)
+        {
+            const float tolerance = 2e-5f;
+            var keys = curve.keys;
+            int n = keys.Length - 1, frames = Mathf.RoundToInt(keys[n].time * rate);
+            if (n < 2 || keys[0].time != 0 || Mathf.Abs(keys[n].time * rate - frames) >= tolerance || frames % n != 0) return null;
+            int spacing = frames / n;
+            float offset = onGrid ? 0 : Fixture.RuleOffset;
+            for (int i = 1; i < n; i++)
+                if (Mathf.Abs(keys[i].time * rate - (spacing * i + offset)) >= (onGrid ? tolerance : 1e-3f)) return null;
+            return (spacing, keys.Max(k => k.value) - keys.Min(k => k.value));
+        }
+
+        static string RuleComposition(AnimationClip clip)
+        {
+            if (new SerializedObject(clip).FindProperty("m_UseHighQualityCurve").boolValue || clip.frameRate != Fixture.CurveRate) return null;
+            var bindings = AnimationUtility.GetCurveBindings(clip);
+            if (bindings.Length == 0 || bindings.Length > 2 || bindings.Any(b => RuleKind(b) == null)) return null;
+            float rate = clip.frameRate;
+            var curves = bindings.Select(b => (kind: RuleKind(b), curve: AnimationUtility.GetEditorCurve(clip, b))).ToList();
+            var off = curves.Select(x => (x.kind, x.curve, keys: RuleKeys(x.curve, rate, onGrid: false))).Where(x => x.keys != null).ToList();
+            if (off.Count != 1) return null;
+            var (kind, curve, k) = off[0];
+            var (spacing, range) = k.Value;
+            bool Range(float r) => Mathf.Abs(range - r) <= 1e-3f * r;
+            if (curves.Count == 2)
+            {
+                var on = curves.Single(x => x.curve != curve);
+                var onKeys = RuleKeys(on.curve, rate, onGrid: true);
+                bool pair = new[] { kind, on.kind }.OrderBy(x => x).SequenceEqual(new[] { "blendshape", "position" });
+                bool same = onKeys is { } o && o.spacing == Fixture.RuleKeySpacing && Mathf.Abs(o.range - Fixture.RuleMixedRange) <= 1e-3f * Fixture.RuleMixedRange;
+                return pair && same && spacing == Fixture.RuleKeySpacing && Range(Fixture.RuleMixedRange) ? Fixture.RuleMixedKey(kind + "_off") : null;
+            }
+            float err = Fixture.FrameLineError(curve, rate);
+            // A tenth of the closest listed errors' gap.
+            const float near = 5e-4f;
+            if (spacing == Fixture.RuleKeySpacing && Fixture.RuleAmplitudes.Where(Range).ToList() is var a && a.Count == 1)
+                return Fixture.RuleKey(kind, Fixture.RuleAmplitude(a[0]));
+            if (Range(Fixture.RuleSpacingRange) && Fixture.RuleSpacings.Contains(spacing) && Mathf.Abs(err - Fixture.RuleSpacingError) < near)
+                return Fixture.RuleKey(kind, Fixture.RuleSpacing(spacing));
+            if (Range(Fixture.RuleErrorRange) && spacing == Fixture.RuleKeySpacing && Fixture.RuleErrors.Where(x => Mathf.Abs(err - x) < near).ToList() is var e && e.Count == 1)
+                return Fixture.RuleKey(kind, Fixture.RuleError(e[0]));
+            return null;
+        }
+
+        public static SortedDictionary<string, int> CountGridRuleCompositions(VRCAvatarDescriptor d)
+        {
+            var c = new SortedDictionary<string, int>();
+            foreach (var k in GridRuleCompositions) c[k] = 0;
+            foreach (var (type, ctrl, _) in Controllers(d).Where(x => x.mask == null && x.type == VRCAvatarDescriptor.AnimLayerType.FX))
+                foreach (var layer in ctrl.layers.Where(l => l.defaultWeight == 1 && l.avatarMask == null && l.syncedLayerIndex < 0 && l.blendingMode == AnimatorLayerBlendingMode.Override))
+                {
+                    var sm = layer.stateMachine;
+                    var entered = new HashSet<AnimatorState>(sm.states.SelectMany(x => x.state.transitions)
+                        .Where(t => t.conditions.Any(x => x.parameter == Fixture.CaseParameter && x.mode == AnimatorConditionMode.Equals)).Select(t => t.destinationState));
+                    foreach (var s in CaseOf(sm).Keys)
+                    {
+                        bool plain = s.speed == 1 && !s.speedParameterActive && !s.timeParameterActive && !s.cycleOffsetParameterActive && s.cycleOffset == 0;
+                        if (entered.Contains(s) && plain && s.writeDefaultValues && s.motion is AnimationClip clip && RuleComposition(clip) is string key)
+                            c[key] = c.TryGetValue(key, out var m) ? m + 1 : 1;
+                    }
+                }
+            return c;
+        }
+
         static string TreeKey(BlendTree bt) => "blendtree." + Snake(bt.blendType.ToString()).Replace("2_d", "2d").Replace("1_d", "1d");
 
         static string Snake(string s) => string.Concat(s.Select((ch, i) => i > 0 && (char.IsUpper(ch) || char.IsDigit(ch) && !char.IsDigit(s[i - 1])) ? "_" + char.ToLowerInvariant(ch) : char.ToLowerInvariant(ch).ToString()));

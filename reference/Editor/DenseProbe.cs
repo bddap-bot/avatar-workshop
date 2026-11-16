@@ -71,10 +71,7 @@ namespace AvatarWorkshop.Reference
 
         static void DenseClip(AnimationClip c, string kind, string keying, int rate, string tangent, string quality)
         {
-            c.frameRate = rate;
-            var serialized = new SerializedObject(c);
-            serialized.FindProperty("m_UseHighQualityCurve").boolValue = quality == "high";
-            serialized.ApplyModifiedPropertiesWithoutUndo();
+            Quality(c, rate, quality == "high");
             void Set(string path, Type type, string prop, AnimationCurve curve) => AnimationUtility.SetEditorCurve(c, EditorCurveBinding.FloatCurve(path, type, prop), curve);
             // Not Muscles(): its constant curves key 1/60 s, off a 30 Hz grid, and the rule may depend on the whole clip.
             AnimationCurve Hold(float v) => new AnimationCurve(new Keyframe(0, v, 0, 0), new Keyframe(DenseLength, v, 0, 0));

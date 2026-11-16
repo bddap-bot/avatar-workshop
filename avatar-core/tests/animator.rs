@@ -1057,3 +1057,103 @@ const HELD: [(&str, usize, usize); 38] = [
     ("fill write_defaults additive_above", 0, 0),
     ("fill no_write_defaults additive_above", 150, 0),
 ];
+
+/// The frame-grid rule probe plays 30 Hz clips without high-quality curves whose one off-grid curve, its inner keys
+/// 0.37 of a frame after the grid, varies one property at a time: its value range at fixed key times and shape, its key
+/// spacing at a fixed range and frame-line error, and the frame-sampled line's error at its keys relative to its range,
+/// each bound to a blendshape, a node position channel, a node scale channel and an animator parameter; and a blendshape
+/// curve and a position curve in one clip, each off the grid with the other on it. Parameters, states, state times and
+/// pose bindings follow the reference; each case's wrong samples of its own bindings, while it plays and in the reset
+/// after it, are held to today's counts, as is the total, which also counts bindings an earlier case left held.
+#[test]
+fn each_frame_grid_rule_case_follows_its_reference_trace() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dir = root.join("fixtures/reference/gridrule-animator");
+    let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-gridrule.glb")).unwrap()).unwrap();
+    assert_eq!(avatar.model.clips.iter().filter(|c| !c.high_quality_curve).count(), 46);
+    let rep = Run::new(&dir, avatar).run(None);
+    assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
+    assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
+    assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
+    assert_eq!(rep.bindings.wrong, 0, "pose bindings: {}", rep.bindings.summary(20));
+    assert!(rep.values.compared > 1_000_000, "{} values compared", rep.values.compared);
+    let own = |kind: &str| -> &[&str] {
+        match kind {
+            "blendshape" => &["shape:Body:RuleShape"],
+            "position" => &["xform:RuleMover"],
+            "scale" => &["xform:RuleScaled"],
+            "parameter" => &["curve:7:Rule"],
+            _ => &["shape:Body:RuleShape", "xform:RuleMover"],
+        }
+    };
+    for k in ["blendshape", "position", "scale", "parameter"].iter().flat_map(|k| own(k)) {
+        assert!(rep.seen.contains_key(*k), "{k} was never compared");
+    }
+    let steps = reference::animator::steps(&dir);
+    let cases: Vec<_> = steps.iter().enumerate().filter(|(_, s)| s.label.starts_with("case ")).collect();
+    assert_eq!(cases.len(), RULE_HELD.len());
+    let mut found = Vec::new();
+    for (n, ((i, s), (name, _, _))) in cases.iter().zip(RULE_HELD).enumerate() {
+        assert!(s.label.contains(&format!(": {} rule {name} err_", n + 1)), "{} is not {name}", s.label);
+        let reset = &steps[i + 1];
+        assert_eq!(reset.label, "reset");
+        let keys = own(name.split(' ').next().unwrap());
+        let within = |frame: usize, frames: usize| {
+            rep.values.samples.range((frame, String::new())..(frame + frames, String::new())).filter(|(_, k)| keys.contains(&k.as_str())).count()
+        };
+        found.push((name, within(s.frame, s.frames), within(reset.frame, reset.frames)));
+    }
+    assert_eq!(found, RULE_HELD, "wrong samples of each case's own bindings while it plays and in the reset after it");
+    assert_eq!(rep.values.samples.len(), RULE_WRONG_SAMPLES, "values: {}", rep.values.summary(20));
+}
+
+const RULE_WRONG_SAMPLES: usize = 5029;
+
+const RULE_HELD: [(&str, usize, usize); 46] = [
+    ("blendshape amplitude_1", 75, 20),
+    ("blendshape amplitude_100", 76, 20),
+    ("blendshape amplitude_0_01", 0, 0),
+    ("blendshape spacing_1", 0, 0),
+    ("blendshape spacing_2", 75, 20),
+    ("blendshape spacing_3", 75, 20),
+    ("blendshape error_0_030", 75, 20),
+    ("blendshape error_0_040", 75, 20),
+    ("blendshape error_0_045", 75, 20),
+    ("blendshape error_0_050", 75, 20),
+    ("blendshape error_0_060", 75, 20),
+    ("position amplitude_1", 75, 20),
+    ("position amplitude_100", 76, 20),
+    ("position amplitude_0_01", 0, 0),
+    ("position spacing_1", 0, 0),
+    ("position spacing_2", 75, 20),
+    ("position spacing_3", 75, 20),
+    ("position error_0_030", 75, 20),
+    ("position error_0_040", 75, 20),
+    ("position error_0_045", 75, 20),
+    ("position error_0_050", 75, 20),
+    ("position error_0_060", 75, 20),
+    ("scale amplitude_1", 75, 20),
+    ("scale amplitude_100", 76, 20),
+    ("scale amplitude_0_01", 0, 0),
+    ("scale spacing_1", 0, 0),
+    ("scale spacing_2", 75, 20),
+    ("scale spacing_3", 75, 20),
+    ("scale error_0_030", 75, 20),
+    ("scale error_0_040", 75, 20),
+    ("scale error_0_045", 75, 20),
+    ("scale error_0_050", 75, 20),
+    ("scale error_0_060", 75, 20),
+    ("parameter amplitude_1", 75, 20),
+    ("parameter amplitude_100", 76, 20),
+    ("parameter amplitude_0_01", 0, 0),
+    ("parameter spacing_1", 0, 0),
+    ("parameter spacing_2", 75, 20),
+    ("parameter spacing_3", 75, 20),
+    ("parameter error_0_030", 75, 20),
+    ("parameter error_0_040", 75, 20),
+    ("parameter error_0_045", 75, 20),
+    ("parameter error_0_050", 75, 20),
+    ("parameter error_0_060", 75, 20),
+    ("mixed blendshape_off", 125, 40),
+    ("mixed position_off", 120, 40),
+];

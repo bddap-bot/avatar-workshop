@@ -55,10 +55,7 @@ namespace AvatarWorkshop.Reference
 
         static void GridClip(AnimationClip c, float offset, string shape)
         {
-            c.frameRate = CurveRate;
-            var serialized = new SerializedObject(c);
-            serialized.FindProperty("m_UseHighQualityCurve").boolValue = false;
-            serialized.ApplyModifiedPropertiesWithoutUndo();
+            Quality(c, CurveRate, high: false);
             const string body = "Body";
             var smr = typeof(SkinnedMeshRenderer);
             Func<int, bool> all = _ => true;

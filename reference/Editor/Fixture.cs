@@ -111,8 +111,8 @@ namespace AvatarWorkshop.Reference
         // Blend: the blend duration probe. WriteDefaults: the body under the controllers AW_WD describes. Layering: the
         // write-defaults layering probe. SampleTime: the clip sample-time probe. Rotation: the rotation probe.
         // Dense: the dense clip probe. Crossfade: the crossfade probe. Generic: the generic probe. GridHold: the frame grid,
-        // write-defaults fill and additive hold probe.
-        public enum Kind { Fixture, Probe, Human, Blend, WriteDefaults, Layering, SampleTime, Rotation, Dense, Crossfade, Generic, GridHold }
+        // write-defaults fill and additive hold probe. GridRule: the frame-grid rule probe.
+        public enum Kind { Fixture, Probe, Human, Blend, WriteDefaults, Layering, SampleTime, Rotation, Dense, Crossfade, Generic, GridHold, GridRule }
 
         // Generates the avatar into Dir and returns its scene's path.
         public static string Build(Kind kind)
@@ -183,6 +183,7 @@ namespace AvatarWorkshop.Reference
             if (kind == Kind.Crossfade) CrossfadeLayers(d);
             if (kind == Kind.Generic) GenericLayers(d);
             if (kind == Kind.GridHold) GridHoldLayers(d);
+            if (kind == Kind.GridRule) RuleLayers(d);
             if (kind != Kind.Fixture)
             {
                 AssetDatabase.SaveAssets();
@@ -711,6 +712,14 @@ namespace AvatarWorkshop.Reference
                 AssetDatabase.CreateAsset(c, $"{path}/{name}.anim");
                 return c;
             }
+        }
+
+        static void Quality(AnimationClip c, int rate, bool high)
+        {
+            c.frameRate = rate;
+            var serialized = new SerializedObject(c);
+            serialized.FindProperty("m_UseHighQualityCurve").boolValue = high;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
         static void Curve(AnimationClip c, string path, Type type, string prop, params (float t, float v)[] keys)
