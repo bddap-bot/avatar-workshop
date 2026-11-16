@@ -123,9 +123,6 @@ struct Playable {
     poses: Vec<std::collections::HashSet<crate::model::StateId>>,
     /// Per layer, every slot of each renderer it binds a slot of: Unity writes a renderer's slots together.
     slots: Vec<Vec<u32>>,
-    /// Per layer, the transform components each state's clips only fill beside an animated one, which Unity writes at
-    /// their identity: an additive layer above adds their default to that, giving the rest the core keeps for them.
-    fills: Vec<HashMap<crate::model::StateId, Vec<u32>>>,
     /// Per layer, whether it has played a motion.
     played: Vec<bool>,
     /// The targets an additive layer of this controller adds to: those it binds, and every generic property another
@@ -150,8 +147,6 @@ struct Accum {
     touched: Vec<bool>,
     /// Whether a layer wrote the target this frame, with some weight.
     wrote: Vec<bool>,
-    /// Whether an override layer filled the target this frame.
-    filled: Vec<bool>,
 }
 
 /// The parts a tracking-control behaviour sets, in the order of its fields.
@@ -178,7 +173,7 @@ pub struct Animator {
     /// What the frame's result last was for each target some layer wrote: a controller's first layer playing a
     /// motion without write defaults gives it to every target no layer up to it wrote.
     kept: Vec<f32>,
-    /// Whether some clip has a curve for the target, rather than only filling it beside an animated component.
+    /// Whether some clip writes the target other than at its rest value beside an animated component.
     curved: Vec<bool>,
     /// What tracking-control behaviours last set for each of [`TRACKED_PARTS`]; NoChange until one does.
     pub tracking: [TrackingType; 10],
@@ -394,7 +389,7 @@ pub fn compile_clips(avatar: &Avatar) -> (Targets, Vec<CompiledClip>) {
         let Some((r, _)) = clips[i].reference else { continue };
         let referenced = clips[r as usize].writes.clone();
         let unreferenced = |v: &CompiledClip| -> Vec<(u32, f32)> {
-            v.writes.iter().filter(|t| targets.list[**t as usize].generic() && !v.fill.contains(t) && referenced.binary_search(t).is_err()).map(|&t| (t, targets.list[t as usize].identity())).collect()
+            v.writes.iter().filter(|t| targets.list[**t as usize].generic() && !v.fills(**t) && referenced.binary_search(t).is_err()).map(|&t| (t, targets.list[t as usize].identity())).collect()
         };
         let c = &mut clips[i];
         c.unreferenced = unreferenced(c);
@@ -438,22 +433,6 @@ impl Animator {
                         .filter_map(|&t| if let Target::Slot(n, _) = targets.list[t as usize] { Some(n) } else { None })
                         .collect();
                     (0..targets.len() as u32).filter(|&t| matches!(targets.list[t as usize], Target::Slot(n, _) if renderers.contains(&n))).collect()
-                })
-                .collect();
-            let fills = (0..c.layers.len())
-                .map(|li| {
-                    rt.state_ids(li)
-                        .into_iter()
-                        .filter_map(|s| {
-                            let mut ids = Vec::new();
-                            machine::clip_ids(&rt.motion(li, s)?, &mut ids);
-                            let curved = |t: &u32| ids.iter().any(|&k| clips[k as usize].writes.binary_search(t).is_ok() && !clips[k as usize].fill.contains(t));
-                            let mut f: Vec<u32> = ids.iter().flat_map(|&k| clips[k as usize].fill.iter().copied()).filter(|t| !curved(t)).collect();
-                            f.sort_unstable();
-                            f.dedup();
-                            (!f.is_empty()).then_some((s, f))
-                        })
-                        .collect()
                 })
                 .collect();
             let muscles = layer.mask.as_ref().map(|mk| mk.body_parts.iter().copied().collect());
@@ -522,7 +501,6 @@ impl Animator {
                 muscles,
                 bound,
                 slots,
-                fills,
                 played: vec![false; c.layers.len()],
                 reach: Vec::new(),
                 layer_human: vec![HashMap::new(); c.layers.len()],
@@ -588,7 +566,7 @@ impl Animator {
         }
         let mut curved = vec![false; targets.list.len()];
         for c in clips.iter().flat_map(|c| std::iter::once(c).chain(c.mirrored.as_deref())) {
-            for &t in c.writes.iter().filter(|t| !c.fill.contains(t)) {
+            for &t in c.writes.iter().filter(|&&t| !c.rests(t)) {
                 curved[t as usize] = true;
             }
         }
@@ -966,7 +944,7 @@ impl Animator {
         let n = self.targets.len();
         let cov: Vec<f32> = (0..n).map(|i| (!self.targets.list[i].rests_at_default() || self.curved[i]) as u8 as f32).collect();
         let sum = (0..n).map(|i| cov[i] * self.defaults[i]).collect();
-        let mut acc = Accum { sum, cov, touched: vec![false; n], wrote: vec![false; n], filled: vec![false; n] };
+        let mut acc = Accum { sum, cov, touched: vec![false; n], wrote: vec![false; n] };
         for pi in 0..self.playables.len() {
             let pw = self.playables[pi].weight;
             let below: Vec<(f32, f32, bool)> = self.playables[pi]
@@ -1204,9 +1182,8 @@ impl Animator {
                         continue;
                     }
                     let scale = if p.whole[i] { lw } else { wl };
-                    // Unity's stream holds every generic property it binds at its default, a transform's components a
-                    // clip leaves out beside one it animates included.
-                    let cover = if generic && !acc.filled[i] { 1.0 } else { acc.cov[i] };
+                    // Unity's stream holds every generic property it binds at its default.
+                    let cover = if generic { 1.0 } else { acc.cov[i] };
                     let unwritten = (self.defaults[i] - self.targets.list[i].identity()) * cover;
                     acc.sum[i] += (v + (1.0 - c) * unwritten) * scale;
                     if c > 0.0 {
@@ -1216,16 +1193,6 @@ impl Animator {
                 }
             }
             let Some(mut pose) = whole_pose else { continue };
-            let l = &p.rt.layers[li];
-            let playing: Vec<crate::model::StateId> = match &l.active {
-                Some(a) => std::iter::once(a.to.state).chain(if let From::State(f) = &a.from { Some(f.state) } else { None }).collect(),
-                None => l.current.iter().map(|c| c.state).collect(),
-            };
-            for s in playing {
-                for &t in p.fills[li].get(&s).into_iter().flatten() {
-                    acc.filled[t as usize] |= passes(t as usize);
-                }
-            }
             if stacked {
                 pose.retain(|x| p.whole[x.0 as usize]);
             }
@@ -1649,7 +1616,7 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, sa
     for l in &ls {
         let c = clips[l.clip as usize].variant(l.mirror);
         for &t in &c.writes {
-            let filled = c.fill.contains(&t);
+            let filled = c.rests(t);
             let e = acc.entry(t).or_insert((0.0, true));
             e.1 &= filled;
         }

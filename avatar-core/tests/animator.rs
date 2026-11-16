@@ -991,7 +991,7 @@ fn each_frame_grid_fill_and_hold_case_follows_its_reference_trace() {
     assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
     assert!(rep.clocks.compared > 90_000, "{} state times compared", rep.clocks.compared);
     assert!(rep.values.compared > 1_000_000, "{} values compared", rep.values.compared);
-    assert_eq!(rep.values.wrong, 20_112, "values: {}", rep.values.summary(20));
+    assert_eq!(rep.values.wrong, 13_032, "values: {}", rep.values.summary(20));
     assert_eq!(rep.bindings.wrong, 838, "pose bindings: {}", rep.bindings.summary(20));
     // (case label, wrong samples of its probed values, of its probed pose bindings), in case order.
     let held: [(&str, usize, usize); 38] = HELD;
@@ -1050,10 +1050,10 @@ const HELD: [(&str, usize, usize); 38] = [
     ("grid offset_0_25 muscle", 0, 0),
     ("grid offset_0_30 muscle", 0, 0),
     ("grid offset_0_37 muscle", 0, 0),
-    ("fill write_defaults alone", 150, 0),
-    ("fill no_write_defaults alone", 150, 0),
+    ("fill write_defaults alone", 0, 0),
+    ("fill no_write_defaults alone", 0, 0),
     ("hold idle", 240, 0),
     ("hold fade_out", 60, 0),
-    ("fill write_defaults additive_above", 150, 0),
-    ("fill no_write_defaults additive_above", 300, 0),
+    ("fill write_defaults additive_above", 0, 0),
+    ("fill no_write_defaults additive_above", 150, 0),
 ];

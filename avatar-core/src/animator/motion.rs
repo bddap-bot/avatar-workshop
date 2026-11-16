@@ -96,8 +96,10 @@ pub struct CompiledClip {
     pub length: f32,
     pub looping: bool,
     curves: Vec<(u32, AnimationCurve)>,
-    /// Components of an animated transform property no curve drives: Unity writes them at their rest value.
-    pub fill: Vec<u32>,
+    /// Components of an animated transform property no curve drives, with what Unity writes there: a position or
+    /// scale component's identity, as the frame grid, fill and hold probe shows, and a rotation component's rest
+    /// value, `None`. An additive layer's samples take the rest value for both.
+    pub fill: Vec<(u32, Option<f32>)>,
     euler: Vec<EulerGroup>,
     stepped: Vec<Stepped>,
     /// Every target this clip writes, sorted.
@@ -240,12 +242,12 @@ impl CompiledClip {
                     _ => Target::Rotation(n, a),
                 });
                 if !curves.iter().any(|c| c.0 == t) {
-                    fill.push(t);
+                    fill.push((t, (k != 2).then(|| targets.list[t as usize].identity())));
                 }
             }
         }
         let mut writes: Vec<u32> = curves.iter().map(|c| c.0).collect();
-        writes.extend(fill.iter().copied());
+        writes.extend(fill.iter().map(|f| f.0));
         writes.extend(euler.iter().flat_map(|g| g.targets));
         writes.extend(stepped.iter().map(|s| s.target));
         writes.sort_unstable();
@@ -335,6 +337,16 @@ impl CompiledClip {
         self.writes.dedup();
     }
 
+    /// Whether the clip only fills the target beside an animated component.
+    pub fn fills(&self, t: u32) -> bool {
+        self.fill.iter().any(|f| f.0 == t)
+    }
+
+    /// Whether the clip only fills the target at its rest value.
+    pub fn rests(&self, t: u32) -> bool {
+        self.fill.contains(&(t, None))
+    }
+
     /// The clip as a leaf plays it: mirrored when the leaf's mirror and the clip's own differ.
     pub fn variant(&self, mirror: bool) -> &CompiledClip {
         match (&self.mirrored, mirror != self.mirror) {
@@ -360,29 +372,32 @@ impl CompiledClip {
     /// `additive` samples for an additive layer, which adds the body as the clip's curves hold it and no IK goal.
     pub fn sample(&self, normalized: f32, defaults: &[f32], additive: bool, out: &mut impl FnMut(u32, f32)) {
         match &self.human {
-            Some(h) if additive => self.sample_curves(normalized, defaults, &mut |t, v| {
+            Some(h) if additive => self.sample_curves(normalized, defaults, true, &mut |t, v| {
                 if h.body.contains(&t) || h.slots.binary_search(&t).is_err() {
                     out(t, v - h.drift_of(t) * self.time(normalized) / self.length.max(f32::MIN_POSITIVE));
                 }
             }),
             Some(h) => {
                 let mut pose = Vec::with_capacity(h.slots.len());
-                self.sample_curves(normalized, defaults, &mut |t, v| match h.slots.binary_search(&t) {
+                self.sample_curves(normalized, defaults, false, &mut |t, v| match h.slots.binary_search(&t) {
                     Ok(_) => pose.push((t, v)),
                     Err(_) => out(t, v - h.drift_of(t) * self.time(normalized) / self.length.max(f32::MIN_POSITIVE)),
                 });
                 h.apply(self.time(normalized), self.length, &pose, defaults, out);
             }
-            None => self.sample_curves(normalized, defaults, out),
+            None => self.sample_curves(normalized, defaults, additive, out),
         }
     }
 
-    fn sample_curves(&self, normalized: f32, defaults: &[f32], out: &mut impl FnMut(u32, f32)) {
+    fn sample_curves(&self, normalized: f32, defaults: &[f32], additive: bool, out: &mut impl FnMut(u32, f32)) {
         let t = self.time(normalized);
         for (target, curve) in &self.curves {
             out(*target, curve.evaluate(t));
         }
-        for &t in self.fill.iter().chain(&self.rest_muscles) {
+        for &(t, v) in &self.fill {
+            out(t, v.filter(|_| !additive).unwrap_or(defaults[t as usize]));
+        }
+        for &t in &self.rest_muscles {
             out(t, defaults[t as usize]);
         }
         for g in &self.euler {
