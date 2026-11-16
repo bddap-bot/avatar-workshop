@@ -201,6 +201,8 @@ namespace AvatarWorkshop.Reference
             // Each state's label and full-path hash, as the animator reports its current state.
             public readonly List<(string label, int hash)> States = new List<(string, int)>();
             public readonly HashSet<VRCAvatarDescriptor.AnimLayerType> Partial = new HashSet<VRCAvatarDescriptor.AnimLayerType>();
+            // Each layer a state of the case raises or lowers itself to a weight, with no blend, and that weight.
+            public readonly List<(VRCAvatarDescriptor.AnimLayerType type, int layer, float weight)> Weights = new List<(VRCAvatarDescriptor.AnimLayerType, int, float)>();
             public bool Sitting => Partial.Contains(VRCAvatarDescriptor.AnimLayerType.Sitting);
         }
 
@@ -250,12 +252,15 @@ namespace AvatarWorkshop.Reference
         {
             var cases = new SortedDictionary<int, ProbeCase>();
             foreach (var (type, ctrl, _) in Controllers(d))
-                foreach (var layer in ctrl.layers)
-                    foreach (var kv in CaseOf(layer.stateMachine))
+                for (int li = 0; li < ctrl.layers.Length; li++)
+                    foreach (var kv in CaseOf(ctrl.layers[li].stateMachine))
                     {
+                        var layer = ctrl.layers[li];
                         if (!cases.TryGetValue(kv.Value, out var c)) cases[kv.Value] = c = new ProbeCase { Id = kv.Value };
                         c.States.Add(($"{Playable[type]}/{layer.name}: {kv.Key.name}", Animator.StringToHash(layer.name + "." + kv.Key.name)));
                         if (PartialPlayable(type, kv.Key) is VRCAvatarDescriptor.AnimLayerType p) c.Partial.Add(p);
+                        foreach (var b in kv.Key.behaviours.OfType<VRC_AnimatorLayerControl>())
+                            if (b.layer == li && b.blendDuration == 0 && b.playable.ToString() == type.ToString()) c.Weights.Add((type, li, b.goalWeight));
                     }
             return cases.Values.ToList();
         }
@@ -1273,10 +1278,11 @@ namespace AvatarWorkshop.Reference
         // The generic-rig hold probe's compositions, read from the authored assets of an avatar whose animator has no humanoid
         // avatar. Each case plays, without write defaults, a clip binding its own node's Y position, Euler rotation and Y
         // scale, blendshape and animator parameter in its controller's first layer. "hold.<property>.<weight>.<history>.<context>"
-        // when, in the FX controller, exactly one later override layer resting at weight 0 has states of the case: entered
-        // with a layer control raising that layer to the weight, either a state with no motion (before) or a state playing
-        // a clip binding the property that moves on to one with no motion (after); and either no other layer (alone) or
-        // a later additive layer resting at weight 0 whose case raises it to 1 in a state playing a clip binding the
+        // when, in the FX controller, exactly one later override layer resting at weight 0 (its rest state setting it to 0)
+        // has states of the case: entered with a layer control raising that layer to the weight, either a state with no
+        // motion beside one state nothing enters that plays a clip binding the property (before), or a state playing a clip
+        // binding the property that moves on to one with no motion (after); and either no other layer (alone) or a later
+        // additive layer resting at weight 0 whose case raises it to 1 in a state playing a clip binding the
         // property, which moves on to one with no motion (under_additive). "playable.<playable>.<property>.<weight>.<above>"
         // when the first layer's state lowers its playable to the weight with a playable-layer control, and either no
         // other layer has states of the case (alone) or exactly one later override layer resting at weight 0 has one, a
@@ -1344,7 +1350,8 @@ namespace AvatarWorkshop.Reference
                 if (layers.Length == 0 || layers[0].blendingMode != AnimatorLayerBlendingMode.Override || layers[0].avatarMask != null) continue;
                 var floats = new HashSet<string>(ctrl.parameters.Where(p => p.type == AnimatorControllerParameterType.Float).Select(p => p.name));
                 var of = layers.Select(l => CaseOf(l.stateMachine)).ToArray();
-                bool Resting(int i) => i > 0 && layers[i].avatarMask == null && layers[i].syncedLayerIndex < 0 && layers[i].defaultWeight == 0;
+                bool Resting(int i) => i > 0 && layers[i].avatarMask == null && layers[i].syncedLayerIndex < 0 && layers[i].defaultWeight == 0
+                    && OwnLayerGoal(layers[i].stateMachine.defaultState, type, i) == 0;
                 foreach (var id in of[0].Values.Distinct())
                 {
                     var (first, firstThen) = HoldStates(layers[0].stateMachine, of[0], id);
@@ -1365,7 +1372,10 @@ namespace AvatarWorkshop.Reference
                         float? w = OwnLayerGoal(entered, type, h);
                         if (w == null || !Fixture.HoldWeights.Contains(w.Value)) continue;
                         string history;
-                        if (entered.motion == null && then.Count == 0) history = "before";
+                        var unplayed = layers[h].stateMachine.states.Select(x => x.state).Where(x => x != layers[h].stateMachine.defaultState && !of[h].ContainsKey(x)).ToList();
+                        if (entered.motion == null && then.Count == 0 && unplayed.Count == 1 && unplayed[0].motion is AnimationClip && unplayed[0].transitions.Length == 0
+                            && layers[h].stateMachine.states.All(x => x.state.transitions.All(t => t.destinationState != unplayed[0])) && !layers[h].stateMachine.anyStateTransitions.Any())
+                        { history = "before"; bound.IntersectWith(HoldBound(unplayed[0], id)); }
                         else if (entered.motion is AnimationClip && PlayedThenHeld(entered, then) != null) { history = "after"; bound.IntersectWith(HoldBound(entered, id)); }
                         else continue;
                         string context = "alone";

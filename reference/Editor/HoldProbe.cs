@@ -8,10 +8,9 @@ using VRC.SDK3.Avatars.ScriptableObjects;
 
 namespace AvatarWorkshop.Reference
 {
-    // The generic-rig hold probe. Every generic-rig playable probe controller holds two override layers at 0.5 beside an
-    // additive layer, so that recording cannot tell which layer holds what, and it records playable weight at 0.5 only.
-    // Every layer here but the first rests at weight 0 and is raised only by its own case, so each case's layers are
-    // the only ones that compose.
+    // The generic-rig hold probe. A rest state without write defaults holds every property its controller binds, so a
+    // layer resting at a partial weight would hold every other case's properties too: every layer but the first rests at
+    // weight 0 and is raised only by its own case.
     public static partial class Fixture
     {
         public static readonly string[] HoldProperties = { "position", "rotation", "scale", "blendshape", "parameter" };
@@ -64,10 +63,7 @@ namespace AvatarWorkshop.Reference
         }
 
         static VRCAnimatorLayerControl.BlendableLayer HoldLayerControl(VRCAvatarDescriptor.AnimLayerType t) =>
-            t == VRCAvatarDescriptor.AnimLayerType.Additive ? VRCAnimatorLayerControl.BlendableLayer.Additive
-            : t == VRCAvatarDescriptor.AnimLayerType.Gesture ? VRCAnimatorLayerControl.BlendableLayer.Gesture
-            : t == VRCAvatarDescriptor.AnimLayerType.Action ? VRCAnimatorLayerControl.BlendableLayer.Action
-            : VRCAnimatorLayerControl.BlendableLayer.FX;
+            (VRCAnimatorLayerControl.BlendableLayer)System.Enum.Parse(typeof(VRCAnimatorLayerControl.BlendableLayer), RigBlendable(t).Value.ToString());
 
         static void HoldLayers(VRCAvatarDescriptor d)
         {
@@ -104,66 +100,64 @@ namespace AvatarWorkshop.Reference
             var ctls = HoldPlayables.ToDictionary(t => t, t => new Ctl("Hold" + t, (CaseParameter, AnimatorControllerParameterType.Int),
                 (BlendX, AnimatorControllerParameterType.Float), (BlendY, AnimatorControllerParameterType.Float), (BlendU, AnimatorControllerParameterType.Float)));
             var fulls = new Dictionary<VRCAvatarDescriptor.AnimLayerType, (AnimatorStateMachine sm, AnimatorState off)>();
-            var aboves = new Dictionary<VRCAvatarDescriptor.AnimLayerType, (AnimatorStateMachine sm, AnimatorState off)>();
             AnimatorState Rest(AnimatorStateMachine sm)
             {
                 var s = sm.AddState("Off"); s.writeDefaultValues = false;
                 sm.defaultState = s;
                 return s;
             }
+            // A layer of the case's own, resting at weight 0, which the case's state `entered` raises to `weight`.
+            (AnimatorStateMachine sm, AnimatorState off, int index) Own(VRCAvatarDescriptor.AnimLayerType type, string name, AnimatorLayerBlendingMode mode = AnimatorLayerBlendingMode.Override)
+            {
+                int index = ctls[type].C.layers.Length;
+                var sm = ctls[type].Layer(name, mode, weight: 0).stateMachine;
+                var off = Rest(sm);
+                LayerControl(off, HoldLayerControl(type), index, 0, 0);
+                return (sm, off, index);
+            }
             foreach (var type in HoldPlayables)
             {
-                var ctl = ctls[type];
-                var full = ctl.Layer("Full").stateMachine;
+                var full = ctls[type].Layer("Full").stateMachine;
                 fulls[type] = (full, Rest(full));
                 PlayableControl(fulls[type].off, RigBlendable(type).Value, type == VRCAvatarDescriptor.AnimLayerType.Action ? 0 : 1, 0);
-                var above = ctl.Layer("Above", weight: 0).stateMachine;
-                aboves[type] = (above, Rest(above));
-                LayerControl(aboves[type].off, HoldLayerControl(type), 1, 0, 0);
             }
 
-            // The hold cases, in the FX controller: each its own layer, at weight 0 until its case raises it.
             var fx = VRCAvatarDescriptor.AnimLayerType.FX;
-            var holds = new List<(int id, float weight, string history, string context)>();
             foreach (var context in HoldContexts)
                 foreach (var history in HoldHistories)
                     foreach (var weight in HoldWeights)
-                        holds.Add((Fresh(ctls[fx]), weight, history, context));
-            var holdLayers = holds.Select(h => ctls[fx].Layer($"Hold {HoldWeight(h.weight)} {h.history} {h.context}", weight: 0).stateMachine).ToList();
-            int additiveIndex = ctls[fx].C.layers.Length;
-            var add = ctls[fx].Layer("Additive", AnimatorLayerBlendingMode.Additive, weight: 0).stateMachine;
-            var addOff = Rest(add);
-            LayerControl(addOff, HoldLayerControl(fx), additiveIndex, 0, 0);
-            for (int i = 0; i < holds.Count; i++)
-            {
-                var (id, weight, history, context) = holds[i];
-                int index = 2 + i;
-                string label = $"hold {HoldWeight(weight)} {history} {context}";
-                CaseState(fulls[fx].sm, fulls[fx].off, label, Below(id, label), id, writeDefaults: false);
+                    {
+                        int id = Fresh(ctls[fx]);
+                        string label = $"hold {HoldWeight(weight)} {history} {context}";
+                        CaseState(fulls[fx].sm, fulls[fx].off, label, Below(id, label), id, writeDefaults: false);
 
-                var sm = holdLayers[i];
-                var off = Rest(sm);
-                LayerControl(off, HoldLayerControl(fx), index, 0, 0);
-                AnimatorState entered;
-                if (history == "before") entered = CaseState(sm, off, label + " held", null, id, writeDefaults: false);
-                else
-                {
-                    entered = CaseState(sm, off, label + " played", k.Make(label + " played", c =>
-                        HoldClip(c, id, (0, 40, 0.3f, 90, 2, 0.5f), (0.5f, 95, 0.45f, 120, 2.5f, 0.7f))), id, writeDefaults: false);
-                    Then(entered, sm, off, label + " held", null, id);
-                }
-                LayerControl(entered, HoldLayerControl(fx), index, weight, 0);
+                        var hold = Own(fx, $"Hold {HoldWeight(weight)} {history} {context}");
+                        var clip = k.Make(label + " played", c => HoldClip(c, id, (0, 40, 0.3f, 90, 2, 0.5f), (0.5f, 95, 0.45f, 120, 2.5f, 0.7f)));
+                        AnimatorState entered;
+                        if (history == "before")
+                        {
+                            // A layer binds only what its own motions animate; this state, which nothing enters, binds them.
+                            var unplayed = hold.sm.AddState($"{label} unplayed");
+                            unplayed.writeDefaultValues = false; unplayed.motion = clip;
+                            entered = CaseState(hold.sm, hold.off, label + " held", null, id, writeDefaults: false);
+                        }
+                        else
+                        {
+                            entered = CaseState(hold.sm, hold.off, label + " played", clip, id, writeDefaults: false);
+                            Then(entered, hold.sm, hold.off, label + " held", null, id);
+                        }
+                        LayerControl(entered, HoldLayerControl(fx), hold.index, weight, 0);
 
-                if (context == "under_additive")
-                {
-                    var played = CaseState(add, addOff, label + " additive", k.Make(label + " additive", c =>
-                        HoldClip(c, id, (0, 0, 0, 0, 1, 0), (0.75f, 30, 0.1f, 20, 1.3f, 0.3f))), id, writeDefaults: false);
-                    LayerControl(played, HoldLayerControl(fx), additiveIndex, 1, 0);
-                    Then(played, add, addOff, label + " additive held", null, id);
-                }
-            }
+                        if (context == "under_additive")
+                        {
+                            var add = Own(fx, $"Additive {HoldWeight(weight)} {history}", AnimatorLayerBlendingMode.Additive);
+                            var played = CaseState(add.sm, add.off, label + " additive", k.Make(label + " additive", c =>
+                                HoldClip(c, id, (0, 0, 0, 0, 1, 0), (0.75f, 30, 0.1f, 20, 1.3f, 0.3f))), id, writeDefaults: false);
+                            LayerControl(played, HoldLayerControl(fx), add.index, 1, 0);
+                            Then(played, add.sm, add.off, label + " additive held", null, id);
+                        }
+                    }
 
-            // The playable-weight cases: each played in a controller's first layer with its playable lowered as it enters.
             foreach (var type in HoldPlayables)
                 foreach (var above in HoldAbove)
                     foreach (var weight in HoldWeights)
@@ -175,9 +169,10 @@ namespace AvatarWorkshop.Reference
                         PlayableControl(s, RigBlendable(type).Value, weight, 0);
                         if (above == "under_partial")
                         {
-                            var over = CaseState(aboves[type].sm, aboves[type].off, label + " above", k.Make(label + " above", c =>
+                            var layer = Own(type, $"Above {HoldWeight(weight)}");
+                            var over = CaseState(layer.sm, layer.off, label + " above", k.Make(label + " above", c =>
                                 HoldClip(c, id, (0, 60, 0.3f, 45, 0.7f, 0.6f), (1 / 60f, 60, 0.3f, 45, 0.7f, 0.6f))), id, writeDefaults: false);
-                            LayerControl(over, HoldLayerControl(type), 1, HoldAboveWeight, 0);
+                            LayerControl(over, HoldLayerControl(type), layer.index, HoldAboveWeight, 0);
                         }
                     }
             EditorUtility.SetDirty(mesh);
@@ -196,7 +191,6 @@ namespace AvatarWorkshop.Reference
             };
         }
 
-        // A state the case moves on to once `from` has played through, held until the case ends.
         static AnimatorState Then(AnimatorState from, AnimatorStateMachine sm, AnimatorState off, string name, Motion m, int id)
         {
             var s = sm.AddState($"{id} {name}");

@@ -550,16 +550,17 @@ gets a controller with one empty layer). Every state is without write defaults. 
 clip animating, of its own, a node's Y position, Euler rotation (`localEulerAnglesRaw`, Y moving) and Y scale, a
 blendshape and a float animator parameter (`HeldNode<n>`, `Held<n>`, `HeldParam<n>`, the parameter defaulting to 0.25).
 The hold cases, in the FX controller, each have a layer of their own that the case raises to 0.25, 0.5 or 0.75 as it
-enters a state with no motion (`before`: the layer has never played a motion), or a 0.5 s clip of the same five
-properties that then moves on to a state with no motion (`after`). Each plays alone, or under an `Additive` layer that
-the case raises to 1 as it plays a 0.75 s offset of the five properties and then moves on to a state with no motion
-(`under_additive`): `hold.<property>.<w25|w50|w75>.<before|after>.<alone|under_additive>`. The playable-weight cases
+enters a state with no motion (`before`: the layer has never played a motion, but binds the five properties through a
+0.5 s clip in a state nothing enters), or that 0.5 s clip, which then moves on to a state with no motion (`after`).
+Each plays alone, or under an additive layer of its own that the case raises to 1 as it plays a 0.75 s offset of the
+five properties and then moves on to a state with no motion (`under_additive`): `hold.<property>.<w25|w50|w75>.<before|after>.<alone|under_additive>`. The playable-weight cases
 lower their playable to 0.25, 0.5 or 0.75 with a playable-layer control as their `Full` state enters, alone or under
-an `Above` layer the case raises to 0.5 while it holds the five properties at other constants (`under_partial`):
+a layer of its own the case raises to 0.5 while it holds the five properties at other constants (`under_partial`):
 `playable.<playable>.<property>.<w25|w50|w75>.<alone|under_partial>`. `Full`'s rest state returns its playable to its
 default weight (0 for Action, 1 for the others); every other layer's rest state returns that layer to 0. A recording
 fails if the avatar is humanoid, if a case never entered its states, if a playable-weight case's playable held a
-partial weight on fewer than 90% of its frames, or if `compositions.json` counts zero for a composition
+partial weight on fewer than 90% of its frames, if a layer a case raises held that weight on fewer than 90% of its
+frames, or if `compositions.json` counts zero for a composition
 `Coverage.HoldCompositions` lists.
 
 The curve probe plays no avatar. It builds one clip per curve, its only curve on a transform's X position, and

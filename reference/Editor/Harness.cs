@@ -1186,15 +1186,17 @@ namespace AvatarWorkshop.Reference
                 }
         }
 
-        // Fails a probe case whose states the animators never entered, or whose partial playable held a
+        // Fails a probe case whose states the animators never entered, whose partial playable held a
         // weight strictly between 0 and 1 on fewer than 90% of its frames (a playable blending in passes through
-        // partial weights on its way to full).
+        // partial weights on its way to full), or whose layer raised to a weight by its own layer control held it on
+        // fewer than 90%.
         readonly HashSet<int> caseStates = new HashSet<int>();
         readonly Dictionary<VRCAvatarDescriptor.AnimLayerType, int> casePartial = new Dictionary<VRCAvatarDescriptor.AnimLayerType, int>();
+        readonly Dictionary<(VRCAvatarDescriptor.AnimLayerType, int), int> caseWeights = new Dictionary<(VRCAvatarDescriptor.AnimLayerType, int), int>();
 
         void Played(Step step)
         {
-            if (stepFrame == 0) { caseStates.Clear(); casePartial.Clear(); }
+            if (stepFrame == 0) { caseStates.Clear(); casePartial.Clear(); caseWeights.Clear(); }
             foreach (var pl in playables.Where(p => p.IsValid()))
                 for (int l = 0; l < pl.GetLayerCount(); l++)
                 {
@@ -1206,11 +1208,16 @@ namespace AvatarWorkshop.Reference
                 var w = mixer.GetInputWeight(PlayableIndex(type) + 1);
                 if (w > 0 && w < 1) casePartial[type] = casePartial.TryGetValue(type, out var n) ? n + 1 : 1;
             }
+            foreach (var (type, layer, weight) in step.Case.Weights)
+                if (Mathf.Abs(playables[PlayableIndex(type)].GetLayerWeight(layer) - weight) < 1e-6f)
+                    caseWeights[(type, layer)] = caseWeights.TryGetValue((type, layer), out var n) ? n + 1 : 1;
             if (stepFrame < step.Frames - 1) return;
             var unplayed = step.Case.States.Where(x => !caseStates.Contains(x.hash)).Select(x => x.label).ToList();
             if (unplayed.Count > 0) throw new Exception($"{step.Label}: never entered {string.Join(", ", unplayed)}");
             var full = step.Case.Partial.Where(type => (casePartial.TryGetValue(type, out var n) ? n : 0) < 0.9f * step.Frames).ToList();
             if (full.Count > 0) throw new Exception($"{step.Label}: the {string.Join(", ", full)} playable held a partial weight on fewer than 90% of its frames");
+            var unweighted = step.Case.Weights.Where(x => (caseWeights.TryGetValue((x.type, x.layer), out var n) ? n : 0) < 0.9f * step.Frames).ToList();
+            if (unweighted.Count > 0) throw new Exception($"{step.Label}: {string.Join(", ", unweighted.Select(x => $"{x.type} layer {x.layer}"))} held its weight on fewer than 90% of its frames");
         }
 
         int PlayableIndex(VRCAvatarDescriptor.AnimLayerType type)
