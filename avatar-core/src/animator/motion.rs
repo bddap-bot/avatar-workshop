@@ -463,7 +463,9 @@ struct Human {
     start_twist: Quat,
     /// Change over the clip's length, which Loop Pose removes from what it bakes into the pose.
     drift: glam::Vec3,
-    /// The body's start seen from its end, which Loop Pose blends in over the clip's length.
+    /// The body's start seen from its end, which Loop Pose blends in over the clip's length. Root motion keeps the
+    /// turn about Y when it carries the rotation, so that turn is left out of each end and is read from the body
+    /// before this drift.
     body_drift: Quat,
     /// The lower foot's height at the clip's start, which the Feet height basis measures the body from.
     feet: f32,
@@ -524,12 +526,13 @@ impl Human {
             Vec::new()
         };
         curve_drift.sort_unstable_by_key(|c| c.0);
+        let ends = |q: Quat| if settings.rotation.bake_into_pose { q } else { twist(q).inverse() * q };
         Some(Human {
             curve_drift,
             body,
             goals,
             slots,
-            body_drift: if settings.loop_pose { rot(&body, clip.length).inverse() * start_q } else { Quat::IDENTITY },
+            body_drift: if settings.loop_pose { ends(rot(&body, clip.length)).inverse() * ends(start_q) } else { Quat::IDENTITY },
             settings,
             start,
             start_twist: twist(start_q),
@@ -548,7 +551,6 @@ impl Human {
         let frac = if length > 0.0 { time / length } else { 0.0 };
         let t = glam::Vec3::new(get(self.body[0]), get(self.body[1]), get(self.body[2]));
         let mut q = Quat::from_xyzw(get(self.body[3]), get(self.body[4]), get(self.body[5]), get(self.body[6])).normalize();
-        q *= weighted(self.body_drift, frac);
         let mut turn = Quat::from_rotation_y(s.rotation.offset_degrees.to_radians());
         match (s.rotation.bake_into_pose, s.rotation.based_upon) {
             (false, RotationBasis::BodyOrientation) => turn *= twist(q),
@@ -556,6 +558,7 @@ impl Human {
             (false, RotationBasis::Original) => turn *= twist(q) * self.start_twist.inverse(),
             (true, RotationBasis::Original) => {}
         }
+        q *= weighted(self.body_drift, frac);
         let mut at = glam::Vec3::new(0.0, s.height.offset, 0.0);
         if s.height.bake_into_pose {
             if s.loop_pose {
