@@ -102,9 +102,10 @@ impl Blend {
 struct Playable {
     /// What each layer last wrote of the human pose.
     layer_human: Vec<HashMap<u32, f32>>,
-    /// What each layer last said, with each target's cover, which a state without write defaults and without a
-    /// motion repeats; a state without a motion that writes defaults clears it. An override layer's is its pose while a
-    /// state with a motion played; an additive layer's the offsets it added on its last frame outside such a state.
+    /// What each layer last said, animator parameters included, with each target's cover, which a state without write
+    /// defaults and without a motion repeats; a state without a motion that writes defaults clears it. An override
+    /// layer's is its pose while a state with a motion played; an additive layer's the offsets it added on its last
+    /// frame outside such a state.
     said: Vec<Vec<(u32, f32, f32)>>,
     kind: PlayableLayerType,
     rt: ControllerRt,
@@ -1120,13 +1121,18 @@ impl Animator {
         let mut held = false;
         // On a humanoid avatar the Base and Additive playables write the human pose and animator parameters alone.
         let writes_generic = !self.humanoid || !matches!(p.kind, PlayableLayerType::Base | PlayableLayerType::Additive);
-        let holdable = |i: usize| !(self.targets.list[i].rests_at_default() && !self.curved[i]) && !matches!(self.targets.list[i], Target::AnimatorParameter(_)) && !p.whole[i];
+        let parameter = |i: usize| matches!(self.targets.list[i], Target::AnimatorParameter(_));
+        let holdable = |i: usize| !(self.targets.list[i].rests_at_default() && !self.curved[i]) && !parameter(i) && !p.whole[i];
+        // Without a humanoid rig a layer also repeats the animator parameters it last wrote.
+        let remembered = |i: usize| holdable(i) || (!self.humanoid && parameter(i));
         for li in 0..p.rt.layers.len() {
             let lw = if li == 0 { 1.0 } else { p.rt.layers[li].weight };
-            let wl = lw * p.weight;
-            if wl <= 0.0 {
+            if lw * p.weight <= 0.0 {
                 continue;
             }
+            // Without a humanoid rig `step` blends the generic stream by the playable's weight, and the weight never
+            // reaches the controller's animator parameters.
+            let wl = if self.humanoid { lw * p.weight } else { lw };
             let playable_adds = p.kind == PlayableLayerType::Additive && self.humanoid;
             let additive = playable_adds || p.rt.layer_defs[li].blending == LayerBlending::Additive;
             // On a humanoid avatar the Additive playable's own override layers build a human pose like any
@@ -1152,6 +1158,9 @@ impl Animator {
                 }
             };
             let holding = p.rt.layers[li].current.as_ref().filter(|c| !held && !additive && p.rt.motion(li, c.state).is_some() && p.rt.state(li, c.state).is_some_and(|s| !s.write_defaults));
+            // Without a humanoid rig it also gives the controller's default to each animator parameter it binds but
+            // does not animate.
+            let resets_parameters = holding.is_some() && !self.humanoid;
             if let Some(c) = holding {
                 held = true;
                 let own_keys = playing_pose(&p.rt, li, c, clips, &self.defaults, false);
@@ -1259,7 +1268,7 @@ impl Animator {
                 let wd = p.rt.state(li, c.state).is_some_and(|s| s.write_defaults);
                 match (p.rt.motion(li, c.state).is_some(), wd) {
                     (true, _) => {
-                        let mut last: Vec<(u32, f32, f32)> = pose.iter().filter(|x| holdable(x.0 as usize) && x.2 > 0.0).map(|x| (x.0, x.1, 1.0)).collect();
+                        let mut last: Vec<(u32, f32, f32)> = pose.iter().filter(|x| remembered(x.0 as usize) && x.2 > 0.0).map(|x| (x.0, x.1, 1.0)).collect();
                         if !wd {
                             let animated: std::collections::HashSet<u32> = last.iter().map(|x| x.0).collect();
                             last.extend(p.bound.iter().filter(|&&t| holdable(t as usize) && !animated.contains(&t)).map(|&t| (t, self.hold(t as usize), 1.0)));
@@ -1296,6 +1305,9 @@ impl Animator {
             self.align_rotations(&mut pose, acc, lw);
             if !stacked {
                 self.pull_parameters(&p.rt, &pulled(&p.rt, li, clips, &self.defaults), &mut pose);
+                if resets_parameters {
+                    self.pull_parameters(&p.rt, &p.bound, &mut pose);
+                }
             }
             for (t, v, c) in pose {
                 let i = t as usize;
