@@ -112,8 +112,8 @@ namespace AvatarWorkshop.Reference
         // write-defaults layering probe. SampleTime: the clip sample-time probe. Rotation: the rotation probe.
         // Dense: the dense clip probe. Crossfade: the crossfade probe. Generic: the generic probe. GridHold: the frame grid,
         // write-defaults fill and additive hold probe. GridRule: the frame-grid rule probe. GenericRig: the generic-rig
-        // playable probe, the only kind without a humanoid avatar.
-        public enum Kind { Fixture, Probe, Human, Blend, WriteDefaults, Layering, SampleTime, Rotation, Dense, Crossfade, Generic, GridHold, GridRule, GenericRig }
+        // playable probe. GenericHold: the generic-rig hold probe. These two alone have no humanoid avatar.
+        public enum Kind { Fixture, Probe, Human, Blend, WriteDefaults, Layering, SampleTime, Rotation, Dense, Crossfade, Generic, GridHold, GridRule, GenericRig, GenericHold }
 
         // Generates the avatar into Dir and returns its scene's path.
         public static string Build(Kind kind)
@@ -165,7 +165,7 @@ namespace AvatarWorkshop.Reference
             hatGo.SetActive(false);
 
             var animator = root.AddComponent<Animator>();
-            animator.avatar = kind == Kind.GenericRig ? GenericAvatar(root) : HumanAvatar(root, t);
+            animator.avatar = kind == Kind.GenericRig || kind == Kind.GenericHold ? GenericAvatar(root) : HumanAvatar(root, t);
             if (animator.avatar.isHuman)
             {
                 var rest = new HumanPose();
@@ -189,6 +189,7 @@ namespace AvatarWorkshop.Reference
             if (kind == Kind.GridHold) GridHoldLayers(d);
             if (kind == Kind.GridRule) RuleLayers(d);
             if (kind == Kind.GenericRig) RigLayers(d);
+            if (kind == Kind.GenericHold) HoldLayers(d);
             if (kind != Kind.Fixture)
             {
                 AssetDatabase.SaveAssets();

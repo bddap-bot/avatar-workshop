@@ -1270,6 +1270,137 @@ namespace AvatarWorkshop.Reference
             return c;
         }
 
+        // The generic-rig hold probe's compositions, read from the authored assets of an avatar whose animator has no humanoid
+        // avatar. Each case plays, without write defaults, a clip binding its own node's Y position, Euler rotation and Y
+        // scale, blendshape and animator parameter in its controller's first layer. "hold.<property>.<weight>.<history>.<context>"
+        // when, in the FX controller, exactly one later override layer resting at weight 0 has states of the case: entered
+        // with a layer control raising that layer to the weight, either a state with no motion (before) or a state playing
+        // a clip binding the property that moves on to one with no motion (after); and either no other layer (alone) or
+        // a later additive layer resting at weight 0 whose case raises it to 1 in a state playing a clip binding the
+        // property, which moves on to one with no motion (under_additive). "playable.<playable>.<property>.<weight>.<above>"
+        // when the first layer's state lowers its playable to the weight with a playable-layer control, and either no
+        // other layer has states of the case (alone) or exactly one later override layer resting at weight 0 has one, a
+        // state playing a clip binding the property that raises its layer to 0.5 (under_partial).
+        public static readonly string[] HoldCompositions =
+            (from property in Fixture.HoldProperties
+             from w in Fixture.HoldWeights
+             from history in Fixture.HoldHistories
+             from context in Fixture.HoldContexts
+             select Fixture.HoldKey(property, w, history, context))
+            .Concat(from p in Fixture.HoldPlayables
+                    from property in Fixture.HoldProperties
+                    from w in Fixture.HoldWeights
+                    from above in Fixture.HoldAbove
+                    select Fixture.HoldPlayableKey(p, property, w, above)).ToArray();
+
+        static HashSet<string> HoldBound(AnimatorState s, int id)
+        {
+            var found = new HashSet<string>();
+            if (!(s.motion is AnimationClip clip)) return found;
+            var b = AnimationUtility.GetCurveBindings(clip);
+            bool Has(System.Type t, string path, string prop) => b.Any(x => x.type == t && x.path == path && x.propertyName == prop);
+            string node = Fixture.HeldNode(id);
+            if (Has(typeof(Transform), node, "m_LocalPosition.y")) found.Add("position");
+            if (Fixture.HoldEuler.All(e => Has(typeof(Transform), node, e))) found.Add("rotation");
+            if (Has(typeof(Transform), node, "m_LocalScale.y")) found.Add("scale");
+            if (Has(typeof(SkinnedMeshRenderer), "Body", "blendShape." + Fixture.HeldShape(id))) found.Add("blendshape");
+            if (Has(typeof(Animator), "", Fixture.HeldParameter(id))) found.Add("parameter");
+            return found;
+        }
+
+        // The weight a state's only behaviour, a layer control of its own layer with no blend, sets.
+        static float? OwnLayerGoal(AnimatorState s, VRCAvatarDescriptor.AnimLayerType type, int index)
+        {
+            if (s.behaviours.Length != 1 || !(s.behaviours[0] is VRC_AnimatorLayerControl b)) return null;
+            if (b.playable.ToString() != type.ToString() || b.layer != index || b.blendDuration != 0) return null;
+            return b.goalWeight;
+        }
+
+        // A case's states in one layer: the one its Case value enters from the rest state, and any it moves on to.
+        static (AnimatorState entered, List<AnimatorState> then) HoldStates(AnimatorStateMachine sm, Dictionary<AnimatorState, int> of, int id)
+        {
+            var mine = of.Where(kv => kv.Value == id).Select(kv => kv.Key).ToList();
+            if (mine.Count == 0 || mine.Any(s => s.writeDefaultValues || !RigPlain(s))) return (null, null);
+            var entered = mine.Where(s => sm.defaultState.transitions.Any(t => t.destinationState == s)).ToList();
+            if (entered.Count != 1) return (null, null);
+            return (entered[0], mine.Where(s => s != entered[0]).ToList());
+        }
+
+        // A state playing a clip binding the property, then, once it has played through, exactly one with no motion.
+        static AnimatorState PlayedThenHeld(AnimatorState entered, List<AnimatorState> then) =>
+            then.Count == 1 && then[0].motion == null && then[0].behaviours.Length == 0
+            && entered.transitions.Any(t => t.destinationState == then[0] && t.hasExitTime && t.conditions.Length == 0) ? then[0] : null;
+
+        public static SortedDictionary<string, int> CountHoldCompositions(VRCAvatarDescriptor d)
+        {
+            var c = new SortedDictionary<string, int>();
+            foreach (var k in HoldCompositions) c[k] = 0;
+            var animator = d.GetComponent<Animator>();
+            if (animator == null || animator.avatar == null || animator.avatar.isHuman) return c;
+            void Count(string key) => c[key] = c.TryGetValue(key, out var n) ? n + 1 : 1;
+            foreach (var (type, ctrl, _) in Controllers(d).Where(x => x.mask == null && Fixture.HoldPlayables.Contains(x.type)))
+            {
+                var layers = ctrl.layers;
+                if (layers.Length == 0 || layers[0].blendingMode != AnimatorLayerBlendingMode.Override || layers[0].avatarMask != null) continue;
+                var floats = new HashSet<string>(ctrl.parameters.Where(p => p.type == AnimatorControllerParameterType.Float).Select(p => p.name));
+                var of = layers.Select(l => CaseOf(l.stateMachine)).ToArray();
+                bool Resting(int i) => i > 0 && layers[i].avatarMask == null && layers[i].syncedLayerIndex < 0 && layers[i].defaultWeight == 0;
+                foreach (var id in of[0].Values.Distinct())
+                {
+                    var (first, firstThen) = HoldStates(layers[0].stateMachine, of[0], id);
+                    if (first == null || firstThen.Count > 0 || !(first.motion is AnimationClip)) continue;
+                    var bound = HoldBound(first, id);
+                    if (!floats.Contains(Fixture.HeldParameter(id)) || d.expressionParameters?.FindParameter(Fixture.HeldParameter(id)) != null) bound.Remove("parameter");
+                    var others = Enumerable.Range(1, layers.Length - 1).Where(i => of[i].ContainsValue(id)).ToList();
+                    if (others.Any(i => !Resting(i))) continue;
+                    var sets = first.behaviours.OfType<VRC_PlayableLayerControl>().ToList();
+                    if (first.behaviours.Length == 0 && type == VRCAvatarDescriptor.AnimLayerType.FX)
+                    {
+                        var overs = others.Where(i => layers[i].blendingMode == AnimatorLayerBlendingMode.Override).ToList();
+                        var adds = others.Where(i => layers[i].blendingMode == AnimatorLayerBlendingMode.Additive).ToList();
+                        if (overs.Count != 1 || adds.Count > 1 || overs.Count + adds.Count != others.Count) continue;
+                        int h = overs[0];
+                        var (entered, then) = HoldStates(layers[h].stateMachine, of[h], id);
+                        if (entered == null) continue;
+                        float? w = OwnLayerGoal(entered, type, h);
+                        if (w == null || !Fixture.HoldWeights.Contains(w.Value)) continue;
+                        string history;
+                        if (entered.motion == null && then.Count == 0) history = "before";
+                        else if (entered.motion is AnimationClip && PlayedThenHeld(entered, then) != null) { history = "after"; bound.IntersectWith(HoldBound(entered, id)); }
+                        else continue;
+                        string context = "alone";
+                        if (adds.Count == 1)
+                        {
+                            int a = adds[0];
+                            var (played, held) = HoldStates(layers[a].stateMachine, of[a], id);
+                            if (a < h || played == null || !(played.motion is AnimationClip)
+                                || OwnLayerGoal(played, type, a) != 1 || PlayedThenHeld(played, held) == null) continue;
+                            bound.IntersectWith(HoldBound(played, id));
+                            context = "under_additive";
+                        }
+                        foreach (var property in bound) Count(Fixture.HoldKey(property, w.Value, history, context));
+                    }
+                    else if (sets.Count == 1 && first.behaviours.Length == 1 && (int)sets[0].layer == (int)Fixture.RigBlendable(type).Value && sets[0].blendDuration == 0
+                             && Fixture.HoldWeights.Contains(sets[0].goalWeight))
+                    {
+                        string above = "alone";
+                        if (others.Count > 1) continue;
+                        if (others.Count == 1)
+                        {
+                            int o = others[0];
+                            var (over, overThen) = HoldStates(layers[o].stateMachine, of[o], id);
+                            if (layers[o].blendingMode != AnimatorLayerBlendingMode.Override || over == null
+                                || overThen.Count > 0 || !(over.motion is AnimationClip) || OwnLayerGoal(over, type, o) != Fixture.HoldAboveWeight) continue;
+                            bound.IntersectWith(HoldBound(over, id));
+                            above = "under_partial";
+                        }
+                        foreach (var property in bound) Count(Fixture.HoldPlayableKey(type, property, sets[0].goalWeight, above));
+                    }
+                }
+            }
+            return c;
+        }
+
         static string TreeKey(BlendTree bt) => "blendtree." + Snake(bt.blendType.ToString()).Replace("2_d", "2d").Replace("1_d", "1d");
 
         static string Snake(string s) => string.Concat(s.Select((ch, i) => i > 0 && (char.IsUpper(ch) || char.IsDigit(ch) && !char.IsDigit(s[i - 1])) ? "_" + char.ToLowerInvariant(ch) : char.ToLowerInvariant(ch).ToString()));
