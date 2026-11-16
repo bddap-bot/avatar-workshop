@@ -232,7 +232,8 @@ the SDK and the emulator are installed there, never copied here.
 converts legacy DynamicBones as the exporter does, enters play mode in batch mode (the emulator runs the SDK's
 build preprocess, so build-tool output is what is recorded, and the exporter writes the model from that same
 build) and drives the avatar at a fixed 60 Hz step with one scripted input: rest, six seconds of
-root and arm motion, settling, every expression-menu control swept (each toggle and button to its
+root and arm motion, settling, a quiet hold as long as the avatar's longest particle lifetime (so what the
+motion emitted is gone), every expression-menu control swept from a rendered base (each toggle and button to its
 non-default value, each radial at 0, 0.25, 0.5, 0.75 and 1, each puppet axis to its extremes, inside
 its submenus), then the built-in parameters stepped (gestures, visemes, locomotion, tracking and
 state flags). `UNITY` names the editor command. With no `SCENE`, it generates the fixture into
@@ -276,11 +277,11 @@ each muscle sample with the core's sampling of the same clip alone.
 | `poses.tsv`, `drivers.tsv` | the input the SDK's dynamics read, taken each frame after animation and before its constraints, PhysBones and contacts run: every transform they read besides the bones they simulate (each PhysBone root's parent and scene root, every collider and contact, each constraint's target, its parent, its sources and world-up transform) in metres from the root along its axes (`root` rows, scales world), each written when it changes, and each PhysBone bone's local pose (`local` rows) whenever it differs from the pose the SDK left it in the frame before, which is when animation set it. Every humanoid bone is recorded the same way as a `root` row, so a replay can stand the body in the recorded pose. A row is `frame, space, transform, px,py,pz,qx,qy,qz,qw,sx,sy,sz`; the root itself is the empty path. `drivers.tsv` lists each transform with its roles (`humanoid:<HumanBodyBones name>` for a humanoid bone); `moved-by-dynamics` marks one at or under a simulated bone or under a constraint target, whose recorded pose is the one before the dynamics moved it. A recording fails if any of them is gone or unposed on a frame |
 | `clocks.tsv` | each layer's current state's normalized time as its animator holds it, every frame from the one the graph is created on, one column per `<playable>:<layer>`, with `>` and the next state's during a transition; a recording fails if a layer holds no state time on a frame, and the replay fails if a frame has no row |
 | `grabs.tsv` | empty but for the fixture, which after the built-in steps has its tail, antenna and left ear grabbed through the SDK's own grab call (a ray at the bone, as its editor grab helper casts), the held point moved and let go, the tail once posed; each row is `frame, event, bone, x,y,z`, the event `grab` (at the point the SDK grabbed), `miss`, `hold` (the held point that frame), `release` or `pose` |
-| `render/`, `renders.tsv`, `camera.json` | a render at the end of every swept step from a fixed camera and light |
+| `render/`, `renders.tsv`, `camera.json` | a render at the end of every swept step from a fixed camera and light, and of each control's `base` step, which comes before the control's first swept step and holds what its sweep holds with the swept parameters at rest |
 | `menu.tsv` | every menu control: indexed path, name path (control names joined by `/`), type, parameter |
 | `time.tsv` | the time of the emulator's playable graph after each frame's evaluation, every frame from the one the graph is created on, so the first evaluation's delta shows; a recording fails if the graph is gone on a frame |
 | `avatar.glb`, `census.json`, `export.txt` | the exporter's model and census of the build this recording runs, written as the last step of its build preprocess, with the build tools' generated names and ids (and, as the emulator skips the SDK's material locking, unlocked shaders); `cargo run --release --example census -- avatar.glb census.json` in `avatar-core/` checks one; `export.txt` lists what the model does not represent |
-| `coverage.json`, `meta.json` | the avatar's feature counts; versions and totals |
+| `coverage.json`, `meta.json` | the avatar's feature counts; versions and totals, and as `harness` the commit of the avatar-workshop checkout `run.sh` ran from (`git describe --always --dirty`) |
 | `compositions.json` | the composition, blend duration, layering, clip sample-time, rotation, dense clip, crossfade, generic, frame grid, fill and hold, and frame-grid rule probes' only: for each composition the probe is authored to play on its own, how many clips (composition probe), states (clip sample-time, rotation, dense clip, frame grid, fill and hold, and frame-grid rule probes), transitions and states (crossfade and generic probes) or states and transitions (the others) are authored to play it |
 
 The fixture (`reference/Editor/Fixture.cs`, licensed as this repository) is a synthetic humanoid
@@ -537,8 +538,8 @@ in the same layout; `reference/compare.py REFERENCE RUNTIME` (Python 3 with nump
 it: PhysBone tip RMS error over chain length (a leaf or frame the runtime lacks counts as unmoving), the
 fraction of menu controls that match, and mean image error. A control matches when the runtime's
 `menu.tsv` lists its name path in the first column, before a tab (names compare with runs of whitespace
-collapsed, so a name may span lines), and each of its swept renders changes the same region as
-the reference's (intersection over union of changed pixels at least 0.5, or both unchanged); a control
+collapsed, so a name may span lines), and each of its swept renders changes the same region from the
+control's base render as the reference's (intersection over union of changed pixels at least 0.5, or both unchanged); a control
 the runtime does not offer fails. It writes every source control's result to `compare-controls.tsv` and each
 swept step's to `compare-steps.tsv` in `RUNTIME`.
 

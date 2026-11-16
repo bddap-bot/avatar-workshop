@@ -721,6 +721,7 @@ namespace AvatarWorkshop.Reference
             File.WriteAllText(Path.Combine(output, "meta.json"), Json(new Dictionary<string, object>
             {
                 ["avatar"] = avatarName,
+                ["harness"] = Harness.Env("AW_HARNESS"),
                 ["fixture"] = fixture,
                 ["human"] = human,
                 ["blend"] = blend,
@@ -1073,8 +1074,7 @@ namespace AvatarWorkshop.Reference
 
         void Schedule(VRCAvatarDescriptor descriptor)
         {
-            Step S(string label, int frames, bool render = false, string control = null) =>
-                Add(new Step { Label = label, Frames = frames, Render = render, Control = control });
+            Step S(string label, int frames, bool render = false) => Add(new Step { Label = label, Frames = frames, Render = render });
 
             var rest = S("rest", probe ? 900 : 90, render: true);
             foreach (var (n, v) in Builtins) rest.Set[n] = v;
@@ -1116,25 +1116,24 @@ namespace AvatarWorkshop.Reference
             stop.Each = (r, k) => { if (k == 0) { r.Place(r.rootPos, r.rootRot); r.Swing(Vector2.zero); } };
 
             if (probe) return;
+            var linger = root.GetComponentsInChildren<ParticleSystem>(true).Select(p => p.main.startLifetime)
+                .Select(l => Mathf.Max(l.constant, l.constantMax, l.curveMultiplier)).DefaultIfEmpty(0).Max();
+            if (linger > 0) S("quiet", Mathf.CeilToInt(linger * Harness.Rate));
             if (descriptor.expressionsMenu != null) Menu(descriptor.expressionsMenu, "", "", new HashSet<VRCExpressionsMenu>(), new Dictionary<string, float>());
 
+            var none = new Dictionary<string, float>();
             foreach (var n in new[] { "GestureLeft", "GestureRight" })
                 for (int g = 1; g < 8; g++)
                 {
-                    var st = S($"builtin {n}={g}", 30, render: true, control: "builtin/" + n);
-                    st.Set[n] = g; st.Set[n + "Weight"] = 1;
-                    Reset(st.Set.Keys.ToList());
+                    Sweep("builtin/" + n, $"builtin {n}={g}", 30, none, new Dictionary<string, float> { [n] = g, [n + "Weight"] = 1 });
+                    Reset(new List<string> { n, n + "Weight" });
                 }
             for (int v = 1; v < 15; v++)
-            {
-                var st = S($"builtin Viseme={v}", 12, render: true, control: "builtin/Viseme");
-                st.Set["Viseme"] = v; st.Set["Voice"] = 0.6f;
-            }
+                Sweep("builtin/Viseme", $"builtin Viseme={v}", 12, none, new Dictionary<string, float> { ["Viseme"] = v, ["Voice"] = 0.6f });
             Reset(new List<string> { "Viseme", "Voice" });
             foreach (var (n, v) in new (string, float)[] { ("Grounded", 0), ("Seated", 1), ("AFK", 1), ("VelocityZ", 3), ("VelocityX", -2), ("VelocityY", -4), ("AngularY", 120), ("Upright", 0.4f), ("TrackingType", 6), ("TrackingType", 1), ("VRMode", 0), ("InStation", 1), ("IsOnFriendsList", 1) })
             {
-                var st = S($"builtin {n}={F(v)}", 45, render: true, control: "builtin/" + n);
-                st.Set[n] = v;
+                Sweep("builtin/" + n, $"builtin {n}={F(v)}", 45, none, new Dictionary<string, float> { [n] = v });
                 Reset(new List<string> { n });
             }
             if (fixture)
@@ -1320,8 +1319,16 @@ namespace AvatarWorkshop.Reference
             seen.Remove(menu);
         }
 
+        readonly HashSet<string> based = new HashSet<string>();
+
         void Sweep(string control, string label, int frames, Dictionary<string, float> open, Dictionary<string, float> set)
         {
+            if (based.Add(control))
+            {
+                var b = Add(new Step { Label = "base", Control = control, Frames = 45, Render = true });
+                foreach (var kv in open) b.Set[kv.Key] = kv.Value;
+                foreach (var k in set.Keys) b.Set[k] = Rest(k);
+            }
             var st = Add(new Step { Label = label, Control = control, Frames = frames, Render = true });
             foreach (var kv in open) st.Set[kv.Key] = kv.Value;
             foreach (var kv in set) st.Set[kv.Key] = kv.Value;

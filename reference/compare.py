@@ -75,6 +75,7 @@ def main(reference, runtime):
     renders = {int(r[2]): r[0] for r in rows(reference / "renders.tsv")}
     rest_name = renders[next(i for i, s in steps.items() if s["label"] == "settle")]
     ref_rest, run_rest = image(reference / rest_name), image(runtime / rest_name)
+    bases = {steps[i]["control"]: name for i, name in renders.items() if steps[i]["label"] == "base"}
     table, controls, errors = [], {}, []
     for index, name in sorted(renders.items()):
         step = steps[index]
@@ -82,14 +83,17 @@ def main(reference, runtime):
         error = None if run is None or ref.shape != run.shape else float(np.abs(run - ref).mean())
         if error is not None:
             errors.append(error)
-        if step["control"] == "-":
+        if step["control"] == "-" or step["label"] == "base":
             continue
-        ref_mask = changed(ref, ref_rest)
+        if step["control"] not in bases:
+            sys.exit(f"the reference renders no base for {step['control']}: record it with the current harness")
+        ref_base, run_base = image(reference / bases[step["control"]]), image(runtime / bases[step["control"]])
+        ref_mask = changed(ref, ref_base)
         ref_area = float(ref_mask.mean())
-        if run is None or run_rest is None or run.shape != ref.shape:
+        if run is None or run_base is None or run.shape != ref.shape:
             run_area, iou, ok = None, None, False
         else:
-            run_mask = changed(run, run_rest)
+            run_mask = changed(run, run_base)
             run_area = float(run_mask.mean())
             if ref_area < VISIBLE and run_area < VISIBLE:
                 iou, ok = None, True
