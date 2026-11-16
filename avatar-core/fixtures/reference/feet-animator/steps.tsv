@@ -1,0 +1,770 @@
+0	5	90	-	rest	GestureLeft=0,GestureRight=0,GestureLeftWeight=0,GestureRightWeight=0,Viseme=0,Voice=0,Grounded=1,Seated=0,AFK=0,VelocityX=0,VelocityY=0,VelocityZ=0,AngularY=0,Upright=1,TrackingType=3,VRMode=1,InStation=0,IsOnFriendsList=0
+1	95	150	-	case 1 mirror=0: base/Body: 1 base_full feet moving x 10 unbaked	Case=1,Mirror=0
+2	245	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+3	265	150	-	case 1 mirror=1: base/Body: 1 base_full feet moving x 10 unbaked	Case=1,Mirror=1
+4	415	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+5	435	150	-	case 2 mirror=0: base/Body: 2 base_full feet moving x 10 baked	Case=2,Mirror=0
+6	585	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+7	605	150	-	case 2 mirror=1: base/Body: 2 base_full feet moving x 10 baked	Case=2,Mirror=1
+8	755	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+9	775	150	-	case 3 mirror=0: base/Body: 3 base_full feet moving x 10 loop pose unbaked	Case=3,Mirror=0
+10	925	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+11	945	150	-	case 3 mirror=1: base/Body: 3 base_full feet moving x 10 loop pose unbaked	Case=3,Mirror=1
+12	1095	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+13	1115	150	-	case 4 mirror=0: base/Body: 4 base_full feet moving x 10 loop pose baked	Case=4,Mirror=0
+14	1265	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+15	1285	150	-	case 4 mirror=1: base/Body: 4 base_full feet moving x 10 loop pose baked	Case=4,Mirror=1
+16	1435	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+17	1455	150	-	case 5 mirror=0: base/Body: 5 base_full feet moving x 45 unbaked	Case=5,Mirror=0
+18	1605	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+19	1625	150	-	case 5 mirror=1: base/Body: 5 base_full feet moving x 45 unbaked	Case=5,Mirror=1
+20	1775	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+21	1795	150	-	case 6 mirror=0: base/Body: 6 base_full feet moving x 45 baked	Case=6,Mirror=0
+22	1945	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+23	1965	150	-	case 6 mirror=1: base/Body: 6 base_full feet moving x 45 baked	Case=6,Mirror=1
+24	2115	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+25	2135	150	-	case 7 mirror=0: base/Body: 7 base_full feet moving x 45 loop pose unbaked	Case=7,Mirror=0
+26	2285	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+27	2305	150	-	case 7 mirror=1: base/Body: 7 base_full feet moving x 45 loop pose unbaked	Case=7,Mirror=1
+28	2455	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+29	2475	150	-	case 8 mirror=0: base/Body: 8 base_full feet moving x 45 loop pose baked	Case=8,Mirror=0
+30	2625	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+31	2645	150	-	case 8 mirror=1: base/Body: 8 base_full feet moving x 45 loop pose baked	Case=8,Mirror=1
+32	2795	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+33	2815	150	-	case 9 mirror=0: base/Body: 9 base_full feet moving x 120 unbaked	Case=9,Mirror=0
+34	2965	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+35	2985	150	-	case 9 mirror=1: base/Body: 9 base_full feet moving x 120 unbaked	Case=9,Mirror=1
+36	3135	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+37	3155	150	-	case 10 mirror=0: base/Body: 10 base_full feet moving x 120 baked	Case=10,Mirror=0
+38	3305	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+39	3325	150	-	case 10 mirror=1: base/Body: 10 base_full feet moving x 120 baked	Case=10,Mirror=1
+40	3475	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+41	3495	150	-	case 11 mirror=0: base/Body: 11 base_full feet moving x 120 loop pose unbaked	Case=11,Mirror=0
+42	3645	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+43	3665	150	-	case 11 mirror=1: base/Body: 11 base_full feet moving x 120 loop pose unbaked	Case=11,Mirror=1
+44	3815	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+45	3835	150	-	case 12 mirror=0: base/Body: 12 base_full feet moving x 120 loop pose baked	Case=12,Mirror=0
+46	3985	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+47	4005	150	-	case 12 mirror=1: base/Body: 12 base_full feet moving x 120 loop pose baked	Case=12,Mirror=1
+48	4155	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+49	4175	150	-	case 13 mirror=0: base/Body: 13 base_full feet moving y 10 unbaked	Case=13,Mirror=0
+50	4325	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+51	4345	150	-	case 13 mirror=1: base/Body: 13 base_full feet moving y 10 unbaked	Case=13,Mirror=1
+52	4495	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+53	4515	150	-	case 14 mirror=0: base/Body: 14 base_full feet moving y 10 baked	Case=14,Mirror=0
+54	4665	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+55	4685	150	-	case 14 mirror=1: base/Body: 14 base_full feet moving y 10 baked	Case=14,Mirror=1
+56	4835	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+57	4855	150	-	case 15 mirror=0: base/Body: 15 base_full feet moving y 10 loop pose unbaked	Case=15,Mirror=0
+58	5005	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+59	5025	150	-	case 15 mirror=1: base/Body: 15 base_full feet moving y 10 loop pose unbaked	Case=15,Mirror=1
+60	5175	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+61	5195	150	-	case 16 mirror=0: base/Body: 16 base_full feet moving y 10 loop pose baked	Case=16,Mirror=0
+62	5345	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+63	5365	150	-	case 16 mirror=1: base/Body: 16 base_full feet moving y 10 loop pose baked	Case=16,Mirror=1
+64	5515	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+65	5535	150	-	case 17 mirror=0: base/Body: 17 base_full feet moving y 45 unbaked	Case=17,Mirror=0
+66	5685	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+67	5705	150	-	case 17 mirror=1: base/Body: 17 base_full feet moving y 45 unbaked	Case=17,Mirror=1
+68	5855	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+69	5875	150	-	case 18 mirror=0: base/Body: 18 base_full feet moving y 45 baked	Case=18,Mirror=0
+70	6025	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+71	6045	150	-	case 18 mirror=1: base/Body: 18 base_full feet moving y 45 baked	Case=18,Mirror=1
+72	6195	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+73	6215	150	-	case 19 mirror=0: base/Body: 19 base_full feet moving y 45 loop pose unbaked	Case=19,Mirror=0
+74	6365	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+75	6385	150	-	case 19 mirror=1: base/Body: 19 base_full feet moving y 45 loop pose unbaked	Case=19,Mirror=1
+76	6535	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+77	6555	150	-	case 20 mirror=0: base/Body: 20 base_full feet moving y 45 loop pose baked	Case=20,Mirror=0
+78	6705	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+79	6725	150	-	case 20 mirror=1: base/Body: 20 base_full feet moving y 45 loop pose baked	Case=20,Mirror=1
+80	6875	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+81	6895	150	-	case 21 mirror=0: base/Body: 21 base_full feet moving y 120 unbaked	Case=21,Mirror=0
+82	7045	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+83	7065	150	-	case 21 mirror=1: base/Body: 21 base_full feet moving y 120 unbaked	Case=21,Mirror=1
+84	7215	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+85	7235	150	-	case 22 mirror=0: base/Body: 22 base_full feet moving y 120 baked	Case=22,Mirror=0
+86	7385	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+87	7405	150	-	case 22 mirror=1: base/Body: 22 base_full feet moving y 120 baked	Case=22,Mirror=1
+88	7555	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+89	7575	150	-	case 23 mirror=0: base/Body: 23 base_full feet moving y 120 loop pose unbaked	Case=23,Mirror=0
+90	7725	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+91	7745	150	-	case 23 mirror=1: base/Body: 23 base_full feet moving y 120 loop pose unbaked	Case=23,Mirror=1
+92	7895	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+93	7915	150	-	case 24 mirror=0: base/Body: 24 base_full feet moving y 120 loop pose baked	Case=24,Mirror=0
+94	8065	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+95	8085	150	-	case 24 mirror=1: base/Body: 24 base_full feet moving y 120 loop pose baked	Case=24,Mirror=1
+96	8235	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+97	8255	150	-	case 25 mirror=0: base/Body: 25 base_full feet moving z 10 unbaked	Case=25,Mirror=0
+98	8405	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+99	8425	150	-	case 25 mirror=1: base/Body: 25 base_full feet moving z 10 unbaked	Case=25,Mirror=1
+100	8575	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+101	8595	150	-	case 26 mirror=0: base/Body: 26 base_full feet moving z 10 baked	Case=26,Mirror=0
+102	8745	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+103	8765	150	-	case 26 mirror=1: base/Body: 26 base_full feet moving z 10 baked	Case=26,Mirror=1
+104	8915	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+105	8935	150	-	case 27 mirror=0: base/Body: 27 base_full feet moving z 10 loop pose unbaked	Case=27,Mirror=0
+106	9085	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+107	9105	150	-	case 27 mirror=1: base/Body: 27 base_full feet moving z 10 loop pose unbaked	Case=27,Mirror=1
+108	9255	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+109	9275	150	-	case 28 mirror=0: base/Body: 28 base_full feet moving z 10 loop pose baked	Case=28,Mirror=0
+110	9425	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+111	9445	150	-	case 28 mirror=1: base/Body: 28 base_full feet moving z 10 loop pose baked	Case=28,Mirror=1
+112	9595	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+113	9615	150	-	case 29 mirror=0: base/Body: 29 base_full feet moving z 45 unbaked	Case=29,Mirror=0
+114	9765	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+115	9785	150	-	case 29 mirror=1: base/Body: 29 base_full feet moving z 45 unbaked	Case=29,Mirror=1
+116	9935	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+117	9955	150	-	case 30 mirror=0: base/Body: 30 base_full feet moving z 45 baked	Case=30,Mirror=0
+118	10105	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+119	10125	150	-	case 30 mirror=1: base/Body: 30 base_full feet moving z 45 baked	Case=30,Mirror=1
+120	10275	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+121	10295	150	-	case 31 mirror=0: base/Body: 31 base_full feet moving z 45 loop pose unbaked	Case=31,Mirror=0
+122	10445	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+123	10465	150	-	case 31 mirror=1: base/Body: 31 base_full feet moving z 45 loop pose unbaked	Case=31,Mirror=1
+124	10615	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+125	10635	150	-	case 32 mirror=0: base/Body: 32 base_full feet moving z 45 loop pose baked	Case=32,Mirror=0
+126	10785	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+127	10805	150	-	case 32 mirror=1: base/Body: 32 base_full feet moving z 45 loop pose baked	Case=32,Mirror=1
+128	10955	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+129	10975	150	-	case 33 mirror=0: base/Body: 33 base_full feet moving z 120 unbaked	Case=33,Mirror=0
+130	11125	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+131	11145	150	-	case 33 mirror=1: base/Body: 33 base_full feet moving z 120 unbaked	Case=33,Mirror=1
+132	11295	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+133	11315	150	-	case 34 mirror=0: base/Body: 34 base_full feet moving z 120 baked	Case=34,Mirror=0
+134	11465	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+135	11485	150	-	case 34 mirror=1: base/Body: 34 base_full feet moving z 120 baked	Case=34,Mirror=1
+136	11635	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+137	11655	150	-	case 35 mirror=0: base/Body: 35 base_full feet moving z 120 loop pose unbaked	Case=35,Mirror=0
+138	11805	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+139	11825	150	-	case 35 mirror=1: base/Body: 35 base_full feet moving z 120 loop pose unbaked	Case=35,Mirror=1
+140	11975	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+141	11995	150	-	case 36 mirror=0: base/Body: 36 base_full feet moving z 120 loop pose baked	Case=36,Mirror=0
+142	12145	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+143	12165	150	-	case 36 mirror=1: base/Body: 36 base_full feet moving z 120 loop pose baked	Case=36,Mirror=1
+144	12315	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+145	12335	150	-	case 37 mirror=0: base/Body: 37 base_full feet moving xyz 10 unbaked	Case=37,Mirror=0
+146	12485	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+147	12505	150	-	case 37 mirror=1: base/Body: 37 base_full feet moving xyz 10 unbaked	Case=37,Mirror=1
+148	12655	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+149	12675	150	-	case 38 mirror=0: base/Body: 38 base_full feet moving xyz 10 baked	Case=38,Mirror=0
+150	12825	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+151	12845	150	-	case 38 mirror=1: base/Body: 38 base_full feet moving xyz 10 baked	Case=38,Mirror=1
+152	12995	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+153	13015	150	-	case 39 mirror=0: base/Body: 39 base_full feet moving xyz 10 loop pose unbaked	Case=39,Mirror=0
+154	13165	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+155	13185	150	-	case 39 mirror=1: base/Body: 39 base_full feet moving xyz 10 loop pose unbaked	Case=39,Mirror=1
+156	13335	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+157	13355	150	-	case 40 mirror=0: base/Body: 40 base_full feet moving xyz 10 loop pose baked	Case=40,Mirror=0
+158	13505	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+159	13525	150	-	case 40 mirror=1: base/Body: 40 base_full feet moving xyz 10 loop pose baked	Case=40,Mirror=1
+160	13675	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+161	13695	150	-	case 41 mirror=0: base/Body: 41 base_full feet moving xyz 45 unbaked	Case=41,Mirror=0
+162	13845	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+163	13865	150	-	case 41 mirror=1: base/Body: 41 base_full feet moving xyz 45 unbaked	Case=41,Mirror=1
+164	14015	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+165	14035	150	-	case 42 mirror=0: base/Body: 42 base_full feet moving xyz 45 baked	Case=42,Mirror=0
+166	14185	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+167	14205	150	-	case 42 mirror=1: base/Body: 42 base_full feet moving xyz 45 baked	Case=42,Mirror=1
+168	14355	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+169	14375	150	-	case 43 mirror=0: base/Body: 43 base_full feet moving xyz 45 loop pose unbaked	Case=43,Mirror=0
+170	14525	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+171	14545	150	-	case 43 mirror=1: base/Body: 43 base_full feet moving xyz 45 loop pose unbaked	Case=43,Mirror=1
+172	14695	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+173	14715	150	-	case 44 mirror=0: base/Body: 44 base_full feet moving xyz 45 loop pose baked	Case=44,Mirror=0
+174	14865	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+175	14885	150	-	case 44 mirror=1: base/Body: 44 base_full feet moving xyz 45 loop pose baked	Case=44,Mirror=1
+176	15035	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+177	15055	150	-	case 45 mirror=0: base/Body: 45 base_full feet moving xyz 120 unbaked	Case=45,Mirror=0
+178	15205	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+179	15225	150	-	case 45 mirror=1: base/Body: 45 base_full feet moving xyz 120 unbaked	Case=45,Mirror=1
+180	15375	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+181	15395	150	-	case 46 mirror=0: base/Body: 46 base_full feet moving xyz 120 baked	Case=46,Mirror=0
+182	15545	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+183	15565	150	-	case 46 mirror=1: base/Body: 46 base_full feet moving xyz 120 baked	Case=46,Mirror=1
+184	15715	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+185	15735	150	-	case 47 mirror=0: base/Body: 47 base_full feet moving xyz 120 loop pose unbaked	Case=47,Mirror=0
+186	15885	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+187	15905	150	-	case 47 mirror=1: base/Body: 47 base_full feet moving xyz 120 loop pose unbaked	Case=47,Mirror=1
+188	16055	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+189	16075	150	-	case 48 mirror=0: base/Body: 48 base_full feet moving xyz 120 loop pose baked	Case=48,Mirror=0
+190	16225	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+191	16245	150	-	case 48 mirror=1: base/Body: 48 base_full feet moving xyz 120 loop pose baked	Case=48,Mirror=1
+192	16395	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+193	16415	150	-	case 49 mirror=0: base/Body: 49 base_full feet pose x 10 unbaked	Case=49,Mirror=0
+194	16565	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+195	16585	150	-	case 49 mirror=1: base/Body: 49 base_full feet pose x 10 unbaked	Case=49,Mirror=1
+196	16735	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+197	16755	150	-	case 50 mirror=0: base/Body: 50 base_full feet pose x 10 baked	Case=50,Mirror=0
+198	16905	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+199	16925	150	-	case 50 mirror=1: base/Body: 50 base_full feet pose x 10 baked	Case=50,Mirror=1
+200	17075	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+201	17095	150	-	case 51 mirror=0: base/Body: 51 base_full feet pose x 10 loop pose unbaked	Case=51,Mirror=0
+202	17245	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+203	17265	150	-	case 51 mirror=1: base/Body: 51 base_full feet pose x 10 loop pose unbaked	Case=51,Mirror=1
+204	17415	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+205	17435	150	-	case 52 mirror=0: base/Body: 52 base_full feet pose x 10 loop pose baked	Case=52,Mirror=0
+206	17585	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+207	17605	150	-	case 52 mirror=1: base/Body: 52 base_full feet pose x 10 loop pose baked	Case=52,Mirror=1
+208	17755	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+209	17775	150	-	case 53 mirror=0: base/Body: 53 base_full feet pose x 45 unbaked	Case=53,Mirror=0
+210	17925	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+211	17945	150	-	case 53 mirror=1: base/Body: 53 base_full feet pose x 45 unbaked	Case=53,Mirror=1
+212	18095	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+213	18115	150	-	case 54 mirror=0: base/Body: 54 base_full feet pose x 45 baked	Case=54,Mirror=0
+214	18265	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+215	18285	150	-	case 54 mirror=1: base/Body: 54 base_full feet pose x 45 baked	Case=54,Mirror=1
+216	18435	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+217	18455	150	-	case 55 mirror=0: base/Body: 55 base_full feet pose x 45 loop pose unbaked	Case=55,Mirror=0
+218	18605	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+219	18625	150	-	case 55 mirror=1: base/Body: 55 base_full feet pose x 45 loop pose unbaked	Case=55,Mirror=1
+220	18775	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+221	18795	150	-	case 56 mirror=0: base/Body: 56 base_full feet pose x 45 loop pose baked	Case=56,Mirror=0
+222	18945	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+223	18965	150	-	case 56 mirror=1: base/Body: 56 base_full feet pose x 45 loop pose baked	Case=56,Mirror=1
+224	19115	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+225	19135	150	-	case 57 mirror=0: base/Body: 57 base_full feet pose x 120 unbaked	Case=57,Mirror=0
+226	19285	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+227	19305	150	-	case 57 mirror=1: base/Body: 57 base_full feet pose x 120 unbaked	Case=57,Mirror=1
+228	19455	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+229	19475	150	-	case 58 mirror=0: base/Body: 58 base_full feet pose x 120 baked	Case=58,Mirror=0
+230	19625	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+231	19645	150	-	case 58 mirror=1: base/Body: 58 base_full feet pose x 120 baked	Case=58,Mirror=1
+232	19795	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+233	19815	150	-	case 59 mirror=0: base/Body: 59 base_full feet pose x 120 loop pose unbaked	Case=59,Mirror=0
+234	19965	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+235	19985	150	-	case 59 mirror=1: base/Body: 59 base_full feet pose x 120 loop pose unbaked	Case=59,Mirror=1
+236	20135	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+237	20155	150	-	case 60 mirror=0: base/Body: 60 base_full feet pose x 120 loop pose baked	Case=60,Mirror=0
+238	20305	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+239	20325	150	-	case 60 mirror=1: base/Body: 60 base_full feet pose x 120 loop pose baked	Case=60,Mirror=1
+240	20475	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+241	20495	150	-	case 61 mirror=0: base/Body: 61 base_full feet pose y 10 unbaked	Case=61,Mirror=0
+242	20645	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+243	20665	150	-	case 61 mirror=1: base/Body: 61 base_full feet pose y 10 unbaked	Case=61,Mirror=1
+244	20815	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+245	20835	150	-	case 62 mirror=0: base/Body: 62 base_full feet pose y 10 baked	Case=62,Mirror=0
+246	20985	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+247	21005	150	-	case 62 mirror=1: base/Body: 62 base_full feet pose y 10 baked	Case=62,Mirror=1
+248	21155	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+249	21175	150	-	case 63 mirror=0: base/Body: 63 base_full feet pose y 10 loop pose unbaked	Case=63,Mirror=0
+250	21325	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+251	21345	150	-	case 63 mirror=1: base/Body: 63 base_full feet pose y 10 loop pose unbaked	Case=63,Mirror=1
+252	21495	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+253	21515	150	-	case 64 mirror=0: base/Body: 64 base_full feet pose y 10 loop pose baked	Case=64,Mirror=0
+254	21665	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+255	21685	150	-	case 64 mirror=1: base/Body: 64 base_full feet pose y 10 loop pose baked	Case=64,Mirror=1
+256	21835	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+257	21855	150	-	case 65 mirror=0: base/Body: 65 base_full feet pose y 45 unbaked	Case=65,Mirror=0
+258	22005	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+259	22025	150	-	case 65 mirror=1: base/Body: 65 base_full feet pose y 45 unbaked	Case=65,Mirror=1
+260	22175	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+261	22195	150	-	case 66 mirror=0: base/Body: 66 base_full feet pose y 45 baked	Case=66,Mirror=0
+262	22345	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+263	22365	150	-	case 66 mirror=1: base/Body: 66 base_full feet pose y 45 baked	Case=66,Mirror=1
+264	22515	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+265	22535	150	-	case 67 mirror=0: base/Body: 67 base_full feet pose y 45 loop pose unbaked	Case=67,Mirror=0
+266	22685	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+267	22705	150	-	case 67 mirror=1: base/Body: 67 base_full feet pose y 45 loop pose unbaked	Case=67,Mirror=1
+268	22855	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+269	22875	150	-	case 68 mirror=0: base/Body: 68 base_full feet pose y 45 loop pose baked	Case=68,Mirror=0
+270	23025	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+271	23045	150	-	case 68 mirror=1: base/Body: 68 base_full feet pose y 45 loop pose baked	Case=68,Mirror=1
+272	23195	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+273	23215	150	-	case 69 mirror=0: base/Body: 69 base_full feet pose y 120 unbaked	Case=69,Mirror=0
+274	23365	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+275	23385	150	-	case 69 mirror=1: base/Body: 69 base_full feet pose y 120 unbaked	Case=69,Mirror=1
+276	23535	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+277	23555	150	-	case 70 mirror=0: base/Body: 70 base_full feet pose y 120 baked	Case=70,Mirror=0
+278	23705	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+279	23725	150	-	case 70 mirror=1: base/Body: 70 base_full feet pose y 120 baked	Case=70,Mirror=1
+280	23875	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+281	23895	150	-	case 71 mirror=0: base/Body: 71 base_full feet pose y 120 loop pose unbaked	Case=71,Mirror=0
+282	24045	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+283	24065	150	-	case 71 mirror=1: base/Body: 71 base_full feet pose y 120 loop pose unbaked	Case=71,Mirror=1
+284	24215	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+285	24235	150	-	case 72 mirror=0: base/Body: 72 base_full feet pose y 120 loop pose baked	Case=72,Mirror=0
+286	24385	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+287	24405	150	-	case 72 mirror=1: base/Body: 72 base_full feet pose y 120 loop pose baked	Case=72,Mirror=1
+288	24555	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+289	24575	150	-	case 73 mirror=0: base/Body: 73 base_full feet pose z 10 unbaked	Case=73,Mirror=0
+290	24725	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+291	24745	150	-	case 73 mirror=1: base/Body: 73 base_full feet pose z 10 unbaked	Case=73,Mirror=1
+292	24895	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+293	24915	150	-	case 74 mirror=0: base/Body: 74 base_full feet pose z 10 baked	Case=74,Mirror=0
+294	25065	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+295	25085	150	-	case 74 mirror=1: base/Body: 74 base_full feet pose z 10 baked	Case=74,Mirror=1
+296	25235	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+297	25255	150	-	case 75 mirror=0: base/Body: 75 base_full feet pose z 10 loop pose unbaked	Case=75,Mirror=0
+298	25405	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+299	25425	150	-	case 75 mirror=1: base/Body: 75 base_full feet pose z 10 loop pose unbaked	Case=75,Mirror=1
+300	25575	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+301	25595	150	-	case 76 mirror=0: base/Body: 76 base_full feet pose z 10 loop pose baked	Case=76,Mirror=0
+302	25745	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+303	25765	150	-	case 76 mirror=1: base/Body: 76 base_full feet pose z 10 loop pose baked	Case=76,Mirror=1
+304	25915	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+305	25935	150	-	case 77 mirror=0: base/Body: 77 base_full feet pose z 45 unbaked	Case=77,Mirror=0
+306	26085	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+307	26105	150	-	case 77 mirror=1: base/Body: 77 base_full feet pose z 45 unbaked	Case=77,Mirror=1
+308	26255	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+309	26275	150	-	case 78 mirror=0: base/Body: 78 base_full feet pose z 45 baked	Case=78,Mirror=0
+310	26425	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+311	26445	150	-	case 78 mirror=1: base/Body: 78 base_full feet pose z 45 baked	Case=78,Mirror=1
+312	26595	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+313	26615	150	-	case 79 mirror=0: base/Body: 79 base_full feet pose z 45 loop pose unbaked	Case=79,Mirror=0
+314	26765	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+315	26785	150	-	case 79 mirror=1: base/Body: 79 base_full feet pose z 45 loop pose unbaked	Case=79,Mirror=1
+316	26935	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+317	26955	150	-	case 80 mirror=0: base/Body: 80 base_full feet pose z 45 loop pose baked	Case=80,Mirror=0
+318	27105	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+319	27125	150	-	case 80 mirror=1: base/Body: 80 base_full feet pose z 45 loop pose baked	Case=80,Mirror=1
+320	27275	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+321	27295	150	-	case 81 mirror=0: base/Body: 81 base_full feet pose z 120 unbaked	Case=81,Mirror=0
+322	27445	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+323	27465	150	-	case 81 mirror=1: base/Body: 81 base_full feet pose z 120 unbaked	Case=81,Mirror=1
+324	27615	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+325	27635	150	-	case 82 mirror=0: base/Body: 82 base_full feet pose z 120 baked	Case=82,Mirror=0
+326	27785	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+327	27805	150	-	case 82 mirror=1: base/Body: 82 base_full feet pose z 120 baked	Case=82,Mirror=1
+328	27955	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+329	27975	150	-	case 83 mirror=0: base/Body: 83 base_full feet pose z 120 loop pose unbaked	Case=83,Mirror=0
+330	28125	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+331	28145	150	-	case 83 mirror=1: base/Body: 83 base_full feet pose z 120 loop pose unbaked	Case=83,Mirror=1
+332	28295	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+333	28315	150	-	case 84 mirror=0: base/Body: 84 base_full feet pose z 120 loop pose baked	Case=84,Mirror=0
+334	28465	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+335	28485	150	-	case 84 mirror=1: base/Body: 84 base_full feet pose z 120 loop pose baked	Case=84,Mirror=1
+336	28635	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+337	28655	150	-	case 85 mirror=0: base/Body: 85 base_full feet pose xyz 10 unbaked	Case=85,Mirror=0
+338	28805	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+339	28825	150	-	case 85 mirror=1: base/Body: 85 base_full feet pose xyz 10 unbaked	Case=85,Mirror=1
+340	28975	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+341	28995	150	-	case 86 mirror=0: base/Body: 86 base_full feet pose xyz 10 baked	Case=86,Mirror=0
+342	29145	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+343	29165	150	-	case 86 mirror=1: base/Body: 86 base_full feet pose xyz 10 baked	Case=86,Mirror=1
+344	29315	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+345	29335	150	-	case 87 mirror=0: base/Body: 87 base_full feet pose xyz 10 loop pose unbaked	Case=87,Mirror=0
+346	29485	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+347	29505	150	-	case 87 mirror=1: base/Body: 87 base_full feet pose xyz 10 loop pose unbaked	Case=87,Mirror=1
+348	29655	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+349	29675	150	-	case 88 mirror=0: base/Body: 88 base_full feet pose xyz 10 loop pose baked	Case=88,Mirror=0
+350	29825	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+351	29845	150	-	case 88 mirror=1: base/Body: 88 base_full feet pose xyz 10 loop pose baked	Case=88,Mirror=1
+352	29995	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+353	30015	150	-	case 89 mirror=0: base/Body: 89 base_full feet pose xyz 45 unbaked	Case=89,Mirror=0
+354	30165	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+355	30185	150	-	case 89 mirror=1: base/Body: 89 base_full feet pose xyz 45 unbaked	Case=89,Mirror=1
+356	30335	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+357	30355	150	-	case 90 mirror=0: base/Body: 90 base_full feet pose xyz 45 baked	Case=90,Mirror=0
+358	30505	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+359	30525	150	-	case 90 mirror=1: base/Body: 90 base_full feet pose xyz 45 baked	Case=90,Mirror=1
+360	30675	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+361	30695	150	-	case 91 mirror=0: base/Body: 91 base_full feet pose xyz 45 loop pose unbaked	Case=91,Mirror=0
+362	30845	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+363	30865	150	-	case 91 mirror=1: base/Body: 91 base_full feet pose xyz 45 loop pose unbaked	Case=91,Mirror=1
+364	31015	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+365	31035	150	-	case 92 mirror=0: base/Body: 92 base_full feet pose xyz 45 loop pose baked	Case=92,Mirror=0
+366	31185	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+367	31205	150	-	case 92 mirror=1: base/Body: 92 base_full feet pose xyz 45 loop pose baked	Case=92,Mirror=1
+368	31355	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+369	31375	150	-	case 93 mirror=0: base/Body: 93 base_full feet pose xyz 120 unbaked	Case=93,Mirror=0
+370	31525	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+371	31545	150	-	case 93 mirror=1: base/Body: 93 base_full feet pose xyz 120 unbaked	Case=93,Mirror=1
+372	31695	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+373	31715	150	-	case 94 mirror=0: base/Body: 94 base_full feet pose xyz 120 baked	Case=94,Mirror=0
+374	31865	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+375	31885	150	-	case 94 mirror=1: base/Body: 94 base_full feet pose xyz 120 baked	Case=94,Mirror=1
+376	32035	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+377	32055	150	-	case 95 mirror=0: base/Body: 95 base_full feet pose xyz 120 loop pose unbaked	Case=95,Mirror=0
+378	32205	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+379	32225	150	-	case 95 mirror=1: base/Body: 95 base_full feet pose xyz 120 loop pose unbaked	Case=95,Mirror=1
+380	32375	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+381	32395	150	-	case 96 mirror=0: base/Body: 96 base_full feet pose xyz 120 loop pose baked	Case=96,Mirror=0
+382	32545	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+383	32565	150	-	case 96 mirror=1: base/Body: 96 base_full feet pose xyz 120 loop pose baked	Case=96,Mirror=1
+384	32715	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+385	32735	150	-	case 97 mirror=0: action/Action: 97 action_partial feet moving x 10 unbaked	Case=97,Mirror=0
+386	32885	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+387	32905	150	-	case 97 mirror=1: action/Action: 97 action_partial feet moving x 10 unbaked	Case=97,Mirror=1
+388	33055	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+389	33075	150	-	case 98 mirror=0: action/Action: 98 action_partial feet moving x 10 baked	Case=98,Mirror=0
+390	33225	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+391	33245	150	-	case 98 mirror=1: action/Action: 98 action_partial feet moving x 10 baked	Case=98,Mirror=1
+392	33395	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+393	33415	150	-	case 99 mirror=0: action/Action: 99 action_partial feet moving x 10 loop pose unbaked	Case=99,Mirror=0
+394	33565	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+395	33585	150	-	case 99 mirror=1: action/Action: 99 action_partial feet moving x 10 loop pose unbaked	Case=99,Mirror=1
+396	33735	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+397	33755	150	-	case 100 mirror=0: action/Action: 100 action_partial feet moving x 10 loop pose baked	Case=100,Mirror=0
+398	33905	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+399	33925	150	-	case 100 mirror=1: action/Action: 100 action_partial feet moving x 10 loop pose baked	Case=100,Mirror=1
+400	34075	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+401	34095	150	-	case 101 mirror=0: action/Action: 101 action_partial feet moving x 45 unbaked	Case=101,Mirror=0
+402	34245	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+403	34265	150	-	case 101 mirror=1: action/Action: 101 action_partial feet moving x 45 unbaked	Case=101,Mirror=1
+404	34415	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+405	34435	150	-	case 102 mirror=0: action/Action: 102 action_partial feet moving x 45 baked	Case=102,Mirror=0
+406	34585	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+407	34605	150	-	case 102 mirror=1: action/Action: 102 action_partial feet moving x 45 baked	Case=102,Mirror=1
+408	34755	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+409	34775	150	-	case 103 mirror=0: action/Action: 103 action_partial feet moving x 45 loop pose unbaked	Case=103,Mirror=0
+410	34925	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+411	34945	150	-	case 103 mirror=1: action/Action: 103 action_partial feet moving x 45 loop pose unbaked	Case=103,Mirror=1
+412	35095	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+413	35115	150	-	case 104 mirror=0: action/Action: 104 action_partial feet moving x 45 loop pose baked	Case=104,Mirror=0
+414	35265	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+415	35285	150	-	case 104 mirror=1: action/Action: 104 action_partial feet moving x 45 loop pose baked	Case=104,Mirror=1
+416	35435	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+417	35455	150	-	case 105 mirror=0: action/Action: 105 action_partial feet moving x 120 unbaked	Case=105,Mirror=0
+418	35605	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+419	35625	150	-	case 105 mirror=1: action/Action: 105 action_partial feet moving x 120 unbaked	Case=105,Mirror=1
+420	35775	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+421	35795	150	-	case 106 mirror=0: action/Action: 106 action_partial feet moving x 120 baked	Case=106,Mirror=0
+422	35945	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+423	35965	150	-	case 106 mirror=1: action/Action: 106 action_partial feet moving x 120 baked	Case=106,Mirror=1
+424	36115	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+425	36135	150	-	case 107 mirror=0: action/Action: 107 action_partial feet moving x 120 loop pose unbaked	Case=107,Mirror=0
+426	36285	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+427	36305	150	-	case 107 mirror=1: action/Action: 107 action_partial feet moving x 120 loop pose unbaked	Case=107,Mirror=1
+428	36455	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+429	36475	150	-	case 108 mirror=0: action/Action: 108 action_partial feet moving x 120 loop pose baked	Case=108,Mirror=0
+430	36625	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+431	36645	150	-	case 108 mirror=1: action/Action: 108 action_partial feet moving x 120 loop pose baked	Case=108,Mirror=1
+432	36795	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+433	36815	150	-	case 109 mirror=0: action/Action: 109 action_partial feet moving y 10 unbaked	Case=109,Mirror=0
+434	36965	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+435	36985	150	-	case 109 mirror=1: action/Action: 109 action_partial feet moving y 10 unbaked	Case=109,Mirror=1
+436	37135	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+437	37155	150	-	case 110 mirror=0: action/Action: 110 action_partial feet moving y 10 baked	Case=110,Mirror=0
+438	37305	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+439	37325	150	-	case 110 mirror=1: action/Action: 110 action_partial feet moving y 10 baked	Case=110,Mirror=1
+440	37475	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+441	37495	150	-	case 111 mirror=0: action/Action: 111 action_partial feet moving y 10 loop pose unbaked	Case=111,Mirror=0
+442	37645	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+443	37665	150	-	case 111 mirror=1: action/Action: 111 action_partial feet moving y 10 loop pose unbaked	Case=111,Mirror=1
+444	37815	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+445	37835	150	-	case 112 mirror=0: action/Action: 112 action_partial feet moving y 10 loop pose baked	Case=112,Mirror=0
+446	37985	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+447	38005	150	-	case 112 mirror=1: action/Action: 112 action_partial feet moving y 10 loop pose baked	Case=112,Mirror=1
+448	38155	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+449	38175	150	-	case 113 mirror=0: action/Action: 113 action_partial feet moving y 45 unbaked	Case=113,Mirror=0
+450	38325	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+451	38345	150	-	case 113 mirror=1: action/Action: 113 action_partial feet moving y 45 unbaked	Case=113,Mirror=1
+452	38495	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+453	38515	150	-	case 114 mirror=0: action/Action: 114 action_partial feet moving y 45 baked	Case=114,Mirror=0
+454	38665	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+455	38685	150	-	case 114 mirror=1: action/Action: 114 action_partial feet moving y 45 baked	Case=114,Mirror=1
+456	38835	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+457	38855	150	-	case 115 mirror=0: action/Action: 115 action_partial feet moving y 45 loop pose unbaked	Case=115,Mirror=0
+458	39005	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+459	39025	150	-	case 115 mirror=1: action/Action: 115 action_partial feet moving y 45 loop pose unbaked	Case=115,Mirror=1
+460	39175	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+461	39195	150	-	case 116 mirror=0: action/Action: 116 action_partial feet moving y 45 loop pose baked	Case=116,Mirror=0
+462	39345	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+463	39365	150	-	case 116 mirror=1: action/Action: 116 action_partial feet moving y 45 loop pose baked	Case=116,Mirror=1
+464	39515	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+465	39535	150	-	case 117 mirror=0: action/Action: 117 action_partial feet moving y 120 unbaked	Case=117,Mirror=0
+466	39685	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+467	39705	150	-	case 117 mirror=1: action/Action: 117 action_partial feet moving y 120 unbaked	Case=117,Mirror=1
+468	39855	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+469	39875	150	-	case 118 mirror=0: action/Action: 118 action_partial feet moving y 120 baked	Case=118,Mirror=0
+470	40025	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+471	40045	150	-	case 118 mirror=1: action/Action: 118 action_partial feet moving y 120 baked	Case=118,Mirror=1
+472	40195	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+473	40215	150	-	case 119 mirror=0: action/Action: 119 action_partial feet moving y 120 loop pose unbaked	Case=119,Mirror=0
+474	40365	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+475	40385	150	-	case 119 mirror=1: action/Action: 119 action_partial feet moving y 120 loop pose unbaked	Case=119,Mirror=1
+476	40535	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+477	40555	150	-	case 120 mirror=0: action/Action: 120 action_partial feet moving y 120 loop pose baked	Case=120,Mirror=0
+478	40705	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+479	40725	150	-	case 120 mirror=1: action/Action: 120 action_partial feet moving y 120 loop pose baked	Case=120,Mirror=1
+480	40875	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+481	40895	150	-	case 121 mirror=0: action/Action: 121 action_partial feet moving z 10 unbaked	Case=121,Mirror=0
+482	41045	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+483	41065	150	-	case 121 mirror=1: action/Action: 121 action_partial feet moving z 10 unbaked	Case=121,Mirror=1
+484	41215	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+485	41235	150	-	case 122 mirror=0: action/Action: 122 action_partial feet moving z 10 baked	Case=122,Mirror=0
+486	41385	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+487	41405	150	-	case 122 mirror=1: action/Action: 122 action_partial feet moving z 10 baked	Case=122,Mirror=1
+488	41555	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+489	41575	150	-	case 123 mirror=0: action/Action: 123 action_partial feet moving z 10 loop pose unbaked	Case=123,Mirror=0
+490	41725	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+491	41745	150	-	case 123 mirror=1: action/Action: 123 action_partial feet moving z 10 loop pose unbaked	Case=123,Mirror=1
+492	41895	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+493	41915	150	-	case 124 mirror=0: action/Action: 124 action_partial feet moving z 10 loop pose baked	Case=124,Mirror=0
+494	42065	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+495	42085	150	-	case 124 mirror=1: action/Action: 124 action_partial feet moving z 10 loop pose baked	Case=124,Mirror=1
+496	42235	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+497	42255	150	-	case 125 mirror=0: action/Action: 125 action_partial feet moving z 45 unbaked	Case=125,Mirror=0
+498	42405	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+499	42425	150	-	case 125 mirror=1: action/Action: 125 action_partial feet moving z 45 unbaked	Case=125,Mirror=1
+500	42575	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+501	42595	150	-	case 126 mirror=0: action/Action: 126 action_partial feet moving z 45 baked	Case=126,Mirror=0
+502	42745	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+503	42765	150	-	case 126 mirror=1: action/Action: 126 action_partial feet moving z 45 baked	Case=126,Mirror=1
+504	42915	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+505	42935	150	-	case 127 mirror=0: action/Action: 127 action_partial feet moving z 45 loop pose unbaked	Case=127,Mirror=0
+506	43085	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+507	43105	150	-	case 127 mirror=1: action/Action: 127 action_partial feet moving z 45 loop pose unbaked	Case=127,Mirror=1
+508	43255	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+509	43275	150	-	case 128 mirror=0: action/Action: 128 action_partial feet moving z 45 loop pose baked	Case=128,Mirror=0
+510	43425	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+511	43445	150	-	case 128 mirror=1: action/Action: 128 action_partial feet moving z 45 loop pose baked	Case=128,Mirror=1
+512	43595	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+513	43615	150	-	case 129 mirror=0: action/Action: 129 action_partial feet moving z 120 unbaked	Case=129,Mirror=0
+514	43765	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+515	43785	150	-	case 129 mirror=1: action/Action: 129 action_partial feet moving z 120 unbaked	Case=129,Mirror=1
+516	43935	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+517	43955	150	-	case 130 mirror=0: action/Action: 130 action_partial feet moving z 120 baked	Case=130,Mirror=0
+518	44105	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+519	44125	150	-	case 130 mirror=1: action/Action: 130 action_partial feet moving z 120 baked	Case=130,Mirror=1
+520	44275	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+521	44295	150	-	case 131 mirror=0: action/Action: 131 action_partial feet moving z 120 loop pose unbaked	Case=131,Mirror=0
+522	44445	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+523	44465	150	-	case 131 mirror=1: action/Action: 131 action_partial feet moving z 120 loop pose unbaked	Case=131,Mirror=1
+524	44615	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+525	44635	150	-	case 132 mirror=0: action/Action: 132 action_partial feet moving z 120 loop pose baked	Case=132,Mirror=0
+526	44785	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+527	44805	150	-	case 132 mirror=1: action/Action: 132 action_partial feet moving z 120 loop pose baked	Case=132,Mirror=1
+528	44955	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+529	44975	150	-	case 133 mirror=0: action/Action: 133 action_partial feet moving xyz 10 unbaked	Case=133,Mirror=0
+530	45125	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+531	45145	150	-	case 133 mirror=1: action/Action: 133 action_partial feet moving xyz 10 unbaked	Case=133,Mirror=1
+532	45295	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+533	45315	150	-	case 134 mirror=0: action/Action: 134 action_partial feet moving xyz 10 baked	Case=134,Mirror=0
+534	45465	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+535	45485	150	-	case 134 mirror=1: action/Action: 134 action_partial feet moving xyz 10 baked	Case=134,Mirror=1
+536	45635	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+537	45655	150	-	case 135 mirror=0: action/Action: 135 action_partial feet moving xyz 10 loop pose unbaked	Case=135,Mirror=0
+538	45805	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+539	45825	150	-	case 135 mirror=1: action/Action: 135 action_partial feet moving xyz 10 loop pose unbaked	Case=135,Mirror=1
+540	45975	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+541	45995	150	-	case 136 mirror=0: action/Action: 136 action_partial feet moving xyz 10 loop pose baked	Case=136,Mirror=0
+542	46145	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+543	46165	150	-	case 136 mirror=1: action/Action: 136 action_partial feet moving xyz 10 loop pose baked	Case=136,Mirror=1
+544	46315	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+545	46335	150	-	case 137 mirror=0: action/Action: 137 action_partial feet moving xyz 45 unbaked	Case=137,Mirror=0
+546	46485	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+547	46505	150	-	case 137 mirror=1: action/Action: 137 action_partial feet moving xyz 45 unbaked	Case=137,Mirror=1
+548	46655	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+549	46675	150	-	case 138 mirror=0: action/Action: 138 action_partial feet moving xyz 45 baked	Case=138,Mirror=0
+550	46825	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+551	46845	150	-	case 138 mirror=1: action/Action: 138 action_partial feet moving xyz 45 baked	Case=138,Mirror=1
+552	46995	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+553	47015	150	-	case 139 mirror=0: action/Action: 139 action_partial feet moving xyz 45 loop pose unbaked	Case=139,Mirror=0
+554	47165	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+555	47185	150	-	case 139 mirror=1: action/Action: 139 action_partial feet moving xyz 45 loop pose unbaked	Case=139,Mirror=1
+556	47335	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+557	47355	150	-	case 140 mirror=0: action/Action: 140 action_partial feet moving xyz 45 loop pose baked	Case=140,Mirror=0
+558	47505	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+559	47525	150	-	case 140 mirror=1: action/Action: 140 action_partial feet moving xyz 45 loop pose baked	Case=140,Mirror=1
+560	47675	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+561	47695	150	-	case 141 mirror=0: action/Action: 141 action_partial feet moving xyz 120 unbaked	Case=141,Mirror=0
+562	47845	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+563	47865	150	-	case 141 mirror=1: action/Action: 141 action_partial feet moving xyz 120 unbaked	Case=141,Mirror=1
+564	48015	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+565	48035	150	-	case 142 mirror=0: action/Action: 142 action_partial feet moving xyz 120 baked	Case=142,Mirror=0
+566	48185	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+567	48205	150	-	case 142 mirror=1: action/Action: 142 action_partial feet moving xyz 120 baked	Case=142,Mirror=1
+568	48355	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+569	48375	150	-	case 143 mirror=0: action/Action: 143 action_partial feet moving xyz 120 loop pose unbaked	Case=143,Mirror=0
+570	48525	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+571	48545	150	-	case 143 mirror=1: action/Action: 143 action_partial feet moving xyz 120 loop pose unbaked	Case=143,Mirror=1
+572	48695	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+573	48715	150	-	case 144 mirror=0: action/Action: 144 action_partial feet moving xyz 120 loop pose baked	Case=144,Mirror=0
+574	48865	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+575	48885	150	-	case 144 mirror=1: action/Action: 144 action_partial feet moving xyz 120 loop pose baked	Case=144,Mirror=1
+576	49035	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+577	49055	150	-	case 145 mirror=0: action/Action: 145 action_partial feet pose x 10 unbaked	Case=145,Mirror=0
+578	49205	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+579	49225	150	-	case 145 mirror=1: action/Action: 145 action_partial feet pose x 10 unbaked	Case=145,Mirror=1
+580	49375	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+581	49395	150	-	case 146 mirror=0: action/Action: 146 action_partial feet pose x 10 baked	Case=146,Mirror=0
+582	49545	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+583	49565	150	-	case 146 mirror=1: action/Action: 146 action_partial feet pose x 10 baked	Case=146,Mirror=1
+584	49715	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+585	49735	150	-	case 147 mirror=0: action/Action: 147 action_partial feet pose x 10 loop pose unbaked	Case=147,Mirror=0
+586	49885	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+587	49905	150	-	case 147 mirror=1: action/Action: 147 action_partial feet pose x 10 loop pose unbaked	Case=147,Mirror=1
+588	50055	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+589	50075	150	-	case 148 mirror=0: action/Action: 148 action_partial feet pose x 10 loop pose baked	Case=148,Mirror=0
+590	50225	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+591	50245	150	-	case 148 mirror=1: action/Action: 148 action_partial feet pose x 10 loop pose baked	Case=148,Mirror=1
+592	50395	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+593	50415	150	-	case 149 mirror=0: action/Action: 149 action_partial feet pose x 45 unbaked	Case=149,Mirror=0
+594	50565	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+595	50585	150	-	case 149 mirror=1: action/Action: 149 action_partial feet pose x 45 unbaked	Case=149,Mirror=1
+596	50735	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+597	50755	150	-	case 150 mirror=0: action/Action: 150 action_partial feet pose x 45 baked	Case=150,Mirror=0
+598	50905	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+599	50925	150	-	case 150 mirror=1: action/Action: 150 action_partial feet pose x 45 baked	Case=150,Mirror=1
+600	51075	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+601	51095	150	-	case 151 mirror=0: action/Action: 151 action_partial feet pose x 45 loop pose unbaked	Case=151,Mirror=0
+602	51245	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+603	51265	150	-	case 151 mirror=1: action/Action: 151 action_partial feet pose x 45 loop pose unbaked	Case=151,Mirror=1
+604	51415	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+605	51435	150	-	case 152 mirror=0: action/Action: 152 action_partial feet pose x 45 loop pose baked	Case=152,Mirror=0
+606	51585	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+607	51605	150	-	case 152 mirror=1: action/Action: 152 action_partial feet pose x 45 loop pose baked	Case=152,Mirror=1
+608	51755	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+609	51775	150	-	case 153 mirror=0: action/Action: 153 action_partial feet pose x 120 unbaked	Case=153,Mirror=0
+610	51925	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+611	51945	150	-	case 153 mirror=1: action/Action: 153 action_partial feet pose x 120 unbaked	Case=153,Mirror=1
+612	52095	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+613	52115	150	-	case 154 mirror=0: action/Action: 154 action_partial feet pose x 120 baked	Case=154,Mirror=0
+614	52265	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+615	52285	150	-	case 154 mirror=1: action/Action: 154 action_partial feet pose x 120 baked	Case=154,Mirror=1
+616	52435	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+617	52455	150	-	case 155 mirror=0: action/Action: 155 action_partial feet pose x 120 loop pose unbaked	Case=155,Mirror=0
+618	52605	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+619	52625	150	-	case 155 mirror=1: action/Action: 155 action_partial feet pose x 120 loop pose unbaked	Case=155,Mirror=1
+620	52775	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+621	52795	150	-	case 156 mirror=0: action/Action: 156 action_partial feet pose x 120 loop pose baked	Case=156,Mirror=0
+622	52945	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+623	52965	150	-	case 156 mirror=1: action/Action: 156 action_partial feet pose x 120 loop pose baked	Case=156,Mirror=1
+624	53115	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+625	53135	150	-	case 157 mirror=0: action/Action: 157 action_partial feet pose y 10 unbaked	Case=157,Mirror=0
+626	53285	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+627	53305	150	-	case 157 mirror=1: action/Action: 157 action_partial feet pose y 10 unbaked	Case=157,Mirror=1
+628	53455	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+629	53475	150	-	case 158 mirror=0: action/Action: 158 action_partial feet pose y 10 baked	Case=158,Mirror=0
+630	53625	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+631	53645	150	-	case 158 mirror=1: action/Action: 158 action_partial feet pose y 10 baked	Case=158,Mirror=1
+632	53795	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+633	53815	150	-	case 159 mirror=0: action/Action: 159 action_partial feet pose y 10 loop pose unbaked	Case=159,Mirror=0
+634	53965	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+635	53985	150	-	case 159 mirror=1: action/Action: 159 action_partial feet pose y 10 loop pose unbaked	Case=159,Mirror=1
+636	54135	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+637	54155	150	-	case 160 mirror=0: action/Action: 160 action_partial feet pose y 10 loop pose baked	Case=160,Mirror=0
+638	54305	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+639	54325	150	-	case 160 mirror=1: action/Action: 160 action_partial feet pose y 10 loop pose baked	Case=160,Mirror=1
+640	54475	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+641	54495	150	-	case 161 mirror=0: action/Action: 161 action_partial feet pose y 45 unbaked	Case=161,Mirror=0
+642	54645	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+643	54665	150	-	case 161 mirror=1: action/Action: 161 action_partial feet pose y 45 unbaked	Case=161,Mirror=1
+644	54815	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+645	54835	150	-	case 162 mirror=0: action/Action: 162 action_partial feet pose y 45 baked	Case=162,Mirror=0
+646	54985	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+647	55005	150	-	case 162 mirror=1: action/Action: 162 action_partial feet pose y 45 baked	Case=162,Mirror=1
+648	55155	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+649	55175	150	-	case 163 mirror=0: action/Action: 163 action_partial feet pose y 45 loop pose unbaked	Case=163,Mirror=0
+650	55325	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+651	55345	150	-	case 163 mirror=1: action/Action: 163 action_partial feet pose y 45 loop pose unbaked	Case=163,Mirror=1
+652	55495	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+653	55515	150	-	case 164 mirror=0: action/Action: 164 action_partial feet pose y 45 loop pose baked	Case=164,Mirror=0
+654	55665	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+655	55685	150	-	case 164 mirror=1: action/Action: 164 action_partial feet pose y 45 loop pose baked	Case=164,Mirror=1
+656	55835	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+657	55855	150	-	case 165 mirror=0: action/Action: 165 action_partial feet pose y 120 unbaked	Case=165,Mirror=0
+658	56005	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+659	56025	150	-	case 165 mirror=1: action/Action: 165 action_partial feet pose y 120 unbaked	Case=165,Mirror=1
+660	56175	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+661	56195	150	-	case 166 mirror=0: action/Action: 166 action_partial feet pose y 120 baked	Case=166,Mirror=0
+662	56345	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+663	56365	150	-	case 166 mirror=1: action/Action: 166 action_partial feet pose y 120 baked	Case=166,Mirror=1
+664	56515	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+665	56535	150	-	case 167 mirror=0: action/Action: 167 action_partial feet pose y 120 loop pose unbaked	Case=167,Mirror=0
+666	56685	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+667	56705	150	-	case 167 mirror=1: action/Action: 167 action_partial feet pose y 120 loop pose unbaked	Case=167,Mirror=1
+668	56855	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+669	56875	150	-	case 168 mirror=0: action/Action: 168 action_partial feet pose y 120 loop pose baked	Case=168,Mirror=0
+670	57025	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+671	57045	150	-	case 168 mirror=1: action/Action: 168 action_partial feet pose y 120 loop pose baked	Case=168,Mirror=1
+672	57195	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+673	57215	150	-	case 169 mirror=0: action/Action: 169 action_partial feet pose z 10 unbaked	Case=169,Mirror=0
+674	57365	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+675	57385	150	-	case 169 mirror=1: action/Action: 169 action_partial feet pose z 10 unbaked	Case=169,Mirror=1
+676	57535	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+677	57555	150	-	case 170 mirror=0: action/Action: 170 action_partial feet pose z 10 baked	Case=170,Mirror=0
+678	57705	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+679	57725	150	-	case 170 mirror=1: action/Action: 170 action_partial feet pose z 10 baked	Case=170,Mirror=1
+680	57875	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+681	57895	150	-	case 171 mirror=0: action/Action: 171 action_partial feet pose z 10 loop pose unbaked	Case=171,Mirror=0
+682	58045	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+683	58065	150	-	case 171 mirror=1: action/Action: 171 action_partial feet pose z 10 loop pose unbaked	Case=171,Mirror=1
+684	58215	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+685	58235	150	-	case 172 mirror=0: action/Action: 172 action_partial feet pose z 10 loop pose baked	Case=172,Mirror=0
+686	58385	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+687	58405	150	-	case 172 mirror=1: action/Action: 172 action_partial feet pose z 10 loop pose baked	Case=172,Mirror=1
+688	58555	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+689	58575	150	-	case 173 mirror=0: action/Action: 173 action_partial feet pose z 45 unbaked	Case=173,Mirror=0
+690	58725	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+691	58745	150	-	case 173 mirror=1: action/Action: 173 action_partial feet pose z 45 unbaked	Case=173,Mirror=1
+692	58895	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+693	58915	150	-	case 174 mirror=0: action/Action: 174 action_partial feet pose z 45 baked	Case=174,Mirror=0
+694	59065	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+695	59085	150	-	case 174 mirror=1: action/Action: 174 action_partial feet pose z 45 baked	Case=174,Mirror=1
+696	59235	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+697	59255	150	-	case 175 mirror=0: action/Action: 175 action_partial feet pose z 45 loop pose unbaked	Case=175,Mirror=0
+698	59405	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+699	59425	150	-	case 175 mirror=1: action/Action: 175 action_partial feet pose z 45 loop pose unbaked	Case=175,Mirror=1
+700	59575	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+701	59595	150	-	case 176 mirror=0: action/Action: 176 action_partial feet pose z 45 loop pose baked	Case=176,Mirror=0
+702	59745	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+703	59765	150	-	case 176 mirror=1: action/Action: 176 action_partial feet pose z 45 loop pose baked	Case=176,Mirror=1
+704	59915	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+705	59935	150	-	case 177 mirror=0: action/Action: 177 action_partial feet pose z 120 unbaked	Case=177,Mirror=0
+706	60085	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+707	60105	150	-	case 177 mirror=1: action/Action: 177 action_partial feet pose z 120 unbaked	Case=177,Mirror=1
+708	60255	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+709	60275	150	-	case 178 mirror=0: action/Action: 178 action_partial feet pose z 120 baked	Case=178,Mirror=0
+710	60425	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+711	60445	150	-	case 178 mirror=1: action/Action: 178 action_partial feet pose z 120 baked	Case=178,Mirror=1
+712	60595	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+713	60615	150	-	case 179 mirror=0: action/Action: 179 action_partial feet pose z 120 loop pose unbaked	Case=179,Mirror=0
+714	60765	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+715	60785	150	-	case 179 mirror=1: action/Action: 179 action_partial feet pose z 120 loop pose unbaked	Case=179,Mirror=1
+716	60935	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+717	60955	150	-	case 180 mirror=0: action/Action: 180 action_partial feet pose z 120 loop pose baked	Case=180,Mirror=0
+718	61105	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+719	61125	150	-	case 180 mirror=1: action/Action: 180 action_partial feet pose z 120 loop pose baked	Case=180,Mirror=1
+720	61275	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+721	61295	150	-	case 181 mirror=0: action/Action: 181 action_partial feet pose xyz 10 unbaked	Case=181,Mirror=0
+722	61445	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+723	61465	150	-	case 181 mirror=1: action/Action: 181 action_partial feet pose xyz 10 unbaked	Case=181,Mirror=1
+724	61615	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+725	61635	150	-	case 182 mirror=0: action/Action: 182 action_partial feet pose xyz 10 baked	Case=182,Mirror=0
+726	61785	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+727	61805	150	-	case 182 mirror=1: action/Action: 182 action_partial feet pose xyz 10 baked	Case=182,Mirror=1
+728	61955	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+729	61975	150	-	case 183 mirror=0: action/Action: 183 action_partial feet pose xyz 10 loop pose unbaked	Case=183,Mirror=0
+730	62125	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+731	62145	150	-	case 183 mirror=1: action/Action: 183 action_partial feet pose xyz 10 loop pose unbaked	Case=183,Mirror=1
+732	62295	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+733	62315	150	-	case 184 mirror=0: action/Action: 184 action_partial feet pose xyz 10 loop pose baked	Case=184,Mirror=0
+734	62465	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+735	62485	150	-	case 184 mirror=1: action/Action: 184 action_partial feet pose xyz 10 loop pose baked	Case=184,Mirror=1
+736	62635	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+737	62655	150	-	case 185 mirror=0: action/Action: 185 action_partial feet pose xyz 45 unbaked	Case=185,Mirror=0
+738	62805	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+739	62825	150	-	case 185 mirror=1: action/Action: 185 action_partial feet pose xyz 45 unbaked	Case=185,Mirror=1
+740	62975	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+741	62995	150	-	case 186 mirror=0: action/Action: 186 action_partial feet pose xyz 45 baked	Case=186,Mirror=0
+742	63145	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+743	63165	150	-	case 186 mirror=1: action/Action: 186 action_partial feet pose xyz 45 baked	Case=186,Mirror=1
+744	63315	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+745	63335	150	-	case 187 mirror=0: action/Action: 187 action_partial feet pose xyz 45 loop pose unbaked	Case=187,Mirror=0
+746	63485	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+747	63505	150	-	case 187 mirror=1: action/Action: 187 action_partial feet pose xyz 45 loop pose unbaked	Case=187,Mirror=1
+748	63655	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+749	63675	150	-	case 188 mirror=0: action/Action: 188 action_partial feet pose xyz 45 loop pose baked	Case=188,Mirror=0
+750	63825	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+751	63845	150	-	case 188 mirror=1: action/Action: 188 action_partial feet pose xyz 45 loop pose baked	Case=188,Mirror=1
+752	63995	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+753	64015	150	-	case 189 mirror=0: action/Action: 189 action_partial feet pose xyz 120 unbaked	Case=189,Mirror=0
+754	64165	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+755	64185	150	-	case 189 mirror=1: action/Action: 189 action_partial feet pose xyz 120 unbaked	Case=189,Mirror=1
+756	64335	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+757	64355	150	-	case 190 mirror=0: action/Action: 190 action_partial feet pose xyz 120 baked	Case=190,Mirror=0
+758	64505	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+759	64525	150	-	case 190 mirror=1: action/Action: 190 action_partial feet pose xyz 120 baked	Case=190,Mirror=1
+760	64675	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+761	64695	150	-	case 191 mirror=0: action/Action: 191 action_partial feet pose xyz 120 loop pose unbaked	Case=191,Mirror=0
+762	64845	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+763	64865	150	-	case 191 mirror=1: action/Action: 191 action_partial feet pose xyz 120 loop pose unbaked	Case=191,Mirror=1
+764	65015	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+765	65035	150	-	case 192 mirror=0: action/Action: 192 action_partial feet pose xyz 120 loop pose baked	Case=192,Mirror=0
+766	65185	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+767	65205	150	-	case 192 mirror=1: action/Action: 192 action_partial feet pose xyz 120 loop pose baked	Case=192,Mirror=1
+768	65355	20	-	reset	Case=0,Mirror=0,BlendX=0,BlendY=0,BlendU=0
+769	65375	60	-	final	

@@ -99,6 +99,45 @@ fn each_loop_pose_drift_follows_its_reference_trace() {
     assert_eq!(rep.bindings.wrong, 0, "bindings: {}", rep.bindings.summary(20));
 }
 
+/// The Feet height basis probe plays looping humanoid clips whose height is based upon Feet, turned by 10, 45 or 120
+/// degrees about X, Y, Z or all three, as a walk over five cycles and as a zero-length pose, with Loop Pose on and off,
+/// in Base at full weight and Action at partial weight, unmirrored and mirrored, each with its height left unbaked
+/// beside the same clip with its height baked. Parameters, states, values and state times follow the reference, and so
+/// does every unbaked case turning about Y alone or by 10 degrees, with the reset after it. The other unbaked cases and
+/// the baked controls, which all but the poses turned 120 degrees about X miss today, are held to today's wrong samples.
+#[test]
+fn each_feet_height_basis_follows_its_reference_trace() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dir = root.join("fixtures/reference/feet-animator");
+    let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-feet.glb")).unwrap()).unwrap();
+    let rep = Run::new(&dir, avatar).run(None);
+    assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
+    assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
+    assert_eq!(rep.values.wrong, 0, "values: {}", rep.values.summary(20));
+    assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
+    assert!(rep.bindings.compared > 7_900_000, "{} bindings compared", rep.bindings.compared);
+    let steps = reference::animator::steps(&dir);
+    let cases: Vec<_> = steps.iter().enumerate().filter(|(_, s)| s.label.starts_with("case ")).collect();
+    assert_eq!(cases.len(), 384, "192 cases, each unmirrored and mirrored");
+    let (mut unbaked_held, mut baked_held) = (0, 0);
+    for (i, s) in cases {
+        let reset = &steps[i + 1];
+        assert_eq!(reset.label, "reset");
+        let wrong = rep.bindings.samples.range((s.frame, String::new())..(reset.frame + reset.frames, String::new())).count();
+        let clip: Vec<&str> = s.label.split(" feet ").nth(1).unwrap().split(' ').collect();
+        let (axes, degrees) = (clip[1], clip[2]);
+        match *clip.last().unwrap() {
+            "unbaked" if axes == "y" || degrees == "10" => assert_eq!(wrong, 0, "{} differs", s.label),
+            "unbaked" => unbaked_held += wrong,
+            "baked" => baked_held += wrong,
+            other => panic!("{}: no height setting {other}", s.label),
+        }
+    }
+    assert_eq!(unbaked_held + baked_held, rep.bindings.wrong, "wrong samples outside the cases and their resets");
+    assert!(unbaked_held <= 39_820, "unbaked: {unbaked_held} wrong");
+    assert!(baked_held <= 164_720, "baked: {baked_held} wrong");
+}
+
 /// The blend duration probe plays one blend tree at a time; the core keeps every state's time. The values of every
 /// case but the first tree without write defaults (case 75), which starts from what the case before it left, follow
 /// the reference, released zero-length children of 2D trees included.
