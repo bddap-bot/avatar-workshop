@@ -125,6 +125,8 @@ struct Playable {
     slots: Vec<Vec<u32>>,
     /// Per layer, whether it has played a motion.
     played: Vec<bool>,
+    /// Whether one of its layers has entered a state with a motion or a transition, at some weight.
+    sounded: bool,
     /// The targets an additive layer of this controller adds to: those it binds, and every generic property another
     /// controller binds that no later playable does, which would write over it.
     reach: Vec<u32>,
@@ -139,6 +141,13 @@ struct Playable {
 struct Mask {
     parts: Vec<BodyPart>,
     nodes: Option<HashMap<u32, bool>>,
+}
+
+impl Accum {
+    fn at_defaults(cov: &[f32], defaults: &[f32]) -> Accum {
+        let n = cov.len();
+        Accum { sum: cov.iter().zip(defaults).map(|(c, d)| c * d).collect(), cov: cov.to_vec(), touched: vec![false; n], wrote: vec![false; n] }
+    }
 }
 
 struct Accum {
@@ -198,6 +207,8 @@ pub struct Animator {
     /// The body's targets (position, then rotation), and each IK goal's with its rest from the body: the animator
     /// blends a goal as the body it follows, and Unity's human stream holds it at its rest from there.
     body: Option<[u32; 7]>,
+    /// Without a humanoid rig no playable carries a human pose, and each controller runs its own stream.
+    humanoid: bool,
     /// The root motion's targets, a transform like the body's.
     motion: Option<[u32; 7]>,
     goals: Vec<([u32; 7], glam::Vec3, glam::Quat)>,
@@ -403,6 +414,7 @@ pub fn compile_clips(avatar: &Avatar) -> (Targets, Vec<CompiledClip>) {
 impl Animator {
     pub fn new(avatar: &Avatar) -> Animator {
         let m = &avatar.model;
+        let humanoid = !m.humanoid.bones.is_empty();
         let (mut targets, clips) = compile_clips(avatar);
         let face = face::Face::new(&m.descriptor, &mut targets);
         let anim_params = |c: u32| -> Vec<String> {
@@ -502,6 +514,7 @@ impl Animator {
                 bound,
                 slots,
                 played: vec![false; c.layers.len()],
+                sounded: false,
                 reach: Vec::new(),
                 layer_human: vec![HashMap::new(); c.layers.len()],
                 said: vec![Vec::new(); c.layers.len()],
@@ -559,7 +572,11 @@ impl Animator {
         for pi in 0..playables.len() {
             let bound_by = |ps: &[Playable], t: &u32| ps.iter().any(|p| p.bound.binary_search(t).is_ok());
             let mut reach: Vec<u32> = playables[pi].bound.clone();
-            reach.extend(playables[..pi].iter().flat_map(|p| p.bound.iter().copied()).filter(|t| targets.list[*t as usize].generic() && !bound_by(&playables[pi..], t)));
+            if humanoid {
+                reach.extend(playables[..pi].iter().flat_map(|p| p.bound.iter().copied()).filter(|t| targets.list[*t as usize].generic() && !bound_by(&playables[pi..], t)));
+            } else {
+                reach.extend(playables.iter().flat_map(|p| p.bound.iter().copied()).filter(|t| targets.list[*t as usize].generic()));
+            }
             reach.sort_unstable();
             reach.dedup();
             playables[pi].reach = reach;
@@ -594,6 +611,7 @@ impl Animator {
         let unbound_face = (unbound(mouth), unbound(lids));
         let mut a = Animator {
             body: ids("Root"),
+            humanoid,
             motion: ids("Motion"),
             goals,
             values: Vec::new(),
@@ -640,6 +658,12 @@ impl Animator {
         let percent = (y as f64 - 0.2f32 as f64) / (5.0f32 - 0.2f32) as f64;
         self.builtins.insert("EyeHeightAsPercent".into(), (percent as f32).clamp(0.0, 1.0));
         self.normalized = self.builtins.clone();
+    }
+
+    /// What a state without write defaults holds a target at. Without a humanoid rig a node's position holds the
+    /// scene's last value and every other property its default.
+    fn hold(&self, i: usize) -> f32 {
+        if self.humanoid || matches!(self.targets.list[i], Target::Translation(..)) { self.kept[i] } else { self.defaults[i] }
     }
 
     pub fn targets(&self) -> &[Target] {
@@ -915,6 +939,7 @@ impl Animator {
 
         let prev = self.blended.clone();
         let clips = std::mem::take(&mut self.clips);
+        let holds: Vec<f32> = (0..self.targets.len()).map(|i| self.hold(i)).collect();
         let mut all_entered = Vec::new();
         for pi in 0..self.playables.len() {
             let mut entered = Vec::new();
@@ -926,7 +951,7 @@ impl Animator {
                 let slots = self.playables[pi].slots.clone();
                 let targets = &self.targets.list;
                 let beneath = |t: u32| prev_ref[t as usize];
-                let kept = |t: u32| self.kept[t as usize];
+                let kept = |t: u32| holds[t as usize];
                 let quats = &self.rotations;
                 let body = self.body;
                 let frozen = |rt: &ControllerRt, li: usize| {
@@ -943,8 +968,7 @@ impl Animator {
         }
         let n = self.targets.len();
         let cov: Vec<f32> = (0..n).map(|i| (!self.targets.list[i].rests_at_default() || self.curved[i]) as u8 as f32).collect();
-        let sum = (0..n).map(|i| cov[i] * self.defaults[i]).collect();
-        let mut acc = Accum { sum, cov, touched: vec![false; n], wrote: vec![false; n] };
+        let mut acc = Accum::at_defaults(&cov, &self.defaults);
         for pi in 0..self.playables.len() {
             let pw = self.playables[pi].weight;
             let below: Vec<(f32, f32, bool)> = self.playables[pi]
@@ -960,7 +984,41 @@ impl Animator {
             let mut layer_human = std::mem::take(&mut self.playables[pi].layer_human);
             let mut said = std::mem::take(&mut self.playables[pi].said);
             let mut played = std::mem::take(&mut self.playables[pi].played);
+            // Without a humanoid rig, once a controller has played a motion every generic property reads its stream,
+            // which starts from the defaults: Unity resets them all the frame it first does.
+            let stack = (!self.humanoid).then(|| std::mem::replace(&mut acc, Accum::at_defaults(&cov, &self.defaults)));
             let params = self.evaluate(pi, &clips, &prev, &mut acc, &mut layer_human, &mut said, &mut played);
+            if let Some(stack) = stack {
+                let stream = std::mem::replace(&mut acc, stack);
+                let p = &mut self.playables[pi];
+                p.sounded |= p.rt.layers.iter().enumerate().any(|(li, l)| {
+                    let w = if li == 0 { 1.0 } else { l.weight } * pw;
+                    w > 0.0 && (l.active.is_some() || l.current.as_ref().is_some_and(|c| p.rt.motion(li, c.state).is_some()))
+                });
+                if p.sounded {
+                    let adds = p.kind == PlayableLayerType::Additive;
+                    for i in (0..n).filter(|&i| self.targets.list[i].generic()) {
+                        if self.targets.list[i].discrete() {
+                            if stream.touched[i] && pw >= 0.5 {
+                                acc.sum[i] = stream.sum[i];
+                                acc.touched[i] = true;
+                            }
+                            continue;
+                        }
+                        let v = stream.sum[i] + (1.0 - stream.cov[i]) * self.defaults[i];
+                        if adds {
+                            acc.sum[i] += (v - self.targets.list[i].identity()) * pw;
+                        } else {
+                            acc.sum[i] = acc.sum[i] * (1.0 - pw) + v * pw;
+                            acc.cov[i] = acc.cov[i] * (1.0 - pw) + pw;
+                        }
+                        acc.touched[i] |= pw > 0.0;
+                    }
+                    for (w, &x) in acc.wrote.iter_mut().zip(&stream.wrote) {
+                        *w |= x;
+                    }
+                }
+            }
             self.playables[pi].layer_human = layer_human;
             self.playables[pi].said = said;
             self.playables[pi].played = played;
@@ -1060,8 +1118,8 @@ impl Animator {
         let mut own: HashMap<u32, (f32, f32)> = HashMap::new();
         let mut written = vec![false; self.targets.len()];
         let mut held = false;
-        // The Base and Additive playables write the human pose and animator parameters alone.
-        let writes_generic = !matches!(p.kind, PlayableLayerType::Base | PlayableLayerType::Additive);
+        // On a humanoid avatar the Base and Additive playables write the human pose and animator parameters alone.
+        let writes_generic = !self.humanoid || !matches!(p.kind, PlayableLayerType::Base | PlayableLayerType::Additive);
         let holdable = |i: usize| !(self.targets.list[i].rests_at_default() && !self.curved[i]) && !matches!(self.targets.list[i], Target::AnimatorParameter(_)) && !p.whole[i];
         for li in 0..p.rt.layers.len() {
             let lw = if li == 0 { 1.0 } else { p.rt.layers[li].weight };
@@ -1069,10 +1127,11 @@ impl Animator {
             if wl <= 0.0 {
                 continue;
             }
-            let additive = p.kind == PlayableLayerType::Additive || p.rt.layer_defs[li].blending == LayerBlending::Additive;
-            // The Additive playable's own override layers build a human pose like any controller's, which the
-            // playable then adds to the stack; its other properties add layer by layer.
-            let stacked = p.kind == PlayableLayerType::Additive && p.rt.layer_defs[li].blending != LayerBlending::Additive;
+            let playable_adds = p.kind == PlayableLayerType::Additive && self.humanoid;
+            let additive = playable_adds || p.rt.layer_defs[li].blending == LayerBlending::Additive;
+            // On a humanoid avatar the Additive playable's own override layers build a human pose like any
+            // controller's, which the playable then adds to the stack; its other properties add layer by layer.
+            let stacked = playable_adds && p.rt.layer_defs[li].blending != LayerBlending::Additive;
             let mask = &p.layer_masks[li];
             let passes = |i: usize| -> bool {
                 if !writes_generic && self.targets.list[i].generic() {
@@ -1105,9 +1164,9 @@ impl Animator {
                         if wl < 0.5 {
                             continue;
                         }
-                        acc.sum[i] = self.kept[i];
+                        acc.sum[i] = self.hold(i);
                     } else {
-                        acc.sum[i] = acc.sum[i] * (1.0 - wl) + self.kept[i] * wl;
+                        acc.sum[i] = acc.sum[i] * (1.0 - wl) + self.hold(i) * wl;
                         acc.cov[i] = acc.cov[i] * (1.0 - wl) + wl;
                     }
                     acc.touched[i] = true;
@@ -1126,7 +1185,7 @@ impl Animator {
                 }
                 acc.sum[i] + (1.0 - acc.cov[i]) * self.defaults[i]
             };
-            let kept = |t: u32| self.kept[t as usize];
+            let kept = |t: u32| self.hold(t as usize);
             let through = |t: u32| if acc.touched[t as usize] { beneath(t) } else { prev[t as usize] };
             let reset = |t: u32| match (acc.touched[t as usize], p.binders[t as usize] > 1) {
                 (true, _) => beneath(t),
@@ -1203,7 +1262,7 @@ impl Animator {
                         let mut last: Vec<(u32, f32, f32)> = pose.iter().filter(|x| holdable(x.0 as usize) && x.2 > 0.0).map(|x| (x.0, x.1, 1.0)).collect();
                         if !wd {
                             let animated: std::collections::HashSet<u32> = last.iter().map(|x| x.0).collect();
-                            last.extend(p.bound.iter().filter(|&&t| holdable(t as usize) && !animated.contains(&t)).map(|&t| (t, self.kept[t as usize], 1.0)));
+                            last.extend(p.bound.iter().filter(|&&t| holdable(t as usize) && !animated.contains(&t)).map(|&t| (t, self.hold(t as usize), 1.0)));
                         }
                         said[li] = last;
                     }
