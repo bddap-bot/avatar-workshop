@@ -63,7 +63,8 @@ namespace AvatarWorkshop.Reference
                 : scenePath == "crossfade" ? Fixture.Kind.Crossfade : scenePath == "generic" ? Fixture.Kind.Generic
                 : scenePath == "gridhold" ? Fixture.Kind.GridHold : scenePath == "gridrule" ? Fixture.Kind.GridRule
                 : scenePath == "genericrig" ? Fixture.Kind.GenericRig : scenePath == "generichold" ? Fixture.Kind.GenericHold
-                : scenePath == "genericweight" ? Fixture.Kind.GenericWeight : (Fixture.Kind?)null;
+                : scenePath == "genericweight" ? Fixture.Kind.GenericWeight
+                : scenePath == "loopdrift" ? Fixture.Kind.LoopDrift : (Fixture.Kind?)null;
             if (kind.HasValue) scenePath = Fixture.Build(kind.Value);
 
             EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
@@ -305,8 +306,8 @@ namespace AvatarWorkshop.Reference
         public bool Finished;
         readonly string output;
         readonly string avatarName;
-        readonly bool fixture, probe, human, blend, layering, sampleTime, rotation, dense, crossfade, generic, gridHold, gridRule, genericRig, genericHold, genericWeight;
-        bool Cased => human || blend || layering || sampleTime || rotation || dense || crossfade || generic || gridHold || gridRule || genericRig || genericHold || genericWeight;
+        readonly bool fixture, probe, human, blend, layering, sampleTime, rotation, dense, crossfade, generic, gridHold, gridRule, genericRig, genericHold, genericWeight, loopDrift;
+        bool Cased => human || blend || layering || sampleTime || rotation || dense || crossfade || generic || gridHold || gridRule || genericRig || genericHold || genericWeight || loopDrift;
         readonly bool migratedDynamicBones;
         bool exported;
         StreamWriter timeOut;
@@ -381,6 +382,7 @@ namespace AvatarWorkshop.Reference
             genericRig = kind == Fixture.Kind.GenericRig;
             genericHold = kind == Fixture.Kind.GenericHold;
             genericWeight = kind == Fixture.Kind.GenericWeight;
+            loopDrift = kind == Fixture.Kind.LoopDrift;
             this.output = output;
             this.avatarName = avatarName;
             this.migratedDynamicBones = migratedDynamicBones;
@@ -718,6 +720,7 @@ namespace AvatarWorkshop.Reference
                     : genericRig ? ("generic-rig playable", Coverage.RigCompositions, Coverage.CountRigCompositions(descriptor))
                     : genericHold ? ("generic-rig hold", Coverage.HoldCompositions, Coverage.CountHoldCompositions(descriptor))
                     : genericWeight ? ("generic-rig playable-weight", Coverage.WeightCompositions, Coverage.CountWeightCompositions(descriptor))
+                    : loopDrift ? ("Loop Pose drift", Coverage.DriftCompositions, Coverage.CountDriftCompositions(descriptor))
                     : ("clip sample-time", Coverage.SampleTimeCompositions, Coverage.CountSampleTimeCompositions(descriptor));
                 File.WriteAllText(Path.Combine(output, "compositions.json"), Json(compositions) + "\n");
                 var absent = listed.Where(k => compositions[k] == 0).ToList();
@@ -745,6 +748,7 @@ namespace AvatarWorkshop.Reference
                 ["genericrig"] = genericRig,
                 ["generichold"] = genericHold,
                 ["genericweight"] = genericWeight,
+                ["loopdrift"] = loopDrift,
                 ["root_scale"] = new[] { root.lossyScale.x, root.lossyScale.y, root.lossyScale.z },
                 ["unity"] = Application.unityVersion,
                 ["dynamic_bones_migrated"] = migratedDynamicBones,

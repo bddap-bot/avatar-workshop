@@ -699,10 +699,23 @@ namespace AvatarWorkshop.Reference
             return goals.Count != 1 ? null : goals[0] == 1 ? "action_full" : goals[0] > 0 && goals[0] < 1 ? "action_partial" : null;
         }
 
-        public static SortedDictionary<string, int> CountRotationCompositions(VRCAvatarDescriptor d)
+        public static SortedDictionary<string, int> CountRotationCompositions(VRCAvatarDescriptor d) => CountHumanCases(d, RotationCompositions, clip =>
+        {
+            var kind = RotationKind(clip);
+            var axes = TurnAxes(clip, "RootQ");
+            if (kind == null || string.IsNullOrEmpty(axes) || Fixture.Goals.Any(g => TurnAxes(clip, g + "Q") != axes)) return null;
+            var q = QuaternionKeys(clip, "RootQ").Select(k => k[0].value).ToArray();
+            var unnormalized = Mathf.Abs(q.Sum(x => x * x) - 1) > 1e-3f;
+            return $"rotation.{{0}}+{kind}.axes_{axes}.{RotationSetting(AnimationUtility.GetAnimationClipSettings(clip))}{(unnormalized ? ".unnormalized" : "")}";
+        });
+
+        // Counts each case state of the Base and Action contexts of the rotation probe by the key `key` makes of its
+        // clip, its context at {0}, and ".mirrored" after it where the state mirrors.
+        static SortedDictionary<string, int> CountHumanCases(VRCAvatarDescriptor d, string[] listed, System.Func<AnimationClip, string> key)
         {
             var c = new SortedDictionary<string, int>();
-            foreach (var k in RotationCompositions) c[k] = 0;
+            foreach (var k in listed) c[k] = 0;
+            void Add(string k) => c[k] = c.TryGetValue(k, out var n) ? n + 1 : 1;
             foreach (var (type, ctrl, _) in Controllers(d))
             {
                 var parameters = new HashSet<string>(ctrl.parameters.Select(p => p.name));
@@ -710,20 +723,54 @@ namespace AvatarWorkshop.Reference
                 for (int li = 0; li < layers.Length; li++)
                     foreach (var s in CaseOf(layers[li].stateMachine).Keys)
                     {
-                        if (!(s.motion is AnimationClip clip)) continue;
-                        var kind = RotationKind(clip);
-                        var axes = TurnAxes(clip, "RootQ");
+                        if (!(s.motion is AnimationClip clip) || !(key(clip) is string format)) continue;
                         var context = RotationContext(type, li, layers[li], s);
-                        if (kind == null || context == null || string.IsNullOrEmpty(axes) || Fixture.Goals.Any(g => TurnAxes(clip, g + "Q") != axes)) continue;
-                        var q = QuaternionKeys(clip, "RootQ").Select(k => k[0].value).ToArray();
-                        var unnormalized = Mathf.Abs(q.Sum(x => x * x) - 1) > 1e-3f;
-                        var key = $"rotation.{context}+{kind}.axes_{axes}.{RotationSetting(AnimationUtility.GetAnimationClipSettings(clip))}{(unnormalized ? ".unnormalized" : "")}";
-                        c[key] = c.TryGetValue(key, out var n) ? n + 1 : 1;
-                        if (s.mirrorParameterActive && parameters.Contains(s.mirrorParameter)) c[key + ".mirrored"] = c.TryGetValue(key + ".mirrored", out var m) ? m + 1 : 1;
+                        if (context == null) continue;
+                        var k = string.Format(format, context);
+                        Add(k);
+                        if (s.mirrorParameterActive && parameters.Contains(s.mirrorParameter)) Add(k + ".mirrored");
                     }
             }
             return c;
         }
+
+        // The Loop Pose drift probe's compositions: "loopdrift.<context>+axes_<axes>.deg_<degrees>.<setting>", and
+        // ".mirrored" after each where its state mirrors. The axes and degrees are the turn from the body's first
+        // rotation to its last in the first's frame, read from the clip; the axes are those of the turn's axis with a
+        // non-zero component. A clip counts only where it has length, its body ends higher or lower and moved in XZ,
+        // and it loops under Loop Pose. The contexts are the rotation probe's.
+        static readonly string[] DriftUnmirrored =
+            (from context in Fixture.DriftContexts from a in Fixture.DriftAxes from deg in Fixture.DriftDegrees from x in Fixture.DriftSettings
+             select $"loopdrift.{context}+axes_{a.name}.deg_{deg}.{DriftSetting(x.set)}").ToArray();
+        public static readonly string[] DriftCompositions = DriftUnmirrored.Concat(DriftUnmirrored.Select(k => k + ".mirrored")).ToArray();
+
+        static string DriftSetting(System.Action<AnimationClipSettings> set)
+        {
+            var s = new AnimationClipSettings();
+            Fixture.Original(s); s.loopBlend = true; set(s);
+            return RotationSetting(s);
+        }
+
+        static string DriftTurn(AnimationClip clip)
+        {
+            var settings = AnimationUtility.GetAnimationClipSettings(clip);
+            if (Span(clip) != "length" || !settings.loopTime || !settings.loopBlend) return null;
+            var q = QuaternionKeys(clip, "RootQ");
+            var t = "xyz".Select(a => AnimationUtility.GetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), $"RootT.{a}"))?.keys).ToArray();
+            if (q.Any(k => k == null) || t.Any(k => k == null)) return null;
+            bool Moved(Keyframe[] k) => k[k.Length - 1].value != k[0].value;
+            if (!Moved(t[1]) || !(Moved(t[0]) || Moved(t[2]))) return null;
+            Quaternion At(int i) => new Quaternion(q[0][i].value, q[1][i].value, q[2][i].value, q[3][i].value);
+            int last = q[0].Length - 1;
+            if (q.Any(k => k.Length != last + 1)) return null;
+            (Quaternion.Inverse(At(0)) * At(last)).ToAngleAxis(out var degrees, out var axis);
+            var axes = string.Concat(Enumerable.Range(0, 3).Where(i => Mathf.Abs(axis[i]) > 1e-3f).Select(i => "xyz"[i]));
+            return axes.Length == 0 ? null : $"axes_{axes}.deg_{Mathf.RoundToInt(degrees)}";
+        }
+
+        public static SortedDictionary<string, int> CountDriftCompositions(VRCAvatarDescriptor d) =>
+            CountHumanCases(d, DriftCompositions, clip => DriftTurn(clip) is string turn
+                ? $"loopdrift.{{0}}+{turn}.{RotationSetting(AnimationUtility.GetAnimationClipSettings(clip))}" : null);
 
         // The dense clip probe's compositions: "dense.<kind>.<keying>.rate_<sample rate>.<tangents>.<speed>". A clip's
         // probed curves are those with more than two keys, and all of them must share a keying and tangents. Keyings
