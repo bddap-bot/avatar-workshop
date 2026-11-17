@@ -1051,6 +1051,59 @@ fn an_action_crossfade_both_of_whose_rotations_lie_opposite_the_value_beneath_co
     assert!(during[1..FADE - 1].iter().all(|q| q[3] < 0.0), "a Base crossfade turned over: {during:?}");
 }
 
+/// A state's body and goal rotations leave it as directions. Corpus 4 to 6 enter an emote by a 0.2 s crossfade from the
+/// identity into a blend tree whose leaves turn the body far apart, while the Action playable's weight ramps over the
+/// same 0.2 s. Unity blends the identity towards the tree's direction by the crossfade, then again by the playable's
+/// weight; halfway that is the body corpus 4 records. The tree's own sum, 0.938 long, would weigh less.
+#[test]
+fn a_blend_tree_state_s_body_rotation_enters_a_crossfade_as_a_direction() {
+    use avatar_core::model::{AnimatorParameter, AnimatorParameterValue, BehaviourIndex, PlayableLayerType};
+    let body = |half: f32| {
+        ["T.x", "T.y", "T.z", "Q.x", "Q.y", "Q.z", "Q.w"].iter().zip([0.0, 0.0, 0.0, half.sin(), 0.0, 0.0, half.cos()]).map(|(c, v)| muscle(&format!("Root{c}"), v)).collect::<Vec<_>>()
+    };
+    let (sum, length) = ([0.51833063f32, 0.78203595f32], 0.93821f32);
+    let (towards, apart) = (sum[0].atan2(sum[1]), length.acos());
+    let mut avatar = fixture();
+    let m = &mut avatar.model;
+    let c = m.clips.len() as u32;
+    m.clips.extend([clip("AwRest", body(0.0)), clip("AwNear", body(towards - apart)), clip("AwFar", body(towards + apart))]);
+    let ramp = m.behaviours.len() as u32;
+    m.behaviours.push(serde_json::from_value(serde_json::json!({"type": "playableLayerControl", "layer": "action", "goalWeight": 1, "blendDuration": 0.2})).unwrap());
+    let go = serde_json::json!([{"destination": {"type": "state", "id": 9302}, "conditions": [{"mode": "if", "parameter": "AwGo", "threshold": 0}],
+        "duration": {"fixed": 0.2}, "offset": 0, "interruptionSource": "none", "orderedInterruption": true, "canTransitionToSelf": false, "mute": false, "solo": false}]);
+    let tree = serde_json::json!({"blendTree": {"name": "Apart", "algorithm": {"type": "simple1D", "blendParameter": "AwBlend", "children": [
+        {"motion": {"clip": c + 1}, "threshold": 0, "timeScale": 1, "cycleOffset": 0, "mirror": false},
+        {"motion": {"clip": c + 2}, "threshold": 1, "timeScale": 1, "cycleOffset": 0, "mirror": false}]}}});
+    let state = |id: u32, motion: serde_json::Value, transitions: serde_json::Value| {
+        serde_json::json!({"id": id, "name": format!("S{id}"), "speed": 1, "cycleOffset": 0, "mirror": false, "motion": motion, "writeDefaults": true, "ikOnFeet": false, "behaviours": [], "transitions": transitions})
+    };
+    let action = m.layers.get_mut(&PlayableLayerType::Action).unwrap().controller.as_mut().unwrap();
+    action.parameters.push(AnimatorParameter { name: "AwGo".into(), default: AnimatorParameterValue::Bool(false) });
+    action.parameters.push(AnimatorParameter { name: "AwBlend".into(), default: AnimatorParameterValue::Float(0.5) });
+    let mut layer = base_layer("override", vec![state(9301, serde_json::json!({"clip": c}), go), state(9302, tree, serde_json::json!([]))]);
+    if let avatar_core::model::LayerContent::StateMachine { state_machine } = &mut layer.content {
+        state_machine.states[1].behaviours.push(BehaviourIndex(ramp));
+    }
+    action.layers.push(layer);
+    let mut a = Animator::new(&avatar);
+    run(&mut a, 10);
+    a.set("AwGo", 1.0);
+    let during: Vec<[f32; 2]> = (0..16)
+        .map(|_| {
+            run(&mut a, 1);
+            [value(&a, "RootQ.x"), value(&a, "RootQ.w")]
+        })
+        .collect();
+    let toward = |w: f32, half: f32| (w * half.sin()).atan2(1.0 - w + w * half.cos());
+    for (k, q) in during.iter().enumerate() {
+        let w = (k as f32 / 12.0).min(1.0);
+        let half = toward(w, toward(w, towards));
+        assert!((q[0] - half.sin()).abs() < 1e-5 && (q[1] - half.cos()).abs() < 1e-5, "frame {k}: {q:?}, want {:?}", [half.sin(), half.cos()]);
+    }
+    let recorded = [0.14581685f32, 0.9893116];
+    assert!((during[6][0] - recorded[0]).abs() < 1e-4 && (during[6][1] - recorded[1]).abs() < 1e-4, "halfway: {:?}", during[6]);
+}
+
 /// A mirrored state whose time a parameter drives plays its clip at that time, without the half cycle a mirrored
 /// state's clock otherwise adds: corpus 3 scrubs mirrored sitting poses so.
 #[test]

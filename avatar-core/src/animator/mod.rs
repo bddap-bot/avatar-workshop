@@ -1791,6 +1791,13 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, sa
             }
         }
     }
+    // A state's body and goal rotations leave it as directions: a blend tree's sum of turns far apart falls short of
+    // unit length, and a crossfade from the identity into it would weigh it less (corpus 4 to 6 entering an emote).
+    let human = |q: &&[u32; 4]| ls.iter().any(|l| clips[l.clip as usize].variant(l.mirror).human_slots().binary_search(&q[0]).is_ok());
+    for q in rotations.iter().filter(human) {
+        let Some(v) = whole(q.map(|t| acc.get(&t).map(|e| e.0))).map(glam::Quat::from_array).filter(|v| v.length_squared() > 0.0) else { continue };
+        q.iter().zip(v.normalize().to_array()).for_each(|(t, c)| acc.get_mut(t).unwrap().0 = c);
+    }
     acc
 }
 
