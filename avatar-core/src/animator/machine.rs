@@ -77,10 +77,10 @@ impl Flat {
 pub struct Playing {
     pub state: StateId,
     pub time: f32,
-    /// Looping direct-tree leaves playing now and the state time each began at: a leaf whose weight rises from zero
-    /// plays its clip from the start.
+    /// Direct-tree children playing now, by `Leaf::branch`, and the state time each began at: a child whose direct
+    /// weight rises from zero plays its looping clips from the start.
     pub direct_starts: Vec<(u32, f32)>,
-    /// The state time at the last update's end, from which a leaf whose weight rises this update begins.
+    /// The state time at the last update's end, from which a child whose direct weight rises this update begins.
     prev_time: f32,
 }
 
@@ -306,7 +306,7 @@ impl ControllerRt {
         let Some(m) = self.motion(layer, id) else { return };
         let mirror = self.state_mirrors(layer, id);
         let get = |n: &str| self.get(n);
-        leaves(&m, &get, Leaf { clip: 0, weight: 1.0, time_scale: 1.0, cycle_offset: 0.0, direct: false, id: 0, mirror }, out);
+        leaves(&m, &get, Leaf { clip: 0, weight: 1.0, time_scale: 1.0, cycle_offset: 0.0, direct: false, id: 0, mirror, gate: 1.0, branch: 0 }, out);
     }
 
     pub fn state_mirrors(&self, layer: usize, id: StateId) -> bool {
@@ -415,7 +415,7 @@ impl ControllerRt {
                 continue;
             }
             self.update_layer(li, dt, clips, entered, frozen);
-            self.track_direct_leaves(li, clips);
+            self.track_direct_leaves(li);
         }
         for li in 0..self.layers.len() {
             let Some((src, _)) = self.layers[li].synced.clone().map(|(s, _)| (s, ())) else { continue };
@@ -445,7 +445,7 @@ impl ControllerRt {
         }
     }
 
-    fn track_direct_leaves(&mut self, li: usize, clips: &[CompiledClip]) {
+    fn track_direct_leaves(&mut self, li: usize) {
         let track = |rt: &Self, p: &mut Playing| {
             let scrubbed = rt.state(li, p.state).is_some_and(|s| s.time_parameter.is_some());
             if scrubbed || !matches!(rt.motion(li, p.state), Some(Motion::BlendTree(_))) {
@@ -453,7 +453,7 @@ impl ControllerRt {
             }
             let mut ls = Vec::new();
             rt.state_leaves(li, p.state, &mut ls);
-            let live: Vec<u32> = ls.iter().filter(|l| l.direct && l.weight > 0.0 && clips[l.clip as usize].looping).map(|l| l.id).collect();
+            let live: Vec<u32> = ls.iter().filter(|l| l.direct && l.gate > 0.0).map(|l| l.branch).collect();
             p.direct_starts.retain(|(id, _)| live.contains(id));
             let began = p.prev_time;
             for id in live {

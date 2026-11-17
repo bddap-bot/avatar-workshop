@@ -682,6 +682,11 @@ pub struct Leaf {
     pub id: u32,
     /// Whether the state and the tree path above it mirror the clip, each mirror undoing the one above.
     pub mirror: bool,
+    /// The product of the direct-tree weights on the leaf's path alone: a looping leaf restarts its clip when this
+    /// rises from zero, not when a tree beneath the direct one moves its weight onto it or off it.
+    pub gate: f32,
+    /// The innermost direct-tree child the leaf lies in, named by the id of its first leaf: its leaves share one start.
+    pub branch: u32,
 }
 
 /// Blend tree weights for each algorithm, as Unity computes them. A 1D tree evaluates both ends of the segment
@@ -885,7 +890,8 @@ fn walk(motion: &Motion, param: &dyn Fn(&str) -> f32, scale: Leaf, next: &mut u3
             *next += 1;
         }
         Motion::BlendTree(tree) => {
-            let direct = scale.direct || matches!(tree.algorithm, BlendAlgorithm::Direct { .. });
+            let gating = matches!(tree.algorithm, BlendAlgorithm::Direct { .. });
+            let direct = scale.direct || gating;
             let mut push = |m: &Option<Motion>, w: Option<f32>, ts: f32, co: f32, mirror: bool, out: &mut Vec<Leaf>| {
                 let Some(m) = m else { return };
                 let Some(w) = w else {
@@ -900,6 +906,8 @@ fn walk(motion: &Motion, param: &dyn Fn(&str) -> f32, scale: Leaf, next: &mut u3
                     direct,
                     id: 0,
                     mirror: scale.mirror ^ mirror,
+                    gate: if gating { scale.gate * w } else { scale.gate },
+                    branch: if gating { *next } else { scale.branch },
                 };
                 walk(m, param, child, next, out);
             };

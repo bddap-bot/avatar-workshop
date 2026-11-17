@@ -492,7 +492,7 @@ fn a_negative_direct_weight_plays_its_leaf_at_zero() {
     }));
     let param = |n: &str| if n == "a" { -163.0 } else { 0.5 };
     let mut out = Vec::new();
-    leaves(&tree, &param, Leaf { clip: 0, weight: 1.0, time_scale: 1.0, cycle_offset: 0.0, direct: false, id: 0, mirror: false }, &mut out);
+    leaves(&tree, &param, Leaf { clip: 0, weight: 1.0, time_scale: 1.0, cycle_offset: 0.0, direct: false, id: 0, mirror: false, gate: 1.0, branch: 0 }, &mut out);
     assert_eq!(out.iter().map(|l| (l.clip, l.weight)).collect::<Vec<_>>(), vec![(0, 0.0), (1, 0.5)]);
 }
 
@@ -795,6 +795,52 @@ fn a_direct_trees_unweighted_end_leaves_the_value_beneath() {
     b.set("AwToggle", 1.0);
     run(&mut b, 3);
     assert_eq!(shape(&b, "AwShape"), 100.0);
+}
+
+/// A direct-tree child playing a looping clip starts it from the beginning when its direct weight rises from zero,
+/// a negative weight counting as zero, but not when a 1D tree beneath that weight moves onto the clip, whether from
+/// children that do not loop or back from another of its children: a corpus 5 toggle, a 1D tree in a
+/// long-running direct tree, samples its looping clip at the state's own time the frame it is switched on.
+#[test]
+fn a_direct_leaf_restarts_by_its_direct_weight_alone() {
+    use avatar_core::model::{AnimatorParameter, AnimatorParameterValue, AnimationCurve, Binding, Curve, Keyframe, NodeIndex, PlayableLayerType, WeightedMode};
+    const LENGTH: f32 = 3.0;
+    let ramp = |name: &str, shape: &str| {
+        let key = |t: f32| Keyframe { time: t, value: t, in_tangent: 1.0, out_tangent: 1.0, in_weight: 1.0 / 3.0, out_weight: 1.0 / 3.0, weighted_mode: WeightedMode::None };
+        let curve = Curve { binding: Binding::BlendShape { node: NodeIndex(BODY), name: shape.into() }, curve: AnimationCurve { keys: vec![key(0.0), key(LENGTH)] } };
+        avatar_core::model::Clip { length: LENGTH, looping: true, ..clip(name, vec![curve]) }
+    };
+    let mut avatar = fixture();
+    let m = &mut avatar.model;
+    let c = m.clips.len() as u32;
+    m.clips.extend([clip("AwRest", vec![blend_shape("AwSwitched", 0.0)]), ramp("AwSwitchedRamp", "AwSwitched"), ramp("AwOtherRamp", "AwSwitched"), ramp("AwGatedRamp", "AwGated")]);
+    let child = |clip: u32, threshold: u32| serde_json::json!({"motion": {"clip": clip}, "threshold": threshold, "timeScale": 1, "cycleOffset": 0, "mirror": false});
+    let tree = serde_json::json!({"blendTree": {"name": "T", "algorithm": {"type": "direct", "normalizedBlendValues": false, "children": [
+        {"motion": {"blendTree": {"name": "Switch", "algorithm": {"type": "simple1D", "blendParameter": "AwSwitch", "children": [child(c, 0), child(c, 1), child(c + 1, 2), child(c + 2, 3), child(c, 4)]}}},
+         "directBlendParameter": "AwOne", "timeScale": 1, "cycleOffset": 0, "mirror": false},
+        {"motion": {"clip": c + 3}, "directBlendParameter": "AwGate", "timeScale": 1, "cycleOffset": 0, "mirror": false}]}}});
+    let state = serde_json::json!({"id": 9400, "name": "S9400", "speed": 1, "cycleOffset": 0, "mirror": false, "motion": tree, "writeDefaults": true, "ikOnFeet": false, "behaviours": [], "transitions": []});
+    let fx = m.layers.get_mut(&PlayableLayerType::Fx).unwrap().controller.as_mut().unwrap();
+    for (name, default) in [("AwOne", 1.0), ("AwSwitch", 0.0), ("AwGate", -1.0)] {
+        fx.parameters.push(AnimatorParameter { name: name.into(), default: AnimatorParameterValue::Float(default) });
+    }
+    fx.layers.push(base_layer("override", vec![state]));
+    let state_time = |a: &Animator| a.states().into_iter().find(|s| s.current.ends_with("S9400")).unwrap().current_time;
+    let unrestarted = |a: &Animator| state_time(a).fract() * LENGTH;
+    let mut a = Animator::new(&avatar);
+    run(&mut a, 90);
+    a.set("AwSwitch", 2.0);
+    a.set("AwGate", 1.0);
+    run(&mut a, 1);
+    let (switched, gated) = (shape(&a, "AwSwitched"), shape(&a, "AwGated"));
+    assert!((switched - unrestarted(&a)).abs() < 1e-3 && switched > 0.5, "the 1D tree's leaf restarted: {switched}");
+    assert!(gated < 0.1, "the direct leaf did not restart from a negative weight: {gated}");
+    a.set("AwSwitch", 4.0);
+    run(&mut a, 30);
+    a.set("AwSwitch", 2.0);
+    run(&mut a, 1);
+    let back = shape(&a, "AwSwitched");
+    assert!((back - unrestarted(&a)).abs() < 1e-3 && back > 0.5, "the 1D tree's leaf restarted on its return: {back}");
 }
 
 /// Handed to animation, lip sync stops writing: a viseme shape no controller binds keeps the value lip sync last gave

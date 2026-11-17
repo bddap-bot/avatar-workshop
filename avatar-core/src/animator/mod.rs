@@ -1726,7 +1726,7 @@ fn motion_pose(rt: &ControllerRt, layer: usize, state: crate::model::StateId, sa
     for l in ls.iter().filter(|l| l.weight != 0.0 || l.direct) {
         let c = clips[l.clip as usize].variant(l.mirror);
         let mut own: HashMap<u32, f32> = HashMap::new();
-        let began = starts.iter().find(|(id, _)| *id == l.id).map_or(0.0, |&(_, t)| t);
+        let began = starts.iter().find(|(id, _)| l.direct && c.looping && *id == l.branch).map_or(0.0, |&(_, t)| t);
         let elapsed = time - began;
         let at = if l.time_scale < 0.0 { 1.0 - (elapsed + offset) } else { elapsed + offset };
         match (sample, c.reference) {
