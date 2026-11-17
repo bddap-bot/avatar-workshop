@@ -97,9 +97,7 @@ fn each_loop_pose_drift_follows_its_reference_trace() {
 /// The Feet height basis probe plays looping humanoid clips whose height is based upon Feet, turned by 10, 45 or 120
 /// degrees about X, Y, Z or all three, as a walk over five cycles and as a zero-length pose, with Loop Pose on and off,
 /// in Base at full weight and Action at partial weight, unmirrored and mirrored, each with its height left unbaked
-/// beside the same clip with its height baked. Parameters, states, values and state times follow the reference, and so
-/// does every pose and every walk without Loop Pose, with the reset after it. The walks under Loop Pose, which miss
-/// wherever their turn is not about Y alone, are held to today's wrong samples.
+/// beside the same clip with its height baked.
 #[test]
 fn each_feet_height_basis_follows_its_reference_trace() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -112,22 +110,8 @@ fn each_feet_height_basis_follows_its_reference_trace() {
     assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
     assert!(rep.bindings.compared > 7_900_000, "{} bindings compared", rep.bindings.compared);
     let steps = reference::animator::steps(&dir);
-    let cases: Vec<_> = steps.iter().enumerate().filter(|(_, s)| s.label.starts_with("case ")).collect();
-    assert_eq!(cases.len(), 384, "192 cases, each unmirrored and mirrored");
-    let mut held = 0;
-    for (i, s) in cases {
-        let reset = &steps[i + 1];
-        assert_eq!(reset.label, "reset");
-        let wrong = rep.bindings.samples.range((s.frame, String::new())..(reset.frame + reset.frames, String::new())).count();
-        let clip: Vec<&str> = s.label.split(" feet ").nth(1).unwrap().split(' ').collect();
-        if clip[0] == "moving" && s.label.contains(" loop pose ") && clip[1] != "y" {
-            held += wrong;
-        } else {
-            assert_eq!(wrong, 0, "{} differs", s.label);
-        }
-    }
-    assert_eq!(held, rep.bindings.wrong, "wrong samples outside the cases and their resets");
-    assert!(held <= 61_905, "{held} wrong");
+    assert_eq!(steps.iter().filter(|s| s.label.starts_with("case ")).count(), 384, "192 cases, each unmirrored and mirrored");
+    assert_eq!(rep.bindings.wrong, 0, "bindings: {}", rep.bindings.summary(20));
 }
 
 /// The blend duration probe plays one blend tree at a time; the core keeps every state's time. The values of every

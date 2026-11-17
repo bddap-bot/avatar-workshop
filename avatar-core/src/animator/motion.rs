@@ -463,20 +463,57 @@ struct Human {
     goals: Vec<Goal>,
     /// Every target above, sorted for `sample`'s lookup.
     slots: Vec<u32>,
+    root: Root,
+    /// The body's start seen from itself at the end, which Loop Pose blends in over the clip's length. Unity loops
+    /// the body as it sits on the root that root motion placed from the raw clip, so the drift turns with the body.
+    drift: (glam::Vec3, Quat),
+    /// Change of each other curve over the clip's length, by target, which Loop Pose removes.
+    curve_drift: Vec<(u32, f32)>,
+}
+
+/// Where a humanoid clip's root-motion settings put the root under the body.
+struct Root {
     settings: HumanoidClip,
     start: glam::Vec3,
     /// The body's yaw at the clip's start, from which root motion turns.
     start_twist: Quat,
-    /// Change over the clip's length, which Loop Pose removes from what it bakes into the pose.
-    drift: glam::Vec3,
-    /// The body's start seen from its end, which Loop Pose blends in over the clip's length. Root motion keeps the
-    /// turn about Y when it carries the rotation, so that turn is left out of each end and is read from the body
-    /// before this drift.
-    body_drift: Quat,
     /// The Feet height basis's height at the clip's start: see [`ground`].
-    feet: f32,
-    /// Change of each other curve over the clip's length, by target, which Loop Pose removes.
-    curve_drift: Vec<(u32, f32)>,
+    start_ground: f32,
+}
+
+impl Root {
+    /// The body's place and rotation on the root, before Loop Pose.
+    fn under(&self, t: glam::Vec3, q: Quat, feet: impl Iterator<Item = glam::Vec3>) -> (glam::Vec3, Quat) {
+        let s = &self.settings;
+        let mut turn = Quat::from_rotation_y(s.rotation.offset_degrees.to_radians());
+        match (s.rotation.bake_into_pose, s.rotation.based_upon) {
+            (false, RotationBasis::BodyOrientation) => turn *= twist(q),
+            (true, RotationBasis::BodyOrientation) => turn *= self.start_twist,
+            (false, RotationBasis::Original) => turn *= twist(q) * self.start_twist.inverse(),
+            (true, RotationBasis::Original) => {}
+        }
+        let mut at = glam::Vec3::new(0.0, s.height.offset, 0.0);
+        at.y += match (s.height.bake_into_pose, s.height.based_upon) {
+            (true, HeightBasis::Feet) => self.start_ground,
+            (true, _) => 0.0,
+            (false, HeightBasis::Original) => t.y - self.start.y,
+            (false, HeightBasis::CenterOfMass) => t.y,
+            (false, HeightBasis::Feet) => ground(t, q, feet),
+        };
+        at += match (s.xz.bake_into_pose, s.xz.based_upon) {
+            (true, XzBasis::CenterOfMass) => glam::Vec3::new(self.start.x, 0.0, self.start.z),
+            (true, XzBasis::Original) => glam::Vec3::ZERO,
+            (false, XzBasis::CenterOfMass) => glam::Vec3::new(t.x, 0.0, t.z),
+            (false, XzBasis::Original) => glam::Vec3::new(t.x - self.start.x, 0.0, t.z - self.start.z),
+        };
+        let root = turn.inverse();
+        (root * (t - at), root * q)
+    }
+}
+
+/// The foot goals' places from the body as `read` gives their curves, before Loop Pose.
+fn feet<'a>(goals: &'a [Goal], read: impl Fn(u32, f32) -> f32 + Copy + 'a) -> impl Iterator<Item = glam::Vec3> + 'a {
+    goals.iter().filter(|g| g.foot).map(move |g| g.place(read, 0.0).0)
 }
 
 /// A rotation's turn about Y.
@@ -538,20 +575,18 @@ impl Human {
             Vec::new()
         };
         curve_drift.sort_unstable_by_key(|c| c.0);
-        let ends = |q: Quat| if settings.rotation.bake_into_pose { q } else { twist(q).inverse() * q };
-        let feet = ground(start, start_q, goals.iter().filter(|g| g.foot).map(|g| g.place(|id, or| at(id, 0.0, or), 0.0).0));
-        Some(Human {
-            curve_drift,
-            body,
-            goals,
-            slots,
-            body_drift: if settings.loop_pose { ends(rot(&body, clip.length)).inverse() * ends(start_q) } else { Quat::IDENTITY },
-            settings,
-            start,
-            start_twist: twist(start_q),
-            drift: pos(&body, clip.length) - start,
-            feet,
-        })
+        let loop_pose = settings.loop_pose;
+        let read = |t: f32| move |id: u32, or: f32| at(id, t, or);
+        let start_ground = ground(start, start_q, feet(&goals, read(0.0)));
+        let root = Root { settings, start, start_twist: twist(start_q), start_ground };
+        let drift = if loop_pose {
+            let under = |t: f32| root.under(pos(&body, t), rot(&body, t), feet(&goals, read(t)));
+            let ((p0, q0), (p1, q1)) = (under(0.0), under(clip.length));
+            (q1.inverse() * (p0 - p1), q1.inverse() * q0)
+        } else {
+            (glam::Vec3::ZERO, Quat::IDENTITY)
+        };
+        Some(Human { body, goals, slots, root, drift, curve_drift })
     }
 
     fn drift_of(&self, target: u32) -> f32 {
@@ -560,49 +595,12 @@ impl Human {
 
     fn apply(&self, time: f32, length: f32, pose: &[(u32, f32)], defaults: &[f32], out: &mut impl FnMut(u32, f32)) {
         let get = |id: u32| pose.iter().find(|p| p.0 == id).map_or(defaults[id as usize], |p| p.1);
-        let s = &self.settings;
         let frac = if length > 0.0 { time / length } else { 0.0 };
         let t = glam::Vec3::new(get(self.body[0]), get(self.body[1]), get(self.body[2]));
-        let mut q = Quat::from_xyzw(get(self.body[3]), get(self.body[4]), get(self.body[5]), get(self.body[6])).normalize();
-        let mut turn = Quat::from_rotation_y(s.rotation.offset_degrees.to_radians());
-        match (s.rotation.bake_into_pose, s.rotation.based_upon) {
-            (false, RotationBasis::BodyOrientation) => turn *= twist(q),
-            (true, RotationBasis::BodyOrientation) => turn *= self.start_twist,
-            (false, RotationBasis::Original) => turn *= twist(q) * self.start_twist.inverse(),
-            (true, RotationBasis::Original) => {}
-        }
-        q *= weighted(self.body_drift, frac);
+        let q = Quat::from_xyzw(get(self.body[3]), get(self.body[4]), get(self.body[5]), get(self.body[6])).normalize();
         let curve = |id: u32, or: f32| pose.iter().find(|p| p.0 == id).map_or(or, |p| p.1);
-        let mut at = glam::Vec3::new(0.0, s.height.offset, 0.0);
-        if s.height.bake_into_pose {
-            if s.loop_pose {
-                at.y += self.drift.y * frac;
-            }
-            if s.height.based_upon == HeightBasis::Feet {
-                at.y += self.feet;
-            }
-        } else {
-            at.y += match s.height.based_upon {
-                HeightBasis::Original => t.y - self.start.y,
-                HeightBasis::CenterOfMass => t.y,
-                HeightBasis::Feet => ground(t, q, self.goals.iter().filter(|g| g.foot).map(|g| g.place(curve, frac).0)),
-            };
-        }
-        if s.xz.bake_into_pose {
-            if s.loop_pose {
-                at += glam::Vec3::new(self.drift.x, 0.0, self.drift.z) * frac;
-            }
-            if s.xz.based_upon == XzBasis::CenterOfMass {
-                at += glam::Vec3::new(self.start.x, 0.0, self.start.z);
-            }
-        } else if s.xz.based_upon == XzBasis::CenterOfMass {
-            at += glam::Vec3::new(t.x, 0.0, t.z);
-        } else {
-            at += glam::Vec3::new(t.x - self.start.x, 0.0, t.z - self.start.z);
-        }
-        let root = turn.inverse();
-        let local = |p: glam::Vec3| root * (p - at);
-        let (t, q) = (local(t), root * q);
+        let (t, q) = self.root.under(t, q, feet(&self.goals, curve));
+        let (t, q) = (t + q * (self.drift.0 * frac), q * weighted(self.drift.1, frac));
         let write = |ids: &GoalIds, t: glam::Vec3, q: Quat, out: &mut dyn FnMut(u32, f32)| {
             for (id, v) in ids.iter().zip([t.x, t.y, t.z, q.x, q.y, q.z, q.w]) {
                 out(*id, v);
