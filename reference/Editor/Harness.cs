@@ -1561,10 +1561,10 @@ namespace AvatarWorkshop.Reference
                 case bool b: return b ? "true" : "false";
                 case int i: return i.ToString(CultureInfo.InvariantCulture);
                 case float f: return f.ToString("R", CultureInfo.InvariantCulture);
-                case float[] a: return "[" + string.Join(",", a.Select(x => Json(x))) + "]";
                 case IDictionary<string, string> d: return "{" + string.Join(",", d.Select(kv => Q(kv.Key) + ":" + Q(kv.Value))) + "}";
                 case IDictionary<string, int> d: return "{" + string.Join(",", d.Select(kv => Q(kv.Key) + ":" + Json(kv.Value))) + "}";
                 case Dictionary<string, object> d: return "{" + string.Join(",", d.Select(kv => Q(kv.Key) + ":" + Json(kv.Value))) + "}";
+                case System.Collections.IEnumerable e: return "[" + string.Join(",", e.Cast<object>().Select(Json)) + "]";
                 default: return Q(o.ToString());
             }
         }
