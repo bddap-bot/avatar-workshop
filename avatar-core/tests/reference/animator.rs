@@ -609,6 +609,9 @@ impl Run {
                 let Some(v) = got else { return };
                 let w: f32 = want.parse().unwrap();
                 rep.values.compared += 1;
+                if dump.as_ref().is_some_and(|t| k.contains(t.as_str())) {
+                    eprintln!("D\t{f}\t{k}\t{v}\t{w}");
+                }
                 let d = (v - w).abs();
                 if d > 1e-3 {
                     rep.values.note(k, f, format!("{v} (want {w})"));
@@ -673,6 +676,9 @@ impl Run {
                         let w: f32 = want.parse().unwrap();
                         let d = (v - w).abs();
                         rep.values.compared += 1;
+                        if dump.as_ref().is_some_and(|t| k.contains(t.as_str())) {
+                            eprintln!("D\t{f}\t{k}\t{v}\t{w}");
+                        }
                         if d > 1e-3 {
                             rep.values.note(k, f, format!("{v} (want {w})"));
                         }
@@ -781,6 +787,9 @@ impl Run {
                             }
                             let d = (v - w[i]).abs();
                             rep.values.compared += 1;
+                            if dump.as_ref().is_some_and(|t| k.contains(t.as_str())) {
+                                eprintln!("D\t{f}\t{k}[{i}]\t{v}\t{}", w[i]);
+                            }
                             if d > 1e-3 {
                                 rep.values.note(k, f, format!("[{i}] {v} (want {})", w[i]));
                             }

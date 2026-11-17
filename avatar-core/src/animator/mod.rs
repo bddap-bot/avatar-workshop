@@ -126,10 +126,14 @@ struct Playable {
     slots: Vec<Vec<u32>>,
     /// Per layer, whether it has played a motion.
     played: Vec<bool>,
+    /// Without a humanoid rig, what a state without write defaults holds each target at: a node's position at the
+    /// controller's last output, any other property at what its override layers last wrote, from the defaults.
+    held: Vec<f32>,
     /// Whether one of its layers has entered a state with a motion or a transition, at some weight.
     sounded: bool,
     /// The targets an additive layer of this controller adds to: those it binds, and every generic property another
-    /// controller binds that no later playable does, which would write over it.
+    /// controller binds that no later playable does, which would write over it. Without a humanoid rig, every generic
+    /// property any controller binds, which its states without write defaults also hold.
     reach: Vec<u32>,
     layer_masks: Vec<Option<Mask>>,
     /// The humanoid targets the controller binds that its masks admit.
@@ -147,7 +151,7 @@ struct Mask {
 impl Accum {
     fn at_defaults(cov: &[f32], defaults: &[f32]) -> Accum {
         let n = cov.len();
-        Accum { sum: cov.iter().zip(defaults).map(|(c, d)| c * d).collect(), cov: cov.to_vec(), touched: vec![false; n], wrote: vec![false; n] }
+        Accum { sum: cov.iter().zip(defaults).map(|(c, d)| c * d).collect(), cov: cov.to_vec(), touched: vec![false; n], wrote: vec![false; n], overridden: vec![None; n] }
     }
 }
 
@@ -157,6 +161,8 @@ struct Accum {
     touched: Vec<bool>,
     /// Whether a layer wrote the target this frame, with some weight.
     wrote: Vec<bool>,
+    /// The value after the last override layer whose pose wrote the target this frame.
+    overridden: Vec<Option<f32>>,
 }
 
 /// The parts a tracking-control behaviour sets, in the order of its fields.
@@ -180,12 +186,12 @@ struct PoseSpace {
 
 pub struct Animator {
     targets: Targets,
-    /// What the frame's result last was for each target some layer wrote: a controller's first layer playing a
-    /// motion without write defaults gives it to every target no layer up to it wrote. A write-defaults state's
-    /// target counts as written on a humanoid rig only when a leaf at weight writes it, so a value such a state fills
-    /// in for its unweighted leaves is not kept, as the blend duration probe's first tree without write defaults
-    /// shows. On a rig without a humanoid Avatar every write is kept: the generic-rig hold probes' held positions
-    /// follow writes no leaf at weight made.
+    /// On a humanoid rig, what the frame's result last was for each target some layer wrote: a controller's first
+    /// layer playing a motion without write defaults gives it to every target no layer up to it wrote. A
+    /// write-defaults state's target counts as written only when a leaf at weight writes it, so a value such a state
+    /// fills in for its unweighted leaves is not kept, as the blend duration probe's first tree without write
+    /// defaults shows. Without a humanoid rig each playable holds its own (`Playable::held`), fed by every write: the
+    /// generic-rig hold probes' held positions follow writes no leaf at weight made.
     kept: Vec<f32>,
     /// Whether some clip writes the target other than at its rest value beside an animated component.
     curved: Vec<bool>,
@@ -519,6 +525,7 @@ impl Animator {
                 bound,
                 slots,
                 played: vec![false; c.layers.len()],
+                held: defaults.clone(),
                 sounded: false,
                 reach: Vec::new(),
                 layer_human: vec![HashMap::new(); c.layers.len()],
@@ -665,10 +672,9 @@ impl Animator {
         self.normalized = self.builtins.clone();
     }
 
-    /// What a state without write defaults holds a target at. Without a humanoid rig a node's position holds the
-    /// scene's last value and every other property its default.
-    fn hold(&self, i: usize) -> f32 {
-        if self.humanoid || matches!(self.targets.list[i], Target::Translation(..)) { self.kept[i] } else { self.defaults[i] }
+    /// What a state without write defaults in playable `pi` holds a target at.
+    fn hold(&self, pi: usize, i: usize) -> f32 {
+        if self.humanoid { self.kept[i] } else { self.playables[pi].held[i] }
     }
 
     pub fn targets(&self) -> &[Target] {
@@ -706,6 +712,7 @@ impl Animator {
             self.defaults[i] = value;
             self.blended[i] = value;
             self.kept[i] = value;
+            self.playables.iter_mut().for_each(|p| p.held[i] = value);
             self.place_goals();
         }
     }
@@ -944,9 +951,9 @@ impl Animator {
 
         let prev = self.blended.clone();
         let clips = std::mem::take(&mut self.clips);
-        let holds: Vec<f32> = (0..self.targets.len()).map(|i| self.hold(i)).collect();
         let mut all_entered = Vec::new();
         for pi in 0..self.playables.len() {
+            let holds: Vec<f32> = (0..self.targets.len()).map(|i| self.hold(pi, i)).collect();
             let mut entered = Vec::new();
             {
                 let defaults = &self.defaults;
@@ -1039,6 +1046,16 @@ impl Animator {
                     }
                     for (w, &x) in acc.wrote.iter_mut().zip(&stream.wrote) {
                         *w |= x;
+                    }
+                }
+                let held = &mut self.playables[pi].held;
+                for i in (0..n).filter(|&i| stream.wrote[i]) {
+                    let value = match self.targets.list[i] {
+                        Target::Translation(..) => Some(stream.sum[i] + (1.0 - stream.cov[i]) * self.defaults[i]),
+                        _ => stream.overridden[i],
+                    };
+                    if let Some(v) = value {
+                        held[i] = v;
                     }
                 }
             }
@@ -1156,6 +1173,9 @@ impl Animator {
         let holdable = |i: usize| !(self.targets.list[i].rests_at_default() && !self.curved[i]) && !parameter(i) && !p.whole[i];
         // Without a humanoid rig a layer also repeats the animator parameters it last wrote.
         let remembered = |i: usize| holdable(i) || (!self.humanoid && parameter(i));
+        // Without a humanoid rig one animator binds every controller's generic properties, and each controller's
+        // states without write defaults hold them all.
+        let holds: &[u32] = if self.humanoid { &p.bound } else { &p.reach };
         for li in 0..p.rt.layers.len() {
             let lw = if li == 0 { 1.0 } else { p.rt.layers[li].weight };
             if lw * p.weight <= 0.0 {
@@ -1201,7 +1221,7 @@ impl Animator {
             if let Some(c) = holding {
                 held = true;
                 let own_keys = playing_pose(&p.rt, li, c, clips, &self.defaults, false);
-                for &t in &p.bound {
+                for &t in holds {
                     let i = t as usize;
                     if written[i] || own_keys.contains_key(&t) || !holdable(i) || !passes(i) {
                         continue;
@@ -1210,9 +1230,9 @@ impl Animator {
                         if wl < 0.5 {
                             continue;
                         }
-                        acc.sum[i] = self.hold(i);
+                        acc.sum[i] = self.hold(pi, i);
                     } else {
-                        acc.sum[i] = acc.sum[i] * (1.0 - wl) + self.hold(i) * wl;
+                        acc.sum[i] = acc.sum[i] * (1.0 - wl) + self.hold(pi, i) * wl;
                         acc.cov[i] = acc.cov[i] * (1.0 - wl) + wl;
                     }
                     acc.touched[i] = true;
@@ -1231,7 +1251,7 @@ impl Animator {
                 }
                 acc.sum[i] + (1.0 - acc.cov[i]) * self.defaults[i]
             };
-            let kept = |t: u32| self.hold(t as usize);
+            let kept = |t: u32| self.hold(pi, t as usize);
             let through = |t: u32| if acc.touched[t as usize] { beneath(t) } else { prev[t as usize] };
             let reset = |t: u32| match (acc.touched[t as usize], p.binders[t as usize] > 1) {
                 (true, _) => beneath(t),
@@ -1308,7 +1328,7 @@ impl Animator {
                         let mut last: Vec<(u32, f32, f32)> = pose.iter().filter(|x| remembered(x.0 as usize) && x.2 > 0.0).map(|x| (x.0, x.1, 1.0)).collect();
                         if !wd {
                             let animated: std::collections::HashSet<u32> = last.iter().map(|x| x.0).collect();
-                            last.extend(p.bound.iter().filter(|&&t| holdable(t as usize) && !animated.contains(&t)).map(|&t| (t, self.hold(t as usize), 1.0)));
+                            last.extend(holds.iter().filter(|&&t| holdable(t as usize) && !animated.contains(&t)).map(|&t| (t, self.hold(pi, t as usize), 1.0)));
                         }
                         said[li] = last;
                     }
@@ -1370,6 +1390,9 @@ impl Animator {
                 acc.cov[i] = acc.cov[i] * (1.0 - a) + a;
                 acc.touched[i] = true;
                 written[i] |= a > 0.0;
+                if a > 0.0 {
+                    acc.overridden[i] = Some(acc.sum[i] + (1.0 - acc.cov[i]) * self.defaults[i]);
+                }
             }
         }
         for ((w, &x), &k) in acc.wrote.iter_mut().zip(&written).zip(&keeps) {

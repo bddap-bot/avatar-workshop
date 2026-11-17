@@ -1444,7 +1444,7 @@ fn each_generic_rig_playable_case_follows_its_reference_trace() {
     assert_eq!(rep.values.samples.len(), RIG_WRONG_SAMPLES, "values: {}", rep.values.summary(20));
 }
 
-const RIG_WRONG_SAMPLES: usize = 503_039;
+const RIG_WRONG_SAMPLES: usize = 437_059;
 
 const RIG_HELD: [(&str, usize, usize); 42] = [
     ("base alone full", 0, 0),
@@ -1506,7 +1506,7 @@ fn each_generic_rig_hold_case_follows_its_reference_trace() {
 
 /// The generic-rig playable-weight probe is the hold probe's playable-weight cases of the Additive, Gesture and Action
 /// controllers alone, beside an FX controller that never plays a motion and with no additive layer: each lowers its
-/// playable to 0.25, 0.5 or 0.75, alone or under a layer at 0.5. Held to the same bar as the hold probe.
+/// playable to 0.25, 0.5 or 0.75, alone or under a layer at 0.5. Every value follows the reference.
 #[test]
 fn each_generic_rig_playable_weight_case_follows_its_reference_trace() {
     held_cases_follow("genericweight", &WEIGHT_HELD, WEIGHT_WRONG_SAMPLES);
@@ -1555,7 +1555,7 @@ fn held_cases_follow(probe: &str, held: &[(&str, usize, usize)], wrong_samples: 
     assert_eq!(rep.values.samples.len(), wrong_samples, "values: {}", rep.values.summary(20));
 }
 
-const HOLD_WRONG_SAMPLES: usize = 356_206;
+const HOLD_WRONG_SAMPLES: usize = 195_530;
 
 const HOLD_HELD: [(&str, usize, usize); 36] = [
     ("hold w25 before alone", 0, 0),
@@ -1570,24 +1570,24 @@ const HOLD_HELD: [(&str, usize, usize); 36] = [
     ("hold w25 after under_additive", 281, 2),
     ("hold w50 after under_additive", 293, 2),
     ("hold w75 after under_additive", 296, 2),
-    ("playable additive w25 alone", 300, 40),
-    ("playable additive w50 alone", 300, 40),
-    ("playable additive w75 alone", 300, 40),
-    ("playable additive w25 under_partial", 300, 40),
-    ("playable additive w50 under_partial", 300, 40),
-    ("playable additive w75 under_partial", 300, 40),
-    ("playable gesture w25 alone", 300, 40),
-    ("playable gesture w50 alone", 300, 40),
-    ("playable gesture w75 alone", 300, 40),
-    ("playable gesture w25 under_partial", 300, 40),
-    ("playable gesture w50 under_partial", 300, 40),
-    ("playable gesture w75 under_partial", 300, 40),
-    ("playable action w25 alone", 300, 40),
-    ("playable action w50 alone", 300, 40),
-    ("playable action w75 alone", 300, 40),
-    ("playable action w25 under_partial", 300, 40),
-    ("playable action w50 under_partial", 300, 40),
-    ("playable action w75 under_partial", 300, 40),
+    ("playable additive w25 alone", 150, 20),
+    ("playable additive w50 alone", 150, 20),
+    ("playable additive w75 alone", 150, 20),
+    ("playable additive w25 under_partial", 150, 20),
+    ("playable additive w50 under_partial", 150, 20),
+    ("playable additive w75 under_partial", 150, 20),
+    ("playable gesture w25 alone", 150, 20),
+    ("playable gesture w50 alone", 150, 20),
+    ("playable gesture w75 alone", 150, 20),
+    ("playable gesture w25 under_partial", 150, 20),
+    ("playable gesture w50 under_partial", 150, 20),
+    ("playable gesture w75 under_partial", 150, 20),
+    ("playable action w25 alone", 150, 20),
+    ("playable action w50 alone", 150, 20),
+    ("playable action w75 alone", 150, 20),
+    ("playable action w25 under_partial", 150, 20),
+    ("playable action w50 under_partial", 150, 20),
+    ("playable action w75 under_partial", 150, 20),
     ("playable fx w25 alone", 0, 0),
     ("playable fx w50 alone", 0, 0),
     ("playable fx w75 alone", 0, 0),
@@ -1596,7 +1596,7 @@ const HOLD_HELD: [(&str, usize, usize); 36] = [
     ("playable fx w75 under_partial", 0, 0),
 ];
 
-const WEIGHT_WRONG_SAMPLES: usize = 39_585;
+const WEIGHT_WRONG_SAMPLES: usize = 0;
 
 const WEIGHT_HELD: [(&str, usize, usize); 18] = [
     ("playable additive w25 alone", 0, 0),

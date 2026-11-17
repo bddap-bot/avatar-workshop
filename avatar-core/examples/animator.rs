@@ -5,7 +5,7 @@
 //! Each differing key and menu control prints as a number, and with `--names` as that number and its name.
 //! With `--names`, AW_TRACE=<part of a key> prints each wrong sample of matching keys and
 //! AW_CLOCK=<playable>:<layer> that layer's states and clocks every frame. AW_DUMP=<part of a key> prints every
-//! compared binding sample of matching keys, right or wrong, as `D frame key core reference`.
+//! compared value or binding sample of matching keys, right or wrong, as `D frame key core reference`.
 
 #[path = "../tests/reference/mod.rs"]
 mod reference;
