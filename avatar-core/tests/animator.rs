@@ -1046,18 +1046,18 @@ fn an_action_crossfade_both_of_whose_rotations_lie_opposite_the_value_beneath_co
         (before, during)
     };
     let close = |a: [f32; 4], b: [f32; 4]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-5);
-    let afk = turn([-2.0, -3.0, -2.0], 228.0);
-    let (before, during) = fade(PlayableLayerType::Action, source, afk);
+    let destination = turn([-2.0, -3.0, -2.0], 228.0);
+    let (before, during) = fade(PlayableLayerType::Action, source, destination);
     assert!(close(before, source), "{before:?}");
     assert!(during[1..FADE - 1].iter().all(|q| q[3] > 0.0), "{during:?}");
     let dot = |a: [f32; 4], b: [f32; 4]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f32>();
-    assert!(during[1..FADE - 1].iter().all(|q| dot(*q, source) < 0.0 && dot(*q, afk) < 0.0), "not the negated blend of its ends: {during:?}");
-    assert!(close(*during.last().unwrap(), afk), "after: {:?}", during.last());
+    assert!(during[1..FADE - 1].iter().all(|q| dot(*q, source) < 0.0 && dot(*q, destination) < 0.0), "not the negated blend of its ends: {during:?}");
+    assert!(close(*during.last().unwrap(), destination), "after: {:?}", during.last());
     let (_, during) = fade(PlayableLayerType::Action, source, [0.0, 0.0, 0.0, 1.0]);
     assert!(during[1..FADE - 1].iter().all(|q| q[3] < 0.0), "the source alone opposite turned over: {during:?}");
-    let (_, during) = fade(PlayableLayerType::Action, [0.0, 0.0, 0.0, 1.0], afk);
+    let (_, during) = fade(PlayableLayerType::Action, [0.0, 0.0, 0.0, 1.0], destination);
     assert!(during[1..FADE / 2].iter().all(|q| q[3] > 0.0), "the destination alone opposite turned over: {during:?}");
-    let (_, during) = fade(PlayableLayerType::Base, source, afk);
+    let (_, during) = fade(PlayableLayerType::Base, source, destination);
     assert!(during[1..FADE - 1].iter().all(|q| q[3] < 0.0), "a Base crossfade turned over: {during:?}");
 }
 
