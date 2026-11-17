@@ -343,9 +343,7 @@ namespace AvatarWorkshop.Reference
         (Transform t, string path)[] bones = new (Transform, string)[0];
         (Transform t, string path)[] targets = new (Transform, string)[0];
         int constrainedFrame = -1;
-        readonly List<(Transform t, string name)> others = new List<(Transform, string)>();
-        readonly Dictionary<string, string> lastOthers = new Dictionary<string, string>();
-        StreamWriter othersOut;
+        readonly List<Transform> others = new List<Transform>();
         readonly Dictionary<string, string> lastPoses = new Dictionary<string, string>();
         readonly Dictionary<string, string> simulated = new Dictionary<string, string>();
         int posedFrame = -1;
@@ -455,13 +453,6 @@ namespace AvatarWorkshop.Reference
                 BeginStep(steps[stepIndex]);
             }
             steps[stepIndex].Each?.Invoke(this, stepFrame);
-            foreach (var (t, name) in others)
-            {
-                var pose = Xf(Local(t.position), Quaternion.Inverse(root.rotation) * t.rotation);
-                if (lastOthers.TryGetValue(name, out var old) && old == pose) continue;
-                othersOut.Write($"{frame.ToString(inv)}\t{name}\t{pose}\n");
-                lastOthers[name] = pose;
-            }
             inputsOut.Write($"{frame.ToString(inv)}\t{placed ?? "-"}\t{swung ?? "-"}{string.Concat(applied.Select(a => "\t" + a))}\n");
             applied.Clear();
             placed = swung = null;
@@ -607,7 +598,6 @@ namespace AvatarWorkshop.Reference
         {
             if (root == null || stepIndex < 0 || Finished) return;
             var f = frame.ToString(inv);
-            if (posedFrame != frame) throw new Exception($"the SDK's dynamics completed at frame {f} without driver poses taken before them");
             foreach (var (t, path) in targets)
             {
                 if (t == null) throw new Exception($"constraint target {path} is gone at frame {f}");
@@ -727,8 +717,8 @@ namespace AvatarWorkshop.Reference
             var physBones = root.GetComponentsInChildren<VRCPhysBoneBase>(true).OrderBy(p => PathOf(p.transform), StringComparer.Ordinal).ToList();
             foreach (var pb in physBones)
                 Tips(pb, physBones);
+            if (dynamicsProbe) CreateOutsideSenders();
             Inputs(physBones);
-            if (dynamicsProbe) Others();
 
             Directory.CreateDirectory(output);
             Directory.CreateDirectory(Path.Combine(output, "render"));
@@ -774,7 +764,7 @@ namespace AvatarWorkshop.Reference
             }
             if (dynamicsProbe)
             {
-                var settings = Coverage.CountDynamics(root.gameObject, descriptor, others.Select(o => o.t.GetComponent<ContactSender>()));
+                var settings = Coverage.CountDynamics(root.gameObject, descriptor, others.Select(o => o.GetComponent<ContactSender>()));
                 File.WriteAllText(Path.Combine(output, "compositions.json"), Json(settings) + "\n");
                 var absent = Coverage.DynamicsSettings.Where(k => settings[k] == 0).ToList();
                 if (absent.Count > 0) throw new Exception($"the dynamics probe lacks {string.Join(", ", absent)}");
@@ -803,10 +793,12 @@ namespace AvatarWorkshop.Reference
                 ["loopdrift"] = loopDrift,
                 ["feet"] = feet,
                 ["dynamics"] = dynamicsProbe,
-                ["others"] = Fixture.Others.Where(_ => dynamicsProbe).Select(o => new Dictionary<string, object>
+                ["outside_senders"] = others.Select(o => o.GetComponent<ContactSender>()).Select(c => new Dictionary<string, object>
                 {
-                    ["name"] = o.name, ["shape"] = o.shape.ToString().ToLowerInvariant(), ["radius"] = o.radius, ["height"] = o.height,
-                    ["tags"] = o.tags, ["player"] = Fixture.OtherPlayer,
+                    ["transform"] = PathOf(c.transform), ["shape"] = c.shapeType.ToString().ToLowerInvariant(), ["radius"] = c.radius, ["height"] = c.height,
+                    ["position"] = new[] { c.position.x, c.position.y, c.position.z },
+                    ["rotation"] = new[] { c.rotation.x, c.rotation.y, c.rotation.z, c.rotation.w },
+                    ["tags"] = c.collisionTags, ["local_only"] = c.localOnly, ["player"] = c.GetPlayerId(),
                 }).ToList(),
                 ["root_scale"] = new[] { root.lossyScale.x, root.lossyScale.y, root.lossyScale.z },
                 ["unity"] = Application.unityVersion,
@@ -961,6 +953,7 @@ namespace AvatarWorkshop.Reference
             var constrained = new HashSet<Transform>();
             foreach (var c in root.GetComponentsInChildren<VRCPhysBoneColliderBase>(true)) Role(c.GetRootTransform(), "collider");
             foreach (var c in root.GetComponentsInChildren<ContactBase>(true)) Role(c.GetRootTransform(), "contact");
+            foreach (var t in others) Role(t, "outside-sender");
             foreach (var c in root.GetComponentsInChildren<VRCConstraintBase>(true))
             {
                 var target = c.GetEffectiveTargetTransform();
@@ -976,8 +969,7 @@ namespace AvatarWorkshop.Reference
             foreach (var t in bone) Role(t, "physbone-bone");
             drivers = roles.Keys.Where(t => roles[t].Any(r => r != "physbone-bone")).Select(t => (t, PathOf(t))).OrderBy(x => x.Item2, StringComparer.Ordinal).ToArray();
             bones = bone.Select(t => (t, PathOf(t))).OrderBy(x => x.Item2, StringComparer.Ordinal).ToArray();
-            targets = constrained.Concat(root.GetComponentsInChildren<IConstraint>(true).Select(c => ((Component)c).transform)).Distinct()
-                .Select(t => (t, PathOf(t))).OrderBy(x => x.Item2, StringComparer.Ordinal).ToArray();
+            targets = constrained.Select(t => (t, PathOf(t))).OrderBy(x => x.Item2, StringComparer.Ordinal).ToArray();
             var dupes = roles.Keys.GroupBy(PathOf).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
             if (dupes.Count > 0) throw new Exception("transforms share a path: " + string.Join(", ", dupes));
             File.WriteAllText(Path.Combine(output, "drivers.tsv"), "transform\troles\n" +
@@ -1095,23 +1087,22 @@ namespace AvatarWorkshop.Reference
 
         // Senders outside the avatar, which a scene's other avatars and their hands would carry: a contact player id of
         // their own, so a receiver takes them for another player's.
-        void Others()
+        void CreateOutsideSenders()
         {
-            foreach (var o in Fixture.Others)
+            foreach (var o in Fixture.OutsideSenders)
             {
                 var go = new GameObject(o.name);
                 var c = go.AddComponent<VRC.SDK3.Dynamics.Contact.Components.VRCContactSender>();
                 c.shapeType = o.shape; c.radius = o.radius; c.height = o.height; c.collisionTags = o.tags.ToList();
                 c.playerId = Fixture.OtherPlayer;
                 go.transform.SetPositionAndRotation(root.position + root.rotation * Fixture.Parked, root.rotation);
-                others.Add((go.transform, o.name));
+                others.Add(go.transform);
             }
-            othersOut = Open("others.tsv");
         }
 
-        void Other(string name, Vector3 local)
+        void MoveOutside(string name, Vector3 local)
         {
-            var t = others.Single(o => o.name == name).t;
+            var t = others.Single(o => o.name == name);
             t.SetPositionAndRotation(root.position + root.rotation * local, root.rotation);
         }
 
@@ -1180,7 +1171,7 @@ namespace AvatarWorkshop.Reference
             var script = Harness.Env("AW_STEPS");
             if (script != null)
             {
-                if (Cased) throw new Exception("AW_STEPS cannot replace a probe's cases");
+                if (Cased || dynamicsProbe) throw new Exception("AW_STEPS cannot replace a probe's cases");
                 int hold = int.Parse(Harness.Env("AW_STEP_FRAMES") ?? "20", inv);
                 foreach (var text in script.Split(';'))
                 {
@@ -1222,14 +1213,14 @@ namespace AvatarWorkshop.Reference
                 var parked = S("self parked", 30);
                 parked.Set[Fixture.SelfPass] = 0;
                 float half = Fixture.RowHalfLength;
-                foreach (var (o, _, _, _, _) in Fixture.Others)
+                foreach (var o in Fixture.OutsideSenders.Select(x => x.name))
                     foreach (var speed in new[] { 0.5f, 3f })
                     {
                         int frames = Mathf.CeilToInt(2 * half / speed * Harness.Rate);
                         var step = S($"{o} pass at {F(speed)} m/s", frames + 1);
                         var name = o;
-                        step.Each = (r, k) => r.Other(name, Fixture.OnRow(-half + 2 * half * Mathf.Min(k, frames) / frames));
-                        S($"{o} parked", 30).Each = (r, k) => { if (k == 0) r.Other(name, Fixture.Parked); };
+                        step.Each = (r, k) => r.MoveOutside(name, Fixture.OnRow(-half + 2 * half * Mathf.Min(k, frames) / frames));
+                        S($"{o} parked", 30).Each = (r, k) => { if (k == 0) r.MoveOutside(name, Fixture.Parked); };
                     }
                 S("final", 60, render: true);
                 return;
@@ -1539,7 +1530,7 @@ namespace AvatarWorkshop.Reference
         void Complete()
         {
             Finished = true;
-            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, constrainedOut, othersOut, grabsOut, inputsOut, timeOut, dynamicsOut, clocksOut }) w?.Dispose();
+            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, constrainedOut, grabsOut, inputsOut, timeOut, dynamicsOut, clocksOut }) w?.Dispose();
             CheckInputs();
             File.WriteAllText(Path.Combine(output, "done"), frame.ToString(inv) + "\n");
             Debug.Log($"[aw-reference] recorded {frame} frames, {steps.Count} steps, {tips.Count} tips, {renderCount} renders into {output}");

@@ -23,8 +23,9 @@ namespace AvatarWorkshop.Reference
         // The contact player id of the senders outside the avatar; the avatar's contacts keep the SDK's default.
         public const int OtherPlayer = 1000;
         public const string SelfPass = "SelfPass";
+        public const float DefaultMinVelocity = 0.05f;
 
-        public static readonly (string name, ContactBase.ShapeType shape, float radius, float height, string[] tags)[] Others =
+        public static readonly (string name, ContactBase.ShapeType shape, float radius, float height, string[] tags)[] OutsideSenders =
         {
             ("OtherPart", ContactBase.ShapeType.Sphere, 0.05f, 0, new[] { DynamicsTag }),
             ("OtherHand", ContactBase.ShapeType.Capsule, 0.04f, 0.15f, HandTags),
@@ -34,23 +35,22 @@ namespace AvatarWorkshop.Reference
 
         public static readonly (string name, ContactReceiver.ReceiverType type, ContactBase.ShapeType shape, bool self, bool others, bool local, string[] tags, float minVelocity)[] Receivers =
         {
-            ("Constant Sphere", ContactReceiver.ReceiverType.Constant, ContactBase.ShapeType.Sphere, true, true, false, AllTags, 0.05f),
-            ("Constant Capsule", ContactReceiver.ReceiverType.Constant, ContactBase.ShapeType.Capsule, true, true, false, AllTags, 0.05f),
-            ("OnEnter Sphere", ContactReceiver.ReceiverType.OnEnter, ContactBase.ShapeType.Sphere, true, true, false, AllTags, 0.05f),
-            ("OnEnter Capsule", ContactReceiver.ReceiverType.OnEnter, ContactBase.ShapeType.Capsule, true, true, false, AllTags, 0.05f),
-            ("Proximity Sphere", ContactReceiver.ReceiverType.Proximity, ContactBase.ShapeType.Sphere, true, true, false, AllTags, 0.05f),
-            ("Proximity Capsule", ContactReceiver.ReceiverType.Proximity, ContactBase.ShapeType.Capsule, true, true, false, AllTags, 0.05f),
-            ("Self Only", ContactReceiver.ReceiverType.Proximity, ContactBase.ShapeType.Sphere, true, false, false, AllTags, 0.05f),
-            ("Others Only", ContactReceiver.ReceiverType.Proximity, ContactBase.ShapeType.Sphere, false, true, false, AllTags, 0.05f),
-            ("Nobody", ContactReceiver.ReceiverType.Proximity, ContactBase.ShapeType.Sphere, false, false, false, AllTags, 0.05f),
-            ("Local Only", ContactReceiver.ReceiverType.Proximity, ContactBase.ShapeType.Sphere, true, true, true, AllTags, 0.05f),
-            ("Part Tag", ContactReceiver.ReceiverType.Proximity, ContactBase.ShapeType.Sphere, true, true, false, new[] { DynamicsTag }, 0.05f),
-            ("Hand Tags", ContactReceiver.ReceiverType.Proximity, ContactBase.ShapeType.Sphere, true, true, false, HandTags, 0.05f),
-            ("Unmatched Tag", ContactReceiver.ReceiverType.Proximity, ContactBase.ShapeType.Sphere, true, true, false, new[] { "AWNobody" }, 0.05f),
+            ("Constant Sphere", ContactReceiver.ReceiverType.Constant, ContactBase.ShapeType.Sphere, true, true, false, AllTags, DefaultMinVelocity),
+            ("Constant Capsule", ContactReceiver.ReceiverType.Constant, ContactBase.ShapeType.Capsule, true, true, false, AllTags, DefaultMinVelocity),
+            ("OnEnter Sphere", ContactReceiver.ReceiverType.OnEnter, ContactBase.ShapeType.Sphere, true, true, false, AllTags, DefaultMinVelocity),
+            ("OnEnter Capsule", ContactReceiver.ReceiverType.OnEnter, ContactBase.ShapeType.Capsule, true, true, false, AllTags, DefaultMinVelocity),
+            ("Proximity Sphere", ContactReceiver.ReceiverType.Proximity, ContactBase.ShapeType.Sphere, true, true, false, AllTags, DefaultMinVelocity),
+            ("Proximity Capsule", ContactReceiver.ReceiverType.Proximity, ContactBase.ShapeType.Capsule, true, true, false, AllTags, DefaultMinVelocity),
+            ("Self Only", ContactReceiver.ReceiverType.Proximity, ContactBase.ShapeType.Sphere, true, false, false, AllTags, DefaultMinVelocity),
+            ("Others Only", ContactReceiver.ReceiverType.Proximity, ContactBase.ShapeType.Sphere, false, true, false, AllTags, DefaultMinVelocity),
+            ("Nobody", ContactReceiver.ReceiverType.Proximity, ContactBase.ShapeType.Sphere, false, false, false, AllTags, DefaultMinVelocity),
+            ("Local Only", ContactReceiver.ReceiverType.Proximity, ContactBase.ShapeType.Sphere, true, true, true, AllTags, DefaultMinVelocity),
+            ("Part Tag", ContactReceiver.ReceiverType.Proximity, ContactBase.ShapeType.Sphere, true, true, false, new[] { DynamicsTag }, DefaultMinVelocity),
+            ("Hand Tags", ContactReceiver.ReceiverType.Proximity, ContactBase.ShapeType.Sphere, true, true, false, HandTags, DefaultMinVelocity),
+            ("Unmatched Tag", ContactReceiver.ReceiverType.Proximity, ContactBase.ShapeType.Sphere, true, true, false, new[] { "AWNobody" }, DefaultMinVelocity),
             ("Min Velocity", ContactReceiver.ReceiverType.OnEnter, ContactBase.ShapeType.Sphere, true, true, false, AllTags, 1),
         };
 
-        // Root-space row the receivers stand on and every sender's path runs along.
         public const float RowSpacing = 0.3f, RowHeight = 1, RowDepth = 0.7f;
         public static float RowHalfLength => (Receivers.Length - 1) * RowSpacing / 2 + 0.4f;
         public static Vector3 OnRow(float x) => new Vector3(x, RowHeight, RowDepth);
@@ -58,13 +58,13 @@ namespace AvatarWorkshop.Reference
         // The avatar's own sender crosses the row and back in this many seconds, with the clip's auto tangents.
         const float SelfPassSeconds = 9;
 
-        static readonly Dictionary<string, Type> ConstraintKinds = new Dictionary<string, Type>
+        public static readonly Dictionary<string, Type> ConstraintKinds = new Dictionary<string, Type>
         {
             ["Position"] = typeof(VRCPositionConstraint), ["Rotation"] = typeof(VRCRotationConstraint), ["Scale"] = typeof(VRCScaleConstraint),
             ["Parent"] = typeof(VRCParentConstraint), ["Aim"] = typeof(VRCAimConstraint), ["LookAt"] = typeof(VRCLookAtConstraint),
         };
 
-        static readonly Dictionary<string, string[]> MaskFields = new Dictionary<string, string[]>
+        public static readonly Dictionary<string, string[]> MaskFields = new Dictionary<string, string[]>
         {
             ["Position"] = new[] { "AffectsPositionX", "AffectsPositionY", "AffectsPositionZ" },
             ["Rotation"] = new[] { "AffectsRotationX", "AffectsRotationY", "AffectsRotationZ" },
@@ -150,7 +150,6 @@ namespace AvatarWorkshop.Reference
                     frozen.Add(name);
                 }
 
-            // A chain hanging from the head that a parent constraint follows, and one hanging from a constrained bone.
             Transform Chain(Transform parent, string name)
             {
                 var p = parent;
@@ -211,7 +210,7 @@ namespace AvatarWorkshop.Reference
                 foreach (var name in frozen)
                     Stepped(c, "Constraints/" + name, ConstraintKinds[name.Split(' ')[0]], "FreezeToWorld", (0, 0), (1, 1), (2.5f, 0), (3, 0));
                 foreach (var axis in "xyz")
-                    Curve(c, PathTo(root, scaleA), typeof(Transform), "m_LocalScale." + axis, (0, 1), (2, axis == 'y' ? 0.6f : 1.6f), (4, 1));
+                    Curve(c, AnimationUtility.CalculateTransformPath(scaleA, root), typeof(Transform), "m_LocalScale." + axis, (0, 1), (2, axis == 'y' ? 0.6f : 1.6f), (4, 1));
             }, loop: true);
             var freezeState = fx.Layer("Freeze").stateMachine.AddState("Play");
             freezeState.writeDefaultValues = false; freezeState.motion = freeze;
@@ -233,8 +232,6 @@ namespace AvatarWorkshop.Reference
 
             InstallFx(d, parameters, fx);
         }
-
-        static string PathTo(Transform root, Transform t) => t == root ? "" : t.parent == root ? t.name : PathTo(root, t.parent) + "/" + t.name;
 
         public static string ReceiverParameter(string receiver) => "Contact " + receiver;
 

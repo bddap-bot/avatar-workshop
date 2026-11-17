@@ -1517,28 +1517,18 @@ namespace AvatarWorkshop.Reference
             return c;
         }
 
-        static readonly string[] ConstraintKindKeys = { "position", "rotation", "scale", "parent", "aim", "look_at" };
+        static string ConstraintKind(VRCConstraintBase c) =>
+            Fixture.ConstraintKinds.Where(k => k.Value.IsInstanceOfType(c)).Select(k => k.Key).FirstOrDefault();
 
-        static string ConstraintKind(VRCConstraintBase c) => c is VRCPositionConstraint ? "position" : c is VRCRotationConstraint ? "rotation"
-            : c is VRCScaleConstraint ? "scale" : c is VRCParentConstraint ? "parent" : c is VRCAimConstraint ? "aim" : c is VRCLookAtConstraint ? "look_at" : null;
-
-        static readonly Dictionary<string, string[]> MaskKeys = new Dictionary<string, string[]>
-        {
-            ["position"] = new[] { "position_x", "position_y", "position_z" },
-            ["rotation"] = new[] { "rotation_x", "rotation_y", "rotation_z" },
-            ["scale"] = new[] { "scale_x", "scale_y", "scale_z" },
-            ["parent"] = new[] { "position_x", "position_y", "position_z", "rotation_x", "rotation_y", "rotation_z" },
-            ["aim"] = new[] { "rotation_x", "rotation_y", "rotation_z" },
-            ["look_at"] = new string[0],
-        };
+        static string MaskKey(string field) => "mask_" + Snake(field.Substring("Affects".Length));
 
         static readonly string[] ReceiverTypes = { "constant", "on_enter", "proximity" };
 
         // The dynamics probe's settings, one constraint or contact each: "constraint.<kind>.<setting>",
         // "receiver.<setting>" and "sender.<whose>".
         public static readonly string[] DynamicsSettings =
-            ConstraintKindKeys.SelectMany(k => new[] { "sources_one", "sources_weighted", "at_rest", "offset", "local" }.Concat(MaskKeys[k].Select(m => "mask_" + m))
-                .Select(x => $"constraint.{k}.{x}"))
+            Fixture.ConstraintKinds.Keys.SelectMany(k => new[] { "sources_one", "sources_weighted", "at_rest", "offset", "local" }.Concat(Fixture.MaskFields[k].Select(MaskKey))
+                .Select(x => $"constraint.{Snake(k)}.{x}"))
             .Concat(new[] { "scene_up", "object_up", "object_rotation_up", "vector", "none" }.Select(u => "constraint.aim.world_up_" + u))
             .Concat(new[]
             {
@@ -1575,18 +1565,16 @@ namespace AvatarWorkshop.Reference
             }
             foreach (var x in constraints)
             {
-                var kind = ConstraintKind(x);
-                if (kind == null) continue;
+                var name = ConstraintKind(x);
+                if (name == null) continue;
+                var kind = Snake(name);
                 var weights = Enumerable.Range(0, x.Sources.Count).Select(i => x.Sources[i].Weight).ToList();
                 if (weights.Count == 1) Add($"constraint.{kind}.sources_one");
                 if (weights.Count > 1 && weights.Distinct().Count() > 1) Add($"constraint.{kind}.sources_weighted");
                 var type = x.GetType();
                 object F(string name) => type.GetField(name)?.GetValue(x);
-                foreach (var m in MaskKeys[kind])
-                {
-                    var field = "Affects" + string.Concat(m.Split('_').Select(p => char.ToUpperInvariant(p[0]) + p.Substring(1)));
-                    if (F(field) is bool on && !on) Add($"constraint.{kind}.mask_{m}");
-                }
+                foreach (var field in Fixture.MaskFields[name])
+                    if (F(field) is bool on && !on) Add($"constraint.{kind}.{MaskKey(field)}");
                 if ((F("PositionAtRest") is Vector3 pr && Off(pr, Vector3.zero)) || (F("RotationAtRest") is Vector3 rr && Off(rr, Vector3.zero))
                     || (F("ScaleAtRest") is Vector3 sr && Off(sr, Vector3.one))) Add($"constraint.{kind}.at_rest");
                 if ((F("PositionOffset") is Vector3 po && Off(po, Vector3.zero)) || (F("RotationOffset") is Vector3 ro && Off(ro, Vector3.zero))
@@ -1620,7 +1608,7 @@ namespace AvatarWorkshop.Reference
                 Add("receiver.allow." + (r.allowSelf ? r.allowOthers ? "self_and_others" : "self_only" : r.allowOthers ? "others_only" : "nobody"));
                 if (r.localOnly) Add("receiver.local_only");
                 Add(senders.Any(s => s.collisionTags.Any(r.collisionTags.Contains)) ? r.collisionTags.Count > 1 ? "receiver.tags.several" : "receiver.tags.one" : "receiver.tags.unmatched");
-                if (r.receiverType == ContactReceiver.ReceiverType.OnEnter && r.minVelocity > 0.05f) Add("receiver.min_velocity");
+                if (r.receiverType == ContactReceiver.ReceiverType.OnEnter && r.minVelocity > Fixture.DefaultMinVelocity) Add("receiver.min_velocity");
             }
             var player = root.GetComponentsInChildren<ContactBase>(true).Select(x => x.playerId).Distinct().ToList();
             foreach (var s in root.GetComponentsInChildren<ContactSender>(true)) Add("sender.avatar");
