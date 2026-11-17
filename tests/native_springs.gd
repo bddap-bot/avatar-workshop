@@ -119,7 +119,7 @@ func _branches() -> void:
 	for b in 5:
 		skeleton.add_bone(str(b))
 		skeleton.set_bone_parent(b, [-1, 0, 1, 1, 3][b])
-	skeleton.set_bone_rest(1, Transform3D(Basis.from_scale(Vector3(0.999974, 1, 1.00002)), Vector3.ZERO))
+	skeleton.set_bone_rest(1, Transform3D(Basis.from_scale(Vector3(1.0 - 3e-5, 1, 1.0 + 3e-5)), Vector3.ZERO))
 	skeleton.set_bone_rest(2, Transform3D(Basis.IDENTITY, Vector3(0, -0.2, 0)))
 	skeleton.set_bone_rest(3, Transform3D(Basis.IDENTITY, Vector3(0.1, -0.1, 0)))
 	skeleton.set_bone_rest(4, Transform3D(Basis.IDENTITY, Vector3(0, -0.1, 0)))

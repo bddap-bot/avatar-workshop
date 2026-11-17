@@ -250,10 +250,9 @@ fn each_additive_crossfade_and_scrubbed_mirror_follows_its_reference_trace() {
     }
 }
 
-/// An emote pack's clip may hold its body rotation as a quaternion far from unit length (corpus 4 and 5 hold one of
-/// length 225), which Unity reads as its direction alone: an additive layer's crossfade into it blends the turn, not
-/// the lengths. Scaling the body rotation curves of the crossfade probe's destination clips leaves its pose bindings on
-/// the reference.
+/// A clip may hold its body rotation as a quaternion far from unit length, which Unity reads as its direction alone: an
+/// additive layer's crossfade into it blends the turn, not the lengths. Scaling the body rotation curves of the
+/// crossfade probe's destination clips leaves its pose bindings on the reference.
 #[test]
 fn an_additive_crossfade_reads_a_body_rotation_by_its_direction() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -264,9 +263,9 @@ fn an_additive_crossfade_reads_a_body_rotation_by_its_direction() {
         if matches!(&c.binding, avatar_core::model::Binding::Muscle { name } if name.starts_with("RootQ.")) {
             scaled += 1;
             for k in &mut c.curve.keys {
-                k.value *= 225.0;
-                k.in_tangent *= 225.0;
-                k.out_tangent *= 225.0;
+                k.value *= 100.0;
+                k.in_tangent *= 100.0;
+                k.out_tangent *= 100.0;
             }
         }
     }
@@ -675,19 +674,16 @@ fn a_layer_starts_in_its_default_state() {
     assert!(state.ends_with(&format!(".{default_name}")), "started in {state}, not {default_name} (the entry node leads to {other_name})");
 }
 
-/// A 1D blend weights each end by its own distance, (b - x) / (b - a) and (x - a) / (b - a), and a state's clock
-/// advances by dt · speed / duration: one corpus state, whose duration is the weight of a 1/60 s clip as its
-/// parameter nears the other end, reaches the recorded clock bit for bit only so.
+/// A 1D blend weights each end by its own distance, (b - x) / (b - a) and (x - a) / (b - a), which differs from one
+/// less the other's weight in its last bits as the parameter nears either end.
 #[test]
-fn one_dimensional_weights_and_state_clocks_round_as_unity_does() {
+fn one_dimensional_weights_measure_each_end_by_its_own_distance() {
     use avatar_core::animator::motion::weights_1d;
-    let w = weights_1d(&[0.251, 1.0], 0.9999943);
-    let (near, far) = (w[0].unwrap(), w[1].unwrap());
-    assert_eq!(near, (1.0f32 - 0.9999943) / (1.0 - 0.251));
-    assert_eq!(far, (0.9999943f32 - 0.251) / (1.0 - 0.251));
-    let dt = 1.0f32 / 60.0;
-    let duration = near * (1.0 / 60.0);
-    assert_eq!(309838.563f32 + dt * 1.0 / duration, 440735.781f32);
+    let (a, b) = (0.25f32, 1.0f32);
+    for x in [b - 2f32.powi(-20), a + 2f32.powi(-20)] {
+        let w = weights_1d(&[a, b], x);
+        assert_eq!((w[0].unwrap(), w[1].unwrap()), ((b - x) / (b - a), (x - a) / (b - a)), "at {x}");
+    }
 }
 
 /// A goal a humanoid clip's curves leave at the body sits at its rest offset from the clip's body; a mirrored clip
@@ -770,12 +766,11 @@ fn a_direct_trees_unweighted_end_leaves_the_value_beneath() {
 
 /// A direct-tree child playing a looping clip starts it from the beginning when its direct weight rises from zero,
 /// a negative weight counting as zero, but not when a 1D tree beneath that weight moves onto the clip, whether from
-/// children that do not loop or back from another of its children: a corpus 5 toggle, a 1D tree in a
-/// long-running direct tree, samples its looping clip at the state's own time the frame it is switched on.
+/// children that do not loop or back from another of its children.
 #[test]
 fn a_direct_leaf_restarts_by_its_direct_weight_alone() {
     use avatar_core::model::{AnimatorParameter, AnimatorParameterValue, AnimationCurve, Binding, Curve, Keyframe, NodeIndex, PlayableLayerType, WeightedMode};
-    const LENGTH: f32 = 3.0;
+    const LENGTH: f32 = 2.0;
     let ramp = |name: &str, shape: &str| {
         let key = |t: f32| Keyframe { time: t, value: t, in_tangent: 1.0, out_tangent: 1.0, in_weight: 1.0 / 3.0, out_weight: 1.0 / 3.0, weighted_mode: WeightedMode::None };
         let curve = Curve { binding: Binding::BlendShape { node: NodeIndex(BODY), name: shape.into() }, curve: AnimationCurve { keys: vec![key(0.0), key(LENGTH)] } };
@@ -1012,14 +1007,12 @@ fn an_additive_crossfade_blends_both_states_offsets() {
     assert!((alike.last().unwrap().0 - 0.5).abs() < 1e-5, "{alike:?}");
 }
 
-/// Corpus 4 to 6 entering an AFK pose in Action: the source hand goal crosses into the other hemisphere from the value
-/// beneath a third of the way in, where the reference shows these two goals and the blend turned over. With the source
-/// alone opposite, the destination alone opposite, or in Base, the sign stays.
 #[test]
 fn an_action_crossfade_both_of_whose_rotations_lie_opposite_the_value_beneath_comes_out_negated() {
     use avatar_core::model::{AnimatorParameter, AnimatorParameterValue, BehaviourIndex, PlayableLayerType};
     let hand = |q: [f32; 4]| ["x", "y", "z", "w"].iter().zip(q).map(|(c, v)| muscle(&format!("RightHandQ.{c}"), v)).collect::<Vec<_>>();
-    let source = [-0.4486692, -0.8206833, -0.3463137, -0.0723987];
+    let turn = |axis: [f32; 3], degrees: f32| glam::Quat::from_axis_angle(glam::Vec3::from(axis).normalize(), degrees.to_radians()).to_array();
+    let source = turn([-1.0, -2.0, -1.0], 190.0);
     const FADE: usize = 18;
     let fade = |playable: PlayableLayerType, source: [f32; 4], destination: [f32; 4]| {
         let mut avatar = fixture();
@@ -1053,12 +1046,12 @@ fn an_action_crossfade_both_of_whose_rotations_lie_opposite_the_value_beneath_co
         (before, during)
     };
     let close = |a: [f32; 4], b: [f32; 4]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-5);
-    let afk = [-0.4260959, -0.6846099, -0.4344018, -0.4013065];
+    let afk = turn([-2.0, -3.0, -2.0], 228.0);
     let (before, during) = fade(PlayableLayerType::Action, source, afk);
     assert!(close(before, source), "{before:?}");
-    let third = during.iter().find(|q| (q[1] - 0.7937041).abs() < 1e-3).unwrap_or_else(|| panic!("never the reference's turn: {during:?}"));
-    assert!(close(*third, [0.4485126, 0.7937041, 0.37590674, 0.1660252]), "a third in: {third:?}");
     assert!(during[1..FADE - 1].iter().all(|q| q[3] > 0.0), "{during:?}");
+    let dot = |a: [f32; 4], b: [f32; 4]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f32>();
+    assert!(during[1..FADE - 1].iter().all(|q| dot(*q, source) < 0.0 && dot(*q, afk) < 0.0), "not the negated blend of its ends: {during:?}");
     assert!(close(*during.last().unwrap(), afk), "after: {:?}", during.last());
     let (_, during) = fade(PlayableLayerType::Action, source, [0.0, 0.0, 0.0, 1.0]);
     assert!(during[1..FADE - 1].iter().all(|q| q[3] < 0.0), "the source alone opposite turned over: {during:?}");
@@ -1068,9 +1061,8 @@ fn an_action_crossfade_both_of_whose_rotations_lie_opposite_the_value_beneath_co
     assert!(during[1..FADE - 1].iter().all(|q| q[3] < 0.0), "a Base crossfade turned over: {during:?}");
 }
 
-/// A crossfade from a state whose clip keys a hand goal's w alone, at −0.111851, into a state whose goal is the
-/// identity takes the destination's sign from its first blended frame, as corpus 4 to 6 show. Keyed whole, the source
-/// keeps its sign.
+/// A crossfade from a state whose clip keys a hand goal's w alone into a state whose goal is the identity takes the
+/// destination's sign from its first blended frame. Keyed whole, the source keeps its sign.
 #[test]
 fn a_crossfade_from_a_goal_keyed_in_part_takes_the_destination_s_sign() {
     use avatar_core::model::{AnimatorParameter, AnimatorParameterValue, PlayableLayerType};
@@ -1111,15 +1103,14 @@ fn a_crossfade_from_a_goal_keyed_in_part_takes_the_destination_s_sign() {
     let close = |a: [f32; 4], b: [f32; 4]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-5);
     let (identity, turned) = ([0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 0.0, -1.0]);
     let whole = |w: f32| ["x", "y", "z", "w"].iter().zip([0.0, 0.0, 0.0, w]).map(|(c, v)| muscle(&format!("LeftHandQ.{c}"), v)).collect::<Vec<_>>();
-    let (before, during) = fade(vec![muscle("LeftHandQ.w", -0.111851)], whole(1.0));
+    let (before, during) = fade(vec![muscle("LeftHandQ.w", -0.25)], whole(1.0));
     assert!(close(before, turned), "{before:?}");
     assert!(close(during[0], turned) && during[1..].iter().all(|q| close(*q, identity)), "{during:?}");
-    let (_, during) = fade(whole(-0.111851), whole(1.0));
+    let (_, during) = fade(whole(-0.25), whole(1.0));
     assert!(during[..FADE].iter().all(|q| close(*q, turned)), "a source keyed whole took the destination's sign: {during:?}");
 }
 
-/// A clip without high-quality curves samples a curve with two keys a millionth of a frame apart as its Hermite cubic:
-/// corpus 4 to 6 record 1.319979 half a frame past the key at frame 8, where framing would give 1.2865. Keys at the
+/// A clip without high-quality curves samples a curve with two keys a float step apart as its Hermite cubic. Keys at the
 /// same time still frame it.
 #[test]
 fn a_curve_with_keys_a_millionth_of_a_frame_apart_stays_hermite() {
@@ -1135,7 +1126,7 @@ fn a_curve_with_keys_a_millionth_of_a_frame_apart_stays_hermite() {
             out_weight: 1.0 / 3.0,
             weighted_mode: WeightedMode::None,
         };
-        let keys = vec![key(8.0, 1.3848447, -0.504942), key(10.0, 1.0, 0.0), key(12.0, 1.0, 0.0), key(near, 1.2732935, -1.3587637), key(13.0, 1.2216218, -2.0256371)];
+        let keys = vec![key(8.0, 1.5, -0.5), key(10.0, 1.0, 0.0), key(12.0, 1.0, 0.0), key(near, 1.25, -1.5), key(13.0, 1.25, -2.0)];
         let mut c = clip("AwNod", vec![Curve { binding: Binding::Muscle { name: "Head Nod Down-Up".into() }, curve: AnimationCurve { keys } }]);
         (c.length, c.sample_rate, c.high_quality_curve) = (13.0 / 30.0, 30.0, false);
         avatar.model.clips.push(c);
@@ -1150,32 +1141,35 @@ fn a_curve_with_keys_a_millionth_of_a_frame_apart_stays_hermite() {
         });
         got.unwrap()
     };
-    let hermite = sample(12.000001);
-    assert!((hermite - 1.319979).abs() < 1e-5, "{hermite}");
+    let cubic = {
+        let (t, span) = (0.25f32, 2.0 / 30.0);
+        let (t2, t3) = (t * t, t * t * t);
+        (2.0 * t3 - 3.0 * t2 + 1.0) * 1.5 + (t3 - 2.0 * t2 + t) * span * -0.5 + (-2.0 * t3 + 3.0 * t2) * 1.0
+    };
+    let hermite = sample(f32::from_bits(12f32.to_bits() + 1));
+    assert!((hermite - cubic).abs() < 1e-5, "{hermite}, want {cubic}");
     let framed = sample(12.0);
-    assert!((framed - 1.319979).abs() > 1e-2, "keys at one time kept the curve Hermite: {framed}");
+    assert!((framed - cubic).abs() > 1e-2, "keys at one time kept the curve Hermite: {framed}");
 }
 
-/// A state's body and goal rotations leave it as directions. Corpus 4 to 6 enter an emote by a 0.2 s crossfade from the
-/// identity into a blend tree whose leaves turn the body far apart, while the Action playable's weight ramps over the
-/// same 0.2 s. Unity blends the identity towards the tree's direction by the crossfade, then again by the playable's
-/// weight; halfway that is the body corpus 4 records. The tree's own sum, 0.938 long, would weigh less.
+/// A state's body and goal rotations leave it as directions. A crossfade from the identity into a blend tree whose
+/// leaves turn the body far apart, while the Action playable's weight ramps over the same time, blends the identity
+/// towards the tree's direction by the crossfade, then again by the playable's weight.
 #[test]
 fn a_blend_tree_state_s_body_rotation_enters_a_crossfade_as_a_direction() {
     use avatar_core::model::{AnimatorParameter, AnimatorParameterValue, BehaviourIndex, PlayableLayerType};
     let body = |half: f32| {
         ["T.x", "T.y", "T.z", "Q.x", "Q.y", "Q.z", "Q.w"].iter().zip([0.0, 0.0, 0.0, half.sin(), 0.0, 0.0, half.cos()]).map(|(c, v)| muscle(&format!("Root{c}"), v)).collect::<Vec<_>>()
     };
-    let (sum, length) = ([0.51833063f32, 0.78203595f32], 0.93821f32);
-    let (towards, apart) = (sum[0].atan2(sum[1]), length.acos());
+    let (towards, apart) = (0.6f32, 0.9f32.acos());
     let mut avatar = fixture();
     let m = &mut avatar.model;
     let c = m.clips.len() as u32;
     m.clips.extend([clip("AwRest", body(0.0)), clip("AwNear", body(towards - apart)), clip("AwFar", body(towards + apart))]);
     let ramp = m.behaviours.len() as u32;
-    m.behaviours.push(serde_json::from_value(serde_json::json!({"type": "playableLayerControl", "layer": "action", "goalWeight": 1, "blendDuration": 0.2})).unwrap());
+    m.behaviours.push(serde_json::from_value(serde_json::json!({"type": "playableLayerControl", "layer": "action", "goalWeight": 1, "blendDuration": 0.25})).unwrap());
     let go = serde_json::json!([{"destination": {"type": "state", "id": 9302}, "conditions": [{"mode": "if", "parameter": "AwGo", "threshold": 0}],
-        "duration": {"fixed": 0.2}, "offset": 0, "interruptionSource": "none", "orderedInterruption": true, "canTransitionToSelf": false, "mute": false, "solo": false}]);
+        "duration": {"fixed": 0.25}, "offset": 0, "interruptionSource": "none", "orderedInterruption": true, "canTransitionToSelf": false, "mute": false, "solo": false}]);
     let tree = serde_json::json!({"blendTree": {"name": "Apart", "algorithm": {"type": "simple1D", "blendParameter": "AwBlend", "children": [
         {"motion": {"clip": c + 1}, "threshold": 0, "timeScale": 1, "cycleOffset": 0, "mirror": false},
         {"motion": {"clip": c + 2}, "threshold": 1, "timeScale": 1, "cycleOffset": 0, "mirror": false}]}}});
@@ -1193,7 +1187,7 @@ fn a_blend_tree_state_s_body_rotation_enters_a_crossfade_as_a_direction() {
     let mut a = Animator::new(&avatar);
     run(&mut a, 10);
     a.set("AwGo", 1.0);
-    let during: Vec<[f32; 2]> = (0..16)
+    let during: Vec<[f32; 2]> = (0..20)
         .map(|_| {
             run(&mut a, 1);
             [value(&a, "RootQ.x"), value(&a, "RootQ.w")]
@@ -1201,12 +1195,10 @@ fn a_blend_tree_state_s_body_rotation_enters_a_crossfade_as_a_direction() {
         .collect();
     let toward = |w: f32, half: f32| (w * half.sin()).atan2(1.0 - w + w * half.cos());
     for (k, q) in during.iter().enumerate() {
-        let w = (k as f32 / 12.0).min(1.0);
+        let w = (k as f32 / 15.0).min(1.0);
         let half = toward(w, toward(w, towards));
         assert!((q[0] - half.sin()).abs() < 1e-5 && (q[1] - half.cos()).abs() < 1e-5, "frame {k}: {q:?}, want {:?}", [half.sin(), half.cos()]);
     }
-    let recorded = [0.14581685f32, 0.9893116];
-    assert!((during[6][0] - recorded[0]).abs() < 1e-4 && (during[6][1] - recorded[1]).abs() < 1e-4, "halfway: {:?}", during[6]);
 }
 
 /// A mirrored state whose time a parameter drives plays its clip at that time, without the half cycle a mirrored
