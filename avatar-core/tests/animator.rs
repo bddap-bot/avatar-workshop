@@ -995,6 +995,62 @@ fn an_additive_crossfade_blends_both_states_offsets() {
     assert!((alike.last().unwrap().0 - 0.5).abs() < 1e-5, "{alike:?}");
 }
 
+/// Corpus 4 to 6 entering an AFK pose in Action: the source hand goal crosses into the other hemisphere from the value
+/// beneath a third of the way in, where the reference shows these two goals and the blend turned over. With the source
+/// alone opposite, the destination alone opposite, or in Base, the sign stays.
+#[test]
+fn an_action_crossfade_both_of_whose_rotations_lie_opposite_the_value_beneath_comes_out_negated() {
+    use avatar_core::model::{AnimatorParameter, AnimatorParameterValue, BehaviourIndex, PlayableLayerType};
+    let hand = |q: [f32; 4]| ["x", "y", "z", "w"].iter().zip(q).map(|(c, v)| muscle(&format!("RightHandQ.{c}"), v)).collect::<Vec<_>>();
+    let source = [-0.4486692, -0.8206833, -0.3463137, -0.0723987];
+    const FADE: usize = 18;
+    let fade = |playable: PlayableLayerType, source: [f32; 4], destination: [f32; 4]| {
+        let mut avatar = fixture();
+        let m = &mut avatar.model;
+        let c = m.clips.len() as u32;
+        m.clips.extend([clip("AwFrom", hand(source)), clip("AwTo", hand(destination))]);
+        let full = m.behaviours.len() as u32;
+        m.behaviours.push(serde_json::from_value(serde_json::json!({"type": "playableLayerControl", "layer": "action", "goalWeight": 1, "blendDuration": 0})).unwrap());
+        let go = serde_json::json!([{"destination": {"type": "state", "id": 9302}, "conditions": [{"mode": "if", "parameter": "AwGo", "threshold": 0}],
+            "duration": {"fixed": FADE as f32 / 60.0}, "offset": 0, "interruptionSource": "none", "orderedInterruption": true, "canTransitionToSelf": false, "mute": false, "solo": false}]);
+        let state = |id: u32, clip: u32, transitions: serde_json::Value| {
+            serde_json::json!({"id": id, "name": format!("S{id}"), "speed": 1, "cycleOffset": 0, "mirror": false, "motion": {"clip": clip}, "writeDefaults": true, "ikOnFeet": false, "behaviours": [], "transitions": transitions})
+        };
+        let controller = m.layers.get_mut(&playable).unwrap().controller.as_mut().unwrap();
+        controller.parameters.push(AnimatorParameter { name: "AwGo".into(), default: AnimatorParameterValue::Bool(false) });
+        let mut layer = base_layer("override", vec![state(9301, c, go), state(9302, c + 1, serde_json::json!([]))]);
+        if let avatar_core::model::LayerContent::StateMachine { state_machine } = &mut layer.content {
+            state_machine.states[0].behaviours.push(BehaviourIndex(full));
+        }
+        controller.layers.push(layer);
+        let mut a = Animator::new(&avatar);
+        run(&mut a, 10);
+        let before = ["x", "y", "z", "w"].map(|k| value(&a, &format!("RightHandQ.{k}")));
+        a.set("AwGo", 1.0);
+        let during: Vec<[f32; 4]> = (0..30)
+            .map(|_| {
+                run(&mut a, 1);
+                ["x", "y", "z", "w"].map(|k| value(&a, &format!("RightHandQ.{k}")))
+            })
+            .collect();
+        (before, during)
+    };
+    let close = |a: [f32; 4], b: [f32; 4]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-5);
+    let afk = [-0.4260959, -0.6846099, -0.4344018, -0.4013065];
+    let (before, during) = fade(PlayableLayerType::Action, source, afk);
+    assert!(close(before, source), "{before:?}");
+    let third = during.iter().find(|q| (q[1] - 0.7937041).abs() < 1e-3).unwrap_or_else(|| panic!("never the reference's turn: {during:?}"));
+    assert!(close(*third, [0.4485126, 0.7937041, 0.37590674, 0.1660252]), "a third in: {third:?}");
+    assert!(during[1..FADE - 1].iter().all(|q| q[3] > 0.0), "{during:?}");
+    assert!(close(*during.last().unwrap(), afk), "after: {:?}", during.last());
+    let (_, during) = fade(PlayableLayerType::Action, source, [0.0, 0.0, 0.0, 1.0]);
+    assert!(during[1..FADE - 1].iter().all(|q| q[3] < 0.0), "the source alone opposite turned over: {during:?}");
+    let (_, during) = fade(PlayableLayerType::Action, [0.0, 0.0, 0.0, 1.0], afk);
+    assert!(during[1..FADE / 2].iter().all(|q| q[3] > 0.0), "the destination alone opposite turned over: {during:?}");
+    let (_, during) = fade(PlayableLayerType::Base, source, afk);
+    assert!(during[1..FADE - 1].iter().all(|q| q[3] < 0.0), "a Base crossfade turned over: {during:?}");
+}
+
 /// A mirrored state whose time a parameter drives plays its clip at that time, without the half cycle a mirrored
 /// state's clock otherwise adds: corpus 3 scrubs mirrored sitting poses so.
 #[test]

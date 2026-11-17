@@ -961,7 +961,7 @@ impl Animator {
                         v.sort_by_key(|x| x.0);
                         return v;
                     }
-                    layer_pose(rt, li, clips_ref, defaults, &bound, &slots[li], targets, quats, &beneath, &kept, &beneath, &beneath)
+                    layer_pose(rt, li, clips_ref, defaults, &bound, &slots[li], targets, quats, false, &beneath, &kept, &beneath, &beneath)
                 };
                 self.playables[pi].rt.update(dt, &clips, &mut entered, &frozen);
             }
@@ -1227,7 +1227,7 @@ impl Animator {
                 (false, true) => prev[t as usize],
                 (false, false) => self.defaults[t as usize],
             };
-            let whole_pose = (!additive || stacked).then(|| layer_pose(&p.rt, li, clips, &self.defaults, &p.bound, &p.slots[li], &self.targets.list, &self.rotations, &beneath, &kept, &through, &reset));
+            let whole_pose = (!additive || stacked).then(|| layer_pose(&p.rt, li, clips, &self.defaults, &p.bound, &p.slots[li], &self.targets.list, &self.rotations, p.kind == PlayableLayerType::Action, &beneath, &kept, &through, &reset));
             if additive {
                 if let Some(mut pose) = whole_pose.clone().filter(|_| p.drives_parameters[li]) {
                     self.pull_parameters(&p.rt, &pulled(&p.rt, li, clips, &self.defaults), &mut pose);
@@ -1825,9 +1825,11 @@ fn uncovered(rt: &ControllerRt, li: usize, state: crate::model::StateId, clips: 
 /// default making up what its weights leave short of one. Under write defaults a target only a direct tree's leaves
 /// at weight zero write is covered by none of them, so it keeps the value beneath, as a toggle's far end over a
 /// radial shows; an animator parameter they write still takes the zero share. A destination rotation of `quats` in the
-/// other hemisphere from its source is negated before the two blend.
+/// other hemisphere from its source is negated before the two blend. With `turns_over`, a crossfade from a playing
+/// state whose humanoid source and destination rotations both lie in the other hemisphere from the value beneath
+/// comes out negated.
 #[allow(clippy::too_many_arguments)]
-fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32], bound: &[u32], slots: &[u32], targets: &[Target], quats: &[[u32; 4]], beneath: &dyn Fn(u32) -> f32, held: &dyn Fn(u32) -> f32, through: &dyn Fn(u32) -> f32, reset: &dyn Fn(u32) -> f32) -> Vec<(u32, f32, f32)> {
+fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32], bound: &[u32], slots: &[u32], targets: &[Target], quats: &[[u32; 4]], turns_over: bool, beneath: &dyn Fn(u32) -> f32, held: &dyn Fn(u32) -> f32, through: &dyn Fn(u32) -> f32, reset: &dyn Fn(u32) -> f32) -> Vec<(u32, f32, f32)> {
     let l = &rt.layers[li];
     let Some(cur) = &l.current else { return vec![] };
     let steady = match &l.active {
@@ -1893,7 +1895,7 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
         (None, None) => vec![],
         (Some(a), None) => {
             let w = a.progress();
-            let (from, from_wd): (HashMap<u32, (f32, f32)>, bool) = match &a.from {
+            let (mut from, from_wd): (HashMap<u32, (f32, f32)>, bool) = match &a.from {
                 From::State(p) => (
                     {
                         let uncovered = uncovered(rt, li, p.state, clips, targets);
@@ -1904,6 +1906,18 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
                 From::Frozen(v) => (v.iter().map(|&(t, v, c)| (t, (v, c))).collect(), true),
             };
             let mut to = animated(playing_pose(rt, li, &a.to, clips, defaults, false));
+            // Measured only in Action: corpus 4 to 6 entering an AFK pose turn over there, while corpus 4 leaving an emote
+            // (the source alone opposite) and the composition probe's mirrored goals in Base keep their sign. No trace
+            // shows another playable, an interrupted crossfade or a generic rotation.
+            if turns_over && matches!(a.from, From::State(_)) {
+                for q in quats.iter().filter(|q| matches!(targets[q[0] as usize], Target::Muscle(_))) {
+                    let (Some(src), Some(dst)) = (whole(q.map(|t| from.get(&t).map(|s| s.0))), whole(q.map(|t| to.get(&t).copied()))) else { continue };
+                    let under = q.map(|t| beneath(t));
+                    if motion::opposed(src, under) && motion::opposed(dst, under) {
+                        q.iter().for_each(|t| from.get_mut(t).unwrap().0 *= -1.0);
+                    }
+                }
+            }
             let to_wd = rt.state(li, a.to.state).is_some_and(|s| s.write_defaults);
             let source = |t: u32| {
                 from.get(&t).copied().or_else(|| {
@@ -1915,8 +1929,8 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
                 })
             };
             for q in quats {
-                let (Some(over), Some(under)) = (q.iter().map(|t| to.get(t).copied()).collect::<Option<Vec<f32>>>(), q.iter().map(|&t| source(t).map(|s| s.0)).collect::<Option<Vec<f32>>>()) else { continue };
-                if motion::opposed([over[0], over[1], over[2], over[3]], [under[0], under[1], under[2], under[3]]) {
+                let (Some(over), Some(under)) = (whole(q.map(|t| to.get(&t).copied())), whole(q.map(|t| source(t).map(|s| s.0)))) else { continue };
+                if motion::opposed(over, under) {
                     q.iter().for_each(|t| *to.get_mut(t).unwrap() *= -1.0);
                 }
             }
@@ -1969,4 +1983,9 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
             out
         }
     }
+}
+
+/// A quaternion's four components, when all are present.
+fn whole(q: [Option<f32>; 4]) -> Option<[f32; 4]> {
+    Some([q[0]?, q[1]?, q[2]?, q[3]?])
 }
