@@ -1063,6 +1063,15 @@ impl Animator {
                 }
             }
             if p.kind != PlayableLayerType::Additive {
+                // A playable's own body and goal rotations enter the stack as directions: a crossfade inside it
+                // between turns far apart sums short of unit length and would weigh less than the playable's weight
+                // (corpus 4 and 6 entering an emote).
+                for q in self.rotations[..self.human_rotations].iter().filter(|q| p.whole[q[3] as usize]) {
+                    let (c, len) = (acc.cov[q[3] as usize], q.iter().map(|&t| acc.sum[t as usize].powi(2)).sum::<f32>().sqrt());
+                    if c > 0.0 && len > 0.0 {
+                        q.iter().for_each(|&t| acc.sum[t as usize] *= c / len);
+                    }
+                }
                 for q in self.rotations[..self.human_rotations].iter().filter(|q| pw * acc.cov[q[3] as usize] < 1.0) {
                     let pos = |t: u32| p.human.iter().position(|&h| h == t);
                     let (Some(a), Some(b), Some(c), Some(d)) = (pos(q[0]), pos(q[1]), pos(q[2]), pos(q[3])) else { continue };
