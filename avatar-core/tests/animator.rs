@@ -483,6 +483,33 @@ fn local_only_drivers_run_for_the_wearer_alone() {
     assert_eq!((remote.get("Setter"), remote.get("Local")), (Some(1.0), Some(0.0)));
 }
 
+/// Sitting enters a pose space with a fixed delay of 0.2 s, which the SDK waits out and the emulator then waits again.
+/// The fixture's recordings enter it at graph times 57.48 s and 70.23 s and move the view 24 and 25 frames later: the
+/// SDK compares Unity's clock rounded to single precision, which from the second entry falls short of 0.2 s after 12
+/// frames.
+#[test]
+fn a_fixed_pose_space_delay_counts_the_sdk_s_single_precision_clock() {
+    let frames_to_view = |entered: usize| {
+        let mut a = Animator::new(&fixture());
+        let lowered = avatar_core::physbones::Transform { translation: glam::Vec3::new(0.0, -0.5, 0.0), ..avatar_core::physbones::Transform::IDENTITY };
+        let mut step = |a: &mut Animator| {
+            a.set_head(lowered);
+            a.step(1.0 / 60.0);
+        };
+        for _ in 0..entered {
+            step(&mut a);
+        }
+        let rest = a.view;
+        a.set_builtin("Seated", 1.0);
+        (0..60).find(|_| {
+            step(&mut a);
+            a.view != rest
+        })
+    };
+    assert_eq!(frames_to_view(3448), Some(24));
+    assert_eq!(frames_to_view(4213), Some(25));
+}
+
 #[test]
 fn saved_parameters_survive_a_reload() {
     let mut a = Animator::new(&fixture());

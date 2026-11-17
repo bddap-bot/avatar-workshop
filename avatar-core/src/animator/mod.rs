@@ -171,17 +171,22 @@ pub const TRACKED_PARTS: [&str; 10] =
 const EYES: usize = 8;
 pub const MOUTH: usize = 9;
 
-/// A temporary pose space waiting out its delays: the SDK's own (seconds, or the state's normalized time), then
-/// the emulator's, which waits `delay_time` seconds again once the SDK applies it.
+/// A temporary pose space waiting out its delays: the SDK's, then the emulator's, which waits `delay_time` seconds
+/// again from the frame the SDK applies it. The SDK measures a fixed delay on Unity's clock rounded to single precision,
+/// the emulator on the clock itself, so the same delay entered on different frames can take one frame more.
 struct PoseSpace {
     enter: bool,
     playable: usize,
     layer: usize,
     state: crate::model::StateId,
-    sdk_wait: f32,
-    then_wait: f32,
-    waited: f32,
-    applied: bool,
+    sdk_wait: SdkWait,
+    delay: f32,
+    applied: Option<f64>,
+}
+
+enum SdkWait {
+    Since(f32),
+    Normalized { seconds: f32, waited: f32 },
 }
 
 pub struct Animator {
@@ -923,8 +928,8 @@ impl Animator {
                 };
             }
         }
-        self.advance_pose_spaces(dt);
         self.time += dt as f64;
+        self.advance_pose_spaces(dt);
         let now = self.time;
         for p in &mut self.playables {
             if let Some(b) = &p.blend {
@@ -1514,7 +1519,11 @@ impl Animator {
                 Behaviour::LocomotionControl { disable_locomotion } => self.locomotion_disabled = disable_locomotion,
                 Behaviour::TemporaryPoseSpace { enter_pose_space, fixed_delay, delay_time } => {
                     let p = &self.playables[pi];
-                    let sdk_wait = if fixed_delay { delay_time } else { delay_time * p.rt.duration(e.layer, e.state, clips) };
+                    let sdk_wait = if fixed_delay {
+                        SdkWait::Since(self.time as f32)
+                    } else {
+                        SdkWait::Normalized { seconds: delay_time * p.rt.duration(e.layer, e.state, clips), waited: 0.0 }
+                    };
                     self.pose_spaces.retain(|s| !(s.playable == pi && s.layer == e.layer));
                     self.pose_spaces.push(PoseSpace {
                         enter: enter_pose_space,
@@ -1522,9 +1531,8 @@ impl Animator {
                         layer: e.layer,
                         state: e.state,
                         sdk_wait,
-                        then_wait: delay_time,
-                        waited: 0.0,
-                        applied: sdk_wait <= 0.0,
+                        delay: delay_time,
+                        applied: (delay_time <= 0.0).then_some(self.time),
                     });
                 }
             }
@@ -1532,26 +1540,32 @@ impl Animator {
     }
 
     fn advance_pose_spaces(&mut self, dt: f32) {
+        let now = self.time;
         let mut keep = Vec::new();
         for mut s in std::mem::take(&mut self.pose_spaces) {
-            let l = &self.playables[s.playable].rt.layers[s.layer];
-            let here = match &l.active {
-                Some(a) => a.to.state == s.state,
-                None => l.current.as_ref().is_some_and(|c| c.state == s.state),
-            };
-            if !s.applied && !here {
-                continue;
-            }
-            s.waited += dt;
-            if !s.applied {
-                if s.waited >= s.sdk_wait {
-                    s.applied = true;
-                    s.waited = 0.0;
+            let Some(applied) = s.applied else {
+                let l = &self.playables[s.playable].rt.layers[s.layer];
+                let here = match &l.active {
+                    Some(a) => a.to.state == s.state,
+                    None => l.current.as_ref().is_some_and(|c| c.state == s.state),
+                };
+                if !here {
+                    continue;
+                }
+                let due = match &mut s.sdk_wait {
+                    SdkWait::Since(entered) => now as f32 - *entered >= s.delay,
+                    SdkWait::Normalized { seconds, waited } => {
+                        *waited += dt;
+                        *waited >= *seconds
+                    }
+                };
+                if due {
+                    s.applied = Some(now);
                 }
                 keep.push(s);
                 continue;
-            }
-            if s.waited < s.then_wait {
+            };
+            if now < applied + s.delay as f64 {
                 keep.push(s);
                 continue;
             }
