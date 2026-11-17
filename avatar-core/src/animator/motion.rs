@@ -447,6 +447,7 @@ struct Goal {
     mirror: (glam::Vec3, Quat),
     /// The clip's start seen from the goal at its end, which Loop Pose blends in over the clip's length.
     drift: (glam::Vec3, Quat),
+    foot: bool,
 }
 
 /// The body and IK goals of a humanoid clip, which Unity's human pose holds whole: the body under the clip's
@@ -467,7 +468,7 @@ struct Human {
     /// turn about Y when it carries the rotation, so that turn is left out of each end and is read from the body
     /// before this drift.
     body_drift: Quat,
-    /// The lower foot's height at the clip's start, which the Feet height basis measures the body from.
+    /// The Feet height basis's height at the clip's start: see [`ground`].
     feet: f32,
     /// Change of each other curve over the clip's length, by target, which Loop Pose removes.
     curve_drift: Vec<(u32, f32)>,
@@ -476,6 +477,18 @@ struct Human {
 /// A rotation's turn about Y.
 fn twist(q: Quat) -> Quat {
     unit(Quat::from_xyzw(0.0, q.y, 0.0, q.w))
+}
+
+impl Goal {
+    /// The goal's place and rotation from the body, before the avatar's rest offset: its curves as `read` gives them,
+    /// at the body where it has none, with Loop Pose's drift `frac` of the way in and a mirrored clip's turn.
+    fn place(&self, read: impl Fn(u32, f32) -> f32, frac: f32) -> (glam::Vec3, Quat) {
+        let ids = &self.ids;
+        let t = glam::Vec3::new(read(ids[0], 0.0), read(ids[1], 0.0), read(ids[2], 0.0));
+        let q = Quat::from_xyzw(read(ids[3], 0.0), read(ids[4], 0.0), read(ids[5], 0.0), read(ids[6], 1.0)).normalize();
+        let (t, q) = (t + q * (self.drift.0 * frac), q * weighted(self.drift.1, frac));
+        (t + q * self.mirror.0, q * self.mirror.1)
+    }
 }
 
 impl Human {
@@ -491,16 +504,10 @@ impl Human {
         let rests = goal_rests(rest);
         let (start, start_q) = (pos(&body, 0.0), rot(&body, 0.0));
         let mut goals = Vec::new();
-        let mut feet = f32::INFINITY;
         for (k, (g, part)) in super::human::GOALS.iter().filter(|(_, p)| *p != BodyPart::Root).enumerate() {
             let foot = matches!(part, BodyPart::LeftFootIK | BodyPart::RightFootIK);
             let (own, own_turn) = rests[k];
-            let ids = ids(g);
-            let curved = ids.filter(|ids| clip.curves.iter().any(|c| ids.contains(&c.0)));
-            if foot {
-                feet = feet.min(start.y + (start_q * curved.map_or(own, |ids| pos(&ids, 0.0) + rot(&ids, 0.0) * own)).y);
-            }
-            let Some(ids) = ids else { continue };
+            let Some(ids) = ids(g) else { continue };
             let mirror = if !mirrored {
                 (glam::Vec3::ZERO, Quat::IDENTITY)
             } else {
@@ -516,7 +523,7 @@ impl Human {
             } else {
                 (glam::Vec3::ZERO, Quat::IDENTITY)
             };
-            goals.push(Goal { ids, mirror, drift });
+            goals.push(Goal { ids, mirror, drift, foot });
         }
         let mut slots: Vec<u32> = body.iter().chain(goals.iter().flat_map(|g| g.ids.iter())).copied().collect();
         slots.sort_unstable();
@@ -527,6 +534,7 @@ impl Human {
         };
         curve_drift.sort_unstable_by_key(|c| c.0);
         let ends = |q: Quat| if settings.rotation.bake_into_pose { q } else { twist(q).inverse() * q };
+        let feet = ground(start, start_q, goals.iter().filter(|g| g.foot).map(|g| g.place(|id, or| at(id, 0.0, or), 0.0).0));
         Some(Human {
             curve_drift,
             body,
@@ -559,6 +567,7 @@ impl Human {
             (true, RotationBasis::Original) => {}
         }
         q *= weighted(self.body_drift, frac);
+        let curve = |id: u32, or: f32| pose.iter().find(|p| p.0 == id).map_or(or, |p| p.1);
         let mut at = glam::Vec3::new(0.0, s.height.offset, 0.0);
         if s.height.bake_into_pose {
             if s.loop_pose {
@@ -570,7 +579,8 @@ impl Human {
         } else {
             at.y += match s.height.based_upon {
                 HeightBasis::Original => t.y - self.start.y,
-                HeightBasis::CenterOfMass | HeightBasis::Feet => t.y,
+                HeightBasis::CenterOfMass => t.y,
+                HeightBasis::Feet => ground(t, q, self.goals.iter().filter(|g| g.foot).map(|g| g.place(curve, frac).0)),
             };
         }
         if s.xz.bake_into_pose {
@@ -594,15 +604,18 @@ impl Human {
             }
         };
         write(&self.body, t, q, out);
-        let curve = |id: u32, or: f32| pose.iter().find(|p| p.0 == id).map_or(or, |p| p.1);
         for g in &self.goals {
-            let ids = &g.ids;
-            let ct = glam::Vec3::new(curve(ids[0], 0.0), curve(ids[1], 0.0), curve(ids[2], 0.0));
-            let cq = Quat::from_xyzw(curve(ids[3], 0.0), curve(ids[4], 0.0), curve(ids[5], 0.0), curve(ids[6], 1.0)).normalize();
-            let (ct, cq) = (ct + cq * (g.drift.0 * frac), cq * weighted(g.drift.1, frac));
-            write(ids, t + q * (ct + cq * g.mirror.0), q * cq * g.mirror.1, out);
+            let (gt, gq) = g.place(curve, frac);
+            write(&g.ids, t + q * gt, q * gq, out);
         }
     }
+}
+
+/// The height the Feet basis measures the body from: the lowest of the body and its feet's goals, each foot placed
+/// from the body before the avatar's rest offset is added. Unity's root never rises above the body, as the Feet probe's
+/// turned poses show, whose goals lie above it.
+fn ground(body: glam::Vec3, rotation: Quat, feet: impl Iterator<Item = glam::Vec3>) -> f32 {
+    feet.map(|p| body.y + (rotation * p).y).fold(body.y, f32::min)
 }
 
 /// Whether two rotations, as xyzw components, lie in opposite hemispheres: Unity's blends negate one of them first.

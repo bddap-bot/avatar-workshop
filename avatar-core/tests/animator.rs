@@ -56,8 +56,7 @@ fn each_humanoid_composition_follows_its_reference_trace() {
 }
 
 /// The rotation probe turns the body and the IK goals about all three axes, one clip and root-motion setting at a
-/// time, in Base and Action at full and partial weight. Every case follows the reference but the Feet height basis
-/// left unbaked.
+/// time, in Base and Action at full and partial weight. Every case follows the reference.
 #[test]
 fn each_humanoid_rotation_follows_its_reference_trace() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -72,11 +71,7 @@ fn each_humanoid_rotation_follows_its_reference_trace() {
     let steps = reference::animator::steps(&dir);
     let cases: Vec<_> = steps.iter().filter(|s| s.label.starts_with("case ")).collect();
     assert_eq!(cases.len(), 96, "48 cases, each unmirrored and mirrored");
-    for s in cases.iter().filter(|s| !s.label.ends_with("height feet")) {
-        let wrong: Vec<_> = rep.bindings.samples.range((s.frame, String::new())..(s.frame + s.frames, String::new())).take(20).collect();
-        assert!(wrong.is_empty(), "{} differs: {wrong:?}", s.label);
-    }
-    assert!(rep.bindings.wrong <= 2185, "bindings: {}", rep.bindings.summary(20));
+    assert_eq!(rep.bindings.wrong, 0, "bindings: {}", rep.bindings.summary(20));
 }
 
 /// The Loop Pose drift probe plays a looping walk under Loop Pose whose body ends turned from its start by 10, 45 or
@@ -103,8 +98,8 @@ fn each_loop_pose_drift_follows_its_reference_trace() {
 /// degrees about X, Y, Z or all three, as a walk over five cycles and as a zero-length pose, with Loop Pose on and off,
 /// in Base at full weight and Action at partial weight, unmirrored and mirrored, each with its height left unbaked
 /// beside the same clip with its height baked. Parameters, states, values and state times follow the reference, and so
-/// does every unbaked case turning about Y alone or by 10 degrees, with the reset after it. The other unbaked cases and
-/// the baked controls, which all but the poses turned 120 degrees about X miss today, are held to today's wrong samples.
+/// does every pose and every walk without Loop Pose, with the reset after it. The walks under Loop Pose, which miss
+/// wherever their turn is not about Y alone, are held to today's wrong samples.
 #[test]
 fn each_feet_height_basis_follows_its_reference_trace() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -119,23 +114,20 @@ fn each_feet_height_basis_follows_its_reference_trace() {
     let steps = reference::animator::steps(&dir);
     let cases: Vec<_> = steps.iter().enumerate().filter(|(_, s)| s.label.starts_with("case ")).collect();
     assert_eq!(cases.len(), 384, "192 cases, each unmirrored and mirrored");
-    let (mut unbaked_held, mut baked_held) = (0, 0);
+    let mut held = 0;
     for (i, s) in cases {
         let reset = &steps[i + 1];
         assert_eq!(reset.label, "reset");
         let wrong = rep.bindings.samples.range((s.frame, String::new())..(reset.frame + reset.frames, String::new())).count();
         let clip: Vec<&str> = s.label.split(" feet ").nth(1).unwrap().split(' ').collect();
-        let (axes, degrees) = (clip[1], clip[2]);
-        match *clip.last().unwrap() {
-            "unbaked" if axes == "y" || degrees == "10" => assert_eq!(wrong, 0, "{} differs", s.label),
-            "unbaked" => unbaked_held += wrong,
-            "baked" => baked_held += wrong,
-            other => panic!("{}: no height setting {other}", s.label),
+        if clip[0] == "moving" && s.label.contains(" loop pose ") && clip[1] != "y" {
+            held += wrong;
+        } else {
+            assert_eq!(wrong, 0, "{} differs", s.label);
         }
     }
-    assert_eq!(unbaked_held + baked_held, rep.bindings.wrong, "wrong samples outside the cases and their resets");
-    assert!(unbaked_held <= 39_820, "unbaked: {unbaked_held} wrong");
-    assert!(baked_held <= 164_720, "baked: {baked_held} wrong");
+    assert_eq!(held, rep.bindings.wrong, "wrong samples outside the cases and their resets");
+    assert!(held <= 61_905, "{held} wrong");
 }
 
 /// The blend duration probe plays one blend tree at a time; the core keeps every state's time. The values of every
@@ -285,6 +277,32 @@ fn each_additive_crossfade_and_scrubbed_mirror_follows_its_reference_trace() {
         let wrong = |samples: &std::collections::BTreeSet<(usize, String)>| samples.range((s.frame, String::new())..(s.frame + s.frames, String::new())).count();
         assert!(wrong(&rep.values.samples) <= values, "{}: {} wrong values", s.label, wrong(&rep.values.samples));
     }
+}
+
+/// An emote pack's clip may hold its body rotation as a quaternion far from unit length (corpus 4 and 5 hold one of
+/// length 225), which Unity reads as its direction alone: an additive layer's crossfade into it blends the turn, not
+/// the lengths. Scaling the body rotation curves of the crossfade probe's destination clips leaves its pose bindings on
+/// the reference.
+#[test]
+fn an_additive_crossfade_reads_a_body_rotation_by_its_direction() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dir = root.join("fixtures/reference/crossfade-animator");
+    let mut avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-crossfade.glb")).unwrap()).unwrap();
+    let mut scaled = 0;
+    for c in avatar.model.clips.iter_mut().filter(|c| c.name.starts_with("Destination ")).flat_map(|c| c.curves.iter_mut()) {
+        if matches!(&c.binding, avatar_core::model::Binding::Muscle { name } if name.starts_with("RootQ.")) {
+            scaled += 1;
+            for k in &mut c.curve.keys {
+                k.value *= 225.0;
+                k.in_tangent *= 225.0;
+                k.out_tangent *= 225.0;
+            }
+        }
+    }
+    assert!(scaled >= 8, "{scaled} body rotation curves");
+    let rep = Run::new(&dir, avatar).run(None);
+    assert!(rep.bindings.compared > 600_000, "{} bindings compared", rep.bindings.compared);
+    assert_eq!(rep.bindings.wrong, 0, "pose bindings: {}", rep.bindings.summary(20));
 }
 
 /// The curve probe samples clips through Unity's clip playable beside `AnimationCurve.Evaluate`, at identity curves of

@@ -408,6 +408,7 @@ impl Run {
 
     pub fn run(&self, frames: Option<usize>) -> Report {
         let mut anim = Animator::new(&self.avatar);
+        let dump = std::env::var("AW_DUMP").ok();
         let steps = steps(&self.dir);
         let params = log(&self.dir, "params.tsv");
         let states = log(&self.dir, "states.tsv");
@@ -719,6 +720,9 @@ impl Run {
                         let w: f32 = want.parse().unwrap();
                         let d = (v - w).abs();
                         rep.bindings.compared += 1;
+                        if dump.as_ref().is_some_and(|t| k.contains(t.as_str())) {
+                            eprintln!("D\t{f}\t{k}\t{v}\t{w}");
+                        }
                         if d > 1e-3 {
                             rep.bindings.note(k, f, format!("{v} (want {w})"));
                         }

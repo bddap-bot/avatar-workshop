@@ -1631,8 +1631,8 @@ fn additive_offsets(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaul
         if let Some(b) = body.filter(|b| b.iter().all(|t| pose.contains_key(t))) {
             let read = |f: &dyn Fn(u32) -> f32| (glam::Vec3::new(f(b[0]), f(b[1]), f(b[2])), glam::Quat::from_xyzw(f(b[3]), f(b[4]), f(b[5]), f(b[6])));
             let ((clip_t, clip_q), (ref_t, ref_q)) = (read(&|t| pose[&t].0), read(&r));
-            let back = ref_q.normalize().conjugate();
-            let (dt, dq) = (back * (clip_t - ref_t), back * clip_q);
+            let back = motion::unit(ref_q).conjugate();
+            let (dt, dq) = (back * (clip_t - ref_t), back * motion::unit(clip_q));
             for (&id, v) in b.iter().zip([dt.x, dt.y, dt.z, dq.x, dq.y, dq.z, dq.w - 1.0]) {
                 d.insert(id, v);
             }

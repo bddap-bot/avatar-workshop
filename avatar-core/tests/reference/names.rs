@@ -4,7 +4,7 @@
 pub fn names() -> bool {
     let names = std::env::args_os().any(|a| a == "--names");
     if !names {
-        for trace in ["AW_TRACE", "AW_CLOCK"] {
+        for trace in ["AW_TRACE", "AW_CLOCK", "AW_DUMP"] {
             if std::env::var_os(trace).is_some() {
                 eprintln!("{trace} prints names: pass --names");
                 std::process::exit(2);
