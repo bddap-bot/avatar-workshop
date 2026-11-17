@@ -7,7 +7,7 @@ pub mod human;
 pub mod motion;
 mod random;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 
 use crate::model::{
@@ -1832,7 +1832,8 @@ fn uncovered(rt: &ControllerRt, li: usize, state: crate::model::StateId, clips: 
 /// default making up what its weights leave short of one. Under write defaults a target only a direct tree's leaves
 /// at weight zero write is covered by none of them, so it keeps the value beneath, as a toggle's far end over a
 /// radial shows; an animator parameter they write still takes the zero share. A destination rotation of `quats` in the
-/// other hemisphere from its source is negated before the two blend. With `turns_over`, a crossfade from a playing
+/// other hemisphere from its source is negated before the two blend, unless, without `turns_over`, it is a humanoid
+/// rotation only the source's clips key in part: then the source is negated (corpus 4 to 6). With `turns_over`, a crossfade from a playing
 /// state whose humanoid source and destination rotations both lie in the other hemisphere from the value beneath
 /// comes out negated.
 #[allow(clippy::too_many_arguments)]
@@ -1935,9 +1936,23 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
                     }
                 })
             };
+            let leaves = |state: crate::model::StateId| {
+                let mut ls = Vec::new();
+                rt.state_leaves(li, state, &mut ls);
+                ls.retain(|l| l.weight != 0.0);
+                ls
+            };
+            let (from_leaves, to_leaves) = (match &a.from { From::State(p) => leaves(p.state), From::Frozen(_) => vec![] }, leaves(a.to.state));
+            let keyed_in_part = |ls: &[Leaf], q: &[u32; 4]| ls.iter().any(|l| clips[l.clip as usize].variant(l.mirror).keys_in_part(q));
+            let mut yielding = HashSet::new();
             for q in quats {
                 let (Some(over), Some(under)) = (whole(q.map(|t| to.get(&t).copied())), whole(q.map(|t| source(t).map(|s| s.0)))) else { continue };
-                if motion::opposed(over, under) {
+                if !motion::opposed(over, under) {
+                    continue;
+                }
+                if !turns_over && matches!(targets[q[0] as usize], Target::Muscle(_)) && keyed_in_part(&from_leaves, q) && !keyed_in_part(&to_leaves, q) {
+                    yielding.extend(q.iter().copied());
+                } else {
                     q.iter().for_each(|t| *to.get_mut(t).unwrap() *= -1.0);
                 }
             }
@@ -1954,7 +1969,7 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
                 let (mut sum, mut cov) = (0.0, 0.0);
                 let f = source(t);
                 if let Some((v, c)) = f {
-                    sum += v * c * (1.0 - w);
+                    sum += if yielding.contains(&t) { -v } else { v } * c * (1.0 - w);
                     cov += c * (1.0 - w);
                 }
                 let d = to.get(&t).copied().or_else(|| {

@@ -1097,6 +1097,94 @@ fn an_action_crossfade_both_of_whose_rotations_lie_opposite_the_value_beneath_co
     assert!(during[1..FADE - 1].iter().all(|q| q[3] < 0.0), "a Base crossfade turned over: {during:?}");
 }
 
+/// A crossfade from a state whose clip keys a hand goal's w alone, at −0.111851, into a state whose goal is the
+/// identity takes the destination's sign from its first blended frame, as corpus 4 to 6 show. Keyed whole, the source
+/// keeps its sign.
+#[test]
+fn a_crossfade_from_a_goal_keyed_in_part_takes_the_destination_s_sign() {
+    use avatar_core::model::{AnimatorParameter, AnimatorParameterValue, PlayableLayerType};
+    const FADE: usize = 12;
+    let fade = |source: Vec<avatar_core::model::Curve>, destination: Vec<avatar_core::model::Curve>| {
+        let mut avatar = fixture();
+        let m = &mut avatar.model;
+        let c = m.clips.len() as u32;
+        let goal = ["x", "y", "z", "w"].iter().map(|c| muscle(&format!("LeftHandQ.{c}"), 0.0)).collect();
+        let settings: avatar_core::model::HumanoidClip = serde_json::from_value(serde_json::json!({"mirror": false, "loopPose": false,
+            "rotation": {"bakeIntoPose": true, "basedUpon": "original", "offsetDegrees": 0},
+            "height": {"bakeIntoPose": true, "basedUpon": "original", "offset": 0}, "xz": {"bakeIntoPose": true, "basedUpon": "original"}}))
+        .unwrap();
+        let mut clips = [clip("AwFrom", source), clip("AwTo", [vec![muscle("Spine Front-Back", 0.2)], destination].concat()), clip("AwUnplayed", goal)];
+        clips.iter_mut().for_each(|c| c.humanoid = Some(settings.clone()));
+        m.clips.extend(clips);
+        let go = serde_json::json!([{"destination": {"type": "state", "id": 9302}, "conditions": [{"mode": "if", "parameter": "AwGo", "threshold": 0}],
+            "duration": {"fixed": FADE as f32 / 60.0}, "offset": 0, "interruptionSource": "none", "orderedInterruption": true, "canTransitionToSelf": false, "mute": false, "solo": false}]);
+        let state = |id: u32, clip: u32, transitions: serde_json::Value| {
+            serde_json::json!({"id": id, "name": format!("S{id}"), "speed": 1, "cycleOffset": 0, "mirror": false, "motion": {"clip": clip}, "writeDefaults": true, "ikOnFeet": false, "behaviours": [], "transitions": transitions})
+        };
+        let base = m.layers.get_mut(&PlayableLayerType::Base).unwrap().controller.as_mut().unwrap();
+        base.parameters.push(AnimatorParameter { name: "AwGo".into(), default: AnimatorParameterValue::Bool(false) });
+        base.layers.push(base_layer("override", vec![state(9301, c, go), state(9302, c + 1, serde_json::json!([]))]));
+        let mut a = Animator::new(&avatar);
+        run(&mut a, 10);
+        let hand = |a: &Animator| ["x", "y", "z", "w"].map(|k| value(a, &format!("LeftHandQ.{k}")));
+        let before = hand(&a);
+        a.set("AwGo", 1.0);
+        let during: Vec<[f32; 4]> = (0..FADE + 4)
+            .map(|_| {
+                run(&mut a, 1);
+                hand(&a)
+            })
+            .collect();
+        (before, during)
+    };
+    let close = |a: [f32; 4], b: [f32; 4]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-5);
+    let (identity, turned) = ([0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 0.0, -1.0]);
+    let whole = |w: f32| ["x", "y", "z", "w"].iter().zip([0.0, 0.0, 0.0, w]).map(|(c, v)| muscle(&format!("LeftHandQ.{c}"), v)).collect::<Vec<_>>();
+    let (before, during) = fade(vec![muscle("LeftHandQ.w", -0.111851)], whole(1.0));
+    assert!(close(before, turned), "{before:?}");
+    assert!(close(during[0], turned) && during[1..].iter().all(|q| close(*q, identity)), "{during:?}");
+    let (_, during) = fade(whole(-0.111851), whole(1.0));
+    assert!(during[..FADE].iter().all(|q| close(*q, turned)), "a source keyed whole took the destination's sign: {during:?}");
+}
+
+/// A clip without high-quality curves samples a curve with two keys a millionth of a frame apart as its Hermite cubic:
+/// corpus 4 to 6 record 1.319979 half a frame past the key at frame 8, where framing would give 1.2865. Keys at the
+/// same time still frame it.
+#[test]
+fn a_curve_with_keys_a_millionth_of_a_frame_apart_stays_hermite() {
+    use avatar_core::model::{AnimationCurve, Binding, Curve, Keyframe, WeightedMode};
+    let sample = |near: f32| {
+        let mut avatar = fixture();
+        let key = |frame: f32, value: f32, tangent: f32| Keyframe {
+            time: frame / 30.0,
+            value,
+            in_tangent: tangent,
+            out_tangent: tangent,
+            in_weight: 1.0 / 3.0,
+            out_weight: 1.0 / 3.0,
+            weighted_mode: WeightedMode::None,
+        };
+        let keys = vec![key(8.0, 1.3848447, -0.504942), key(10.0, 1.0, 0.0), key(12.0, 1.0, 0.0), key(near, 1.2732935, -1.3587637), key(13.0, 1.2216218, -2.0256371)];
+        let mut c = clip("AwNod", vec![Curve { binding: Binding::Muscle { name: "Head Nod Down-Up".into() }, curve: AnimationCurve { keys } }]);
+        (c.length, c.sample_rate, c.high_quality_curve) = (13.0 / 30.0, 30.0, false);
+        avatar.model.clips.push(c);
+        let (targets, clips) = avatar_core::animator::compile_clips(&avatar);
+        let id = targets.list.iter().position(|t| *t == avatar_core::animator::motion::Target::Muscle("Head Nod Down-Up".into())).unwrap() as u32;
+        let compiled = clips.last().unwrap();
+        let mut got = None;
+        compiled.sample(8.5 / 13.0, &vec![0.0; targets.list.len()], false, &mut |t, v| {
+            if t == id {
+                got = Some(v);
+            }
+        });
+        got.unwrap()
+    };
+    let hermite = sample(12.000001);
+    assert!((hermite - 1.319979).abs() < 1e-5, "{hermite}");
+    let framed = sample(12.0);
+    assert!((framed - 1.319979).abs() > 1e-2, "keys at one time kept the curve Hermite: {framed}");
+}
+
 /// A state's body and goal rotations leave it as directions. Corpus 4 to 6 enter an emote by a 0.2 s crossfade from the
 /// identity into a blend tree whose leaves turn the body far apart, while the Action playable's weight ramps over the
 /// same 0.2 s. Unity blends the identity towards the tree's direction by the crossfade, then again by the playable's

@@ -354,6 +354,11 @@ impl CompiledClip {
         self.fill.iter().any(|f| f.0 == t)
     }
 
+    pub fn keys_in_part(&self, q: &[u32; 4]) -> bool {
+        let n = q.iter().filter(|&&t| self.curves.iter().any(|c| c.0 == t)).count();
+        n > 0 && n < 4
+    }
+
     /// Whether the clip only fills the target at its rest value.
     pub fn rests(&self, t: u32) -> bool {
         self.fill.contains(&(t, None))

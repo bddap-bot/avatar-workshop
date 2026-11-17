@@ -49,14 +49,14 @@ impl AnimationCurve {
 
 /// Whether no two of `times` lie less than a frame of `rate` apart, which decides whether a clip without high-quality
 /// curves samples a curve on its frames: keyed every second or third frame 0.37 of a frame off the grid it does, and
-/// keyed every frame that far off, its last inner key 0.63 of a frame before its end key, it stays Hermite. Times within
-/// a thousandth of a frame are one key.
+/// keyed every frame that far off, its last inner key 0.63 of a frame before its end key, it stays Hermite. Equal times
+/// are one key; two keys a millionth of a frame apart keep the curve Hermite (corpus 4 to 6).
 pub fn frame_spaced(mut times: Vec<f32>, rate: f32) -> bool {
     times.sort_by(f32::total_cmp);
     rate > 0.0
         && times.windows(2).all(|w| {
             let gap = (w[1] - w[0]) * rate;
-            gap < 1e-3 || gap > 1.0 - 1e-3
+            gap == 0.0 || gap > 1.0 - 1e-3
         })
 }
 
