@@ -134,6 +134,48 @@ is compared trace for trace: PhysBone tip positions relative to chain length, pa
 states, blendshape weights, material property values; renderers are compared by image at matched camera and light.
 A change that moves a metric away from the reference does not land. The harness is `reference/`, described in the README.
 
+### Animator coverage
+
+The core's animator replays the fixture and every corpus avatar's recording with no wrong parameter, state, state
+time or muscle, constraint and contact binding sample, every node, blendshape and material value within 1e-3, and
+every menu control matching. `avatar-core/tests/animator.rs` checks each listed semantic against the fixture's trace
+and each probe against its own.
+
+Probe residuals, each held to its count by its test, with no corpus avatar showing them:
+
+| probe | residual |
+|---|---|
+| generic-rig playable | 335,400 values |
+| generic-rig hold | 179,330 values |
+| frame-grid fill and hold | 10,620 values, 838 pose bindings |
+| frame-grid rule | 2,040 values, all bindings an earlier case left held |
+| additive crossfade | up to 150 values in each of the two cases fading a generic property only one side writes |
+| humanoid composition | up to 134 pose bindings, none after a case's first frame |
+
+The generic-rig playable and hold probes still disagree with Unity about what a layer without write defaults holds
+under an additive layer: a held blendshape under a playing additive layer reads part of the way to its default, and
+an idle layer that held a node position while it played repeats a value that already carries the additive offset.
+
+No recording shows these, so the core claims nothing for them:
+
+- Blend trees: leaves filling different channels of one node; direct trees whose weights sum above one; goal offsets
+  of a blend-tree state in an additive layer.
+- Curves: muscle components judged together; a stepped component beside smooth ones of one transform property; a
+  rotation group; a transform property whose components' keys differ by an ulp.
+- Crossfades: a snap from a source without write defaults; a transition from an interrupted pose; a humanoid snap on
+  the Base or Action playable. For the source negated when only it keys a rotation in part: a destination keyed in
+  part, generic rotations and the Action playable. For an Action crossfade negated when both its rotations lie
+  opposite the value beneath: another playable, an interrupted crossfade and a generic node rotation.
+- Root motion: XZ baked with the rotation unbaked under Loop Pose on a clip that yaws; foot goals whose own Loop
+  Pose drift is non-zero under the unbaked Feet height.
+- Additive playable on a generic rig: a turned rotation beneath it at partial weight; the composed rotation's hemisphere under a later
+  partial override playable; rotations other controllers bind but it does not.
+- Generic rigs: an additive layer repeating parameters, or offsetting a parameter whose clip does not start at zero,
+  or one no override layer covers; a second holding layer; discrete properties held across controllers; a hold below
+  full layer weight updating the memory; direct trees and interrupted transitions without write defaults holding other
+  controllers' properties; a material slot under a partial playable; a playable at weight 0.
+- Behaviours: a normalized pose-space delay on a state whose speed is not 1, still counted in seconds.
+
 ## What goes
 
 Code that exists because VRM came first:
