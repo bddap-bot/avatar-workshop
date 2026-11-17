@@ -114,9 +114,9 @@ fn each_feet_height_basis_follows_its_reference_trace() {
     assert_eq!(rep.bindings.wrong, 0, "bindings: {}", rep.bindings.summary(20));
 }
 
-/// The blend duration probe plays one blend tree at a time; the core keeps every state's time. The values of every
-/// case but the first tree without write defaults (case 75), which starts from what the case before it left, follow
-/// the reference, released zero-length children of 2D trees included.
+/// The blend duration probe plays one blend tree at a time; the core keeps every state's time and every value,
+/// released zero-length children of 2D trees, the frame each case's tree still shows as it returns to the empty state,
+/// and the first tree without write defaults starting from what the trees before it last wrote included.
 #[test]
 fn each_blend_tree_follows_its_reference_trace() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -127,23 +127,15 @@ fn each_blend_tree_follows_its_reference_trace() {
     assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
     assert!(rep.clocks.compared > 170_000, "{} state times compared", rep.clocks.compared);
     let steps = reference::animator::steps(&dir);
-    let cases: Vec<_> = steps.iter().filter(|s| s.label.starts_with("case ")).collect();
-    assert_eq!(cases.len(), 78);
+    assert_eq!(steps.iter().filter(|s| s.label.starts_with("case ")).count(), 78);
     assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
-    for s in cases {
-        let n: u32 = s.label["case ".len()..].split(':').next().unwrap().parse().unwrap();
-        if n == 75 {
-            continue;
-        }
-        let wrong: Vec<_> = rep.values.samples.range((s.frame, String::new())..(s.frame + s.frames, String::new())).collect();
-        assert!(wrong.is_empty(), "{} differs: {wrong:?}", s.label);
-    }
-    assert!(rep.values.wrong <= 221, "values: {}", rep.values.summary(20));
+    assert!(rep.values.compared > 1_900_000, "{} values compared", rep.values.compared);
+    assert_eq!(rep.values.wrong, 0, "values: {}", rep.values.summary(20));
 }
 
 /// The write-defaults layering probe plays one composition of write defaults across layers at a time. Every value
-/// follows the reference but one: Unity resets the first layer's toggle a frame late when the layer beneath it sits
-/// in a state with neither a motion nor write defaults.
+/// follows the reference, the first layer's toggle that Unity resets a frame late, while a later layer sits in a state
+/// with neither a motion nor write defaults, included.
 #[test]
 fn each_write_defaults_layering_follows_its_reference_trace() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -158,12 +150,7 @@ fn each_write_defaults_layering_follows_its_reference_trace() {
     let cases: Vec<_> = steps.iter().filter(|s| s.label.starts_with("case ")).collect();
     assert_eq!(cases.len(), 29);
     assert!(rep.values.compared > 770_000, "{} values compared", rep.values.compared);
-    for s in cases {
-        let wrong: Vec<_> = rep.values.samples.range((s.frame, String::new())..(s.frame + s.frames, String::new())).collect();
-        let late = s.label.starts_with("case 2:") && wrong.iter().all(|w| w.0 == s.frame + 90 && w.1 == "shape:Body:Open");
-        assert!(wrong.is_empty() || late, "{} differs: {wrong:?}", s.label);
-    }
-    assert!(rep.values.wrong <= 1, "values: {}", rep.values.summary(20));
+    assert_eq!(rep.values.wrong, 0, "values: {}", rep.values.summary(20));
 }
 
 /// The clip sample-time probe plays identity clips, whose value is the time Unity sampled them at, at every length,

@@ -181,7 +181,11 @@ struct PoseSpace {
 pub struct Animator {
     targets: Targets,
     /// What the frame's result last was for each target some layer wrote: a controller's first layer playing a
-    /// motion without write defaults gives it to every target no layer up to it wrote.
+    /// motion without write defaults gives it to every target no layer up to it wrote. A write-defaults state's
+    /// target counts as written on a humanoid rig only when a leaf at weight writes it, so a value such a state fills
+    /// in for its unweighted leaves is not kept, as the blend duration probe's first tree without write defaults
+    /// shows. On a rig without a humanoid Avatar every write is kept: the generic-rig hold probes' held positions
+    /// follow writes no leaf at weight made.
     kept: Vec<f32>,
     /// Whether some clip writes the target other than at its rest value beside an animated component.
     curved: Vec<bool>,
@@ -1144,6 +1148,7 @@ impl Animator {
         let p = &self.playables[pi];
         let mut own: HashMap<u32, (f32, f32)> = HashMap::new();
         let mut written = vec![false; self.targets.len()];
+        let mut keeps = vec![!self.humanoid; self.targets.len()];
         let mut held = false;
         // On a humanoid avatar the Base and Additive playables write the human pose and animator parameters alone.
         let writes_generic = !self.humanoid || !matches!(p.kind, PlayableLayerType::Base | PlayableLayerType::Additive);
@@ -1159,6 +1164,12 @@ impl Animator {
             // Without a humanoid rig `step` blends the generic stream by the playable's weight, and the weight never
             // reaches the controller's animator parameters.
             let wl = if self.humanoid { lw * p.weight } else { lw };
+            if self.humanoid {
+                match kept_by(&p.rt, li, clips, self.targets.len()) {
+                    Some(k) => keeps.iter_mut().zip(k).for_each(|(a, b)| *a |= b),
+                    None => keeps.fill(true),
+                }
+            }
             let playable_adds = p.kind == PlayableLayerType::Additive && self.humanoid;
             let additive = playable_adds || p.rt.layer_defs[li].blending == LayerBlending::Additive;
             // On a humanoid avatar the Additive playable's own override layers build a human pose like any
@@ -1283,7 +1294,7 @@ impl Animator {
                     if c > 0.0 {
                         acc.touched[i] = true;
                         written[i] = true;
-                    }
+                        }
                 }
             }
             let Some(mut pose) = whole_pose else { continue };
@@ -1352,7 +1363,7 @@ impl Animator {
                         acc.sum[i] = v;
                         acc.touched[i] = true;
                         written[i] = true;
-                    }
+                        }
                     continue;
                 }
                 acc.sum[i] = acc.sum[i] * (1.0 - a) + v * a;
@@ -1361,8 +1372,8 @@ impl Animator {
                 written[i] |= a > 0.0;
             }
         }
-        for (w, &x) in acc.wrote.iter_mut().zip(&written) {
-            *w |= x;
+        for ((w, &x), &k) in acc.wrote.iter_mut().zip(&written).zip(&keeps) {
+            *w |= x && k;
         }
         own.into_iter()
             .filter_map(|(t, (sum, cov))| {
@@ -1817,6 +1828,44 @@ fn uncovered(rt: &ControllerRt, li: usize, state: crate::model::StateId, clips: 
     weight.into_iter().filter(|&(t, w)| w == 0.0 && !matches!(targets[t as usize], Target::AnimatorParameter(_) | Target::Slot(..))).map(|(t, _)| t).collect()
 }
 
+/// Which targets a playable's writes this frame give to `kept` on a humanoid rig, by layer: those the layer's leaves at
+/// weight write, the source's too during a transition and the state it shows on a snap frame; None, every target, under
+/// a motion without write defaults or a transition from a frozen pose, which no trace separates. The marks pool across
+/// the playable's layers: the hold probe's held fill is kept while another layer plays a motion without write defaults.
+fn kept_by(rt: &ControllerRt, li: usize, clips: &[CompiledClip], n: usize) -> Option<Vec<bool>> {
+    let l = &rt.layers[li];
+    let states: Vec<crate::model::StateId> = match (&l.active, &l.current) {
+        (Some(a), _) => match &a.from {
+            From::State(s) => vec![s.state, a.to.state],
+            From::Frozen(_) => return None,
+        },
+        (None, Some(c)) => vec![snap_shown(rt, li).unwrap_or(c).state],
+        (None, None) => vec![],
+    };
+    let mut out = vec![false; n];
+    for state in states {
+        if rt.motion(li, state).is_some() && rt.state(li, state).is_some_and(|s| !s.write_defaults) {
+            return None;
+        }
+        let mut ls = Vec::new();
+        rt.state_leaves(li, state, &mut ls);
+        for l in ls.iter().filter(|l| l.weight != 0.0) {
+            clips[l.clip as usize].variant(l.mirror).writes.iter().for_each(|&t| out[t as usize] = true);
+        }
+    }
+    Some(out)
+}
+
+/// The source a layer still shows on a snap frame. On the frame a zero-length transition takes a controller's first
+/// layer from a state with a motion into an empty state, both writing defaults, Unity shows the source, advanced, as
+/// the blend duration and write-defaults layering probes show; a later layer returns at once.
+fn snap_shown(rt: &ControllerRt, li: usize) -> Option<&machine::Playing> {
+    let l = &rt.layers[li];
+    let cur = l.current.as_ref()?;
+    let wd = |s: crate::model::StateId| rt.state(li, s).is_some_and(|s| s.write_defaults);
+    l.snapped.as_ref().filter(|p| li == 0 && l.active.is_none() && rt.motion(li, cur.state).is_none() && wd(cur.state) && rt.motion(li, p.state).is_some() && wd(p.state))
+}
+
 /// A layer's pose this frame: each target it writes, with how much of it the layer covers. Outside a transition a
 /// state covers what its motion animates. During one, the source covers by the remaining weight what it animates, and
 /// without write defaults also every other bound target but transforms at the value beneath; the destination covers
@@ -1835,18 +1884,20 @@ fn uncovered(rt: &ControllerRt, li: usize, state: crate::model::StateId, clips: 
 /// other hemisphere from its source is negated before the two blend, unless, without `turns_over`, it is a humanoid
 /// rotation only the source's clips key in part: then the source is negated (corpus 4 to 6). With `turns_over`, a crossfade from a playing
 /// state whose humanoid source and destination rotations both lie in the other hemisphere from the value beneath
-/// comes out negated.
+/// comes out negated. On a snap frame ([`snap_shown`]) the layer gives its source's pose, where what the source's
+/// lasting clips bind but do not write this frame takes its default rather than last frame's.
 #[allow(clippy::too_many_arguments)]
 fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[f32], bound: &[u32], slots: &[u32], targets: &[Target], quats: &[[u32; 4]], turns_over: bool, beneath: &dyn Fn(u32) -> f32, held: &dyn Fn(u32) -> f32, through: &dyn Fn(u32) -> f32, reset: &dyn Fn(u32) -> f32) -> Vec<(u32, f32, f32)> {
     let l = &rt.layers[li];
     let Some(cur) = &l.current else { return vec![] };
+    let lag = snap_shown(rt, li);
     let steady = match &l.active {
         Some(a) if a.progress() > 0.0 => None,
         Some(a) => match &a.from {
             From::State(p) => Some(p),
             From::Frozen(v) => return v.clone(),
         },
-        None => Some(cur),
+        None => Some(lag.unwrap_or(cur)),
     };
     let animated = |m: HashMap<u32, (f32, bool)>| -> HashMap<u32, f32> { m.into_iter().filter(|(_, (_, f))| !f).map(|(t, (v, _))| (t, v)).collect() };
     match (&l.active, steady) {
@@ -1887,6 +1938,8 @@ fn layer_pose(rt: &ControllerRt, li: usize, clips: &[CompiledClip], defaults: &[
                                 held(t)
                             } else if !lasting && shown {
                                 beneath(t)
+                            } else if lag.is_some() {
+                                defaults[t as usize]
                             } else if direct {
                                 reset(t)
                             } else {
