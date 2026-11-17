@@ -1215,9 +1215,9 @@ impl Animator {
                 }
             };
             let holding = p.rt.layers[li].current.as_ref().filter(|c| !held && !additive && p.rt.motion(li, c.state).is_some() && p.rt.state(li, c.state).is_some_and(|s| !s.write_defaults));
-            // Without a humanoid rig it also gives the controller's default to each animator parameter it binds but
-            // does not animate.
-            let resets_parameters = holding.is_some() && !self.humanoid;
+            // Without a humanoid rig the first layer also gives the controller's default to each animator parameter
+            // it binds but does not animate.
+            let resets_parameters = holding.is_some() && !self.humanoid && li == 0;
             if let Some(c) = holding {
                 held = true;
                 let own_keys = playing_pose(&p.rt, li, c, clips, &self.defaults, false);
@@ -1316,6 +1316,16 @@ impl Animator {
                         written[i] = true;
                         }
                 }
+                if !self.humanoid && adds_defaults {
+                    for &t in p.bound.iter().filter(|&&t| parameter(t as usize)) {
+                        let Target::AnimatorParameter(name) = &self.targets.list[t as usize] else { continue };
+                        let Some(&j) = p.rt.index.get(name) else { continue };
+                        let (v, c) = now.get(&t).copied().unwrap_or((0.0, 0.0));
+                        let d = p.rt.params[j].default;
+                        let e = own.entry(t).or_insert((0.0, 0.0));
+                        *e = (e.0 + (1.0 - e.1) * d + (v + (1.0 - c) * d) * wl, 1.0);
+                    }
+                }
             }
             let Some(mut pose) = whole_pose else { continue };
             if stacked {
@@ -1328,7 +1338,7 @@ impl Animator {
                         let mut last: Vec<(u32, f32, f32)> = pose.iter().filter(|x| remembered(x.0 as usize) && x.2 > 0.0).map(|x| (x.0, x.1, 1.0)).collect();
                         if !wd {
                             let animated: std::collections::HashSet<u32> = last.iter().map(|x| x.0).collect();
-                            last.extend(holds.iter().filter(|&&t| holdable(t as usize) && !animated.contains(&t)).map(|&t| (t, self.hold(pi, t as usize), 1.0)));
+                            last.extend(holds.iter().filter(|&&t| remembered(t as usize) && !animated.contains(&t)).map(|&t| (t, self.hold(pi, t as usize), 1.0)));
                         }
                         said[li] = last;
                     }
@@ -1372,10 +1382,15 @@ impl Animator {
                     continue;
                 }
                 let a = if p.whole[i] { lw } else { wl } * c;
-                if let Target::AnimatorParameter(_) = &self.targets.list[i] {
+                if let Target::AnimatorParameter(name) = &self.targets.list[i] {
                     let e = own.entry(t).or_insert((0.0, 0.0));
                     e.0 = e.0 * (1.0 - a) + v * a;
                     e.1 = e.1 * (1.0 - a) + a;
+                    if a > 0.0 && !self.humanoid {
+                        let current = p.rt.index.get(name).map_or(0.0, |&j| p.rt.params[j].value);
+                        acc.overridden[i] = Some(e.0 + (1.0 - e.1) * current);
+                        written[i] = true;
+                    }
                     continue;
                 }
                 if self.targets.list[i].discrete() {
