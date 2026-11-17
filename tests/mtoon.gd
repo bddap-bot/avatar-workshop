@@ -44,7 +44,7 @@ func _init() -> void:
 	var b := MToon.material(bad, texture)
 	check(b.get_shader_parameter("base_color") == Vector4(1, 1, 1, 1) and b.get_shader_parameter("shade_color") == Vector3.ZERO and b.get_shader_parameter("shading_toony") == 0.9 and b.next_pass == null, "malformed values fall back to the defaults")
 	check(MToon.from_vrm0({"shader": "VRM/MToon", "floatProperties": [], "vectorProperties": {"_Color": "red"}, "textureProperties": {"_MainTex": "x"}}, {}, MToon.render_queues([1, "x"])).has("extensions"), "malformed 0.x entries convert with defaults")
-	check(MToon.from_vrm0({"shader": "Standard"}, {"name": "glass"}, {}) == {"name": "glass"}, "other 0.x shaders leave the glTF material")
+	check(MToon.from_vrm0({"shader": "Standard"}, {"name": "plain"}, {}) == {"name": "plain"}, "other 0.x shaders leave the glTF material")
 	var off := MToon.from_vrm0({"shader": "VRM/MToon", "keywordMap": {"_ALPHABLEND_ON": false}, "floatProperties": {"_OutlineWidthMode": 3, "_OutlineWidth": 1.0}}, {}, {})
 	check(off.alphaMode == "OPAQUE" and off.extensions.VRMC_materials_mtoon.outlineWidthMode == "none", "a keyword set false and an unknown outline mode turn nothing on")
 	check(MToon.from_vrm0({"shader": "VRM/UnlitTexture"}, {"doubleSided": true}, {}).doubleSided, "a 0.x unlit material keeps the glTF material's sides")

@@ -226,9 +226,9 @@ const RIGHT_EYE: u32 = 11;
 const NODE_COUNT: u32 = 12;
 
 fn model() -> AwAvatar {
-    let mut fur = material(ShaderFamily::Poiyomi, ".poiyomi/Poiyomi Toon");
-    fur.version = Some("9.2.38".into());
-    fur.properties = BTreeMap::from([
+    let mut opaque = material(ShaderFamily::Poiyomi, ".poiyomi/Poiyomi Toon");
+    opaque.version = Some("9.2.38".into());
+    opaque.properties = BTreeMap::from([
         (
             "_Color".into(),
             MaterialProperty::Color([1.0, 0.9, 0.8, 1.0]),
@@ -257,18 +257,18 @@ fn model() -> AwAvatar {
             }),
         ),
     ]);
-    fur.declared = ["_Color", "_EnableEmission", "_MainTex", "_DecalTexture"]
+    opaque.declared = ["_Color", "_EnableEmission", "_MainTex", "_DecalTexture"]
         .into_iter()
-        .map(|k| (k.to_string(), fur.properties[k].clone()))
+        .map(|k| (k.to_string(), opaque.properties[k].clone()))
         .chain([("_Cutoff".to_string(), MaterialProperty::Float(0.5))])
         .collect();
-    fur.keywords = vec!["_EMISSION".into(), "VIGNETTE_MASKED".into()];
-    fur.cull = Cull::Off;
+    opaque.keywords = vec!["_EMISSION".into(), "VIGNETTE_MASKED".into()];
+    opaque.cull = Cull::Off;
 
-    let mut glass = material(ShaderFamily::Liltoon, "lilToon/Transparent");
-    glass.render_queue = 3000;
-    glass.depth_write = false;
-    glass.blend = Some(Blend {
+    let mut blended = material(ShaderFamily::Liltoon, "lilToon/Transparent");
+    blended.render_queue = 3000;
+    blended.depth_write = false;
+    blended.blend = Some(Blend {
         src_color: BlendFactor::SrcAlpha,
         dst_color: BlendFactor::OneMinusSrcAlpha,
         src_alpha: BlendFactor::One,
@@ -671,7 +671,7 @@ fn model() -> AwAvatar {
         nodes: (0..NODE_COUNT)
             .map(|i| Node { active: i != PROP })
             .collect(),
-        materials: [vec![fur, glass, face], others.to_vec()].concat(),
+        materials: [vec![opaque, blended, face], others.to_vec()].concat(),
         physbones: vec![
             PhysBone {
                 node: n(HAIR),
