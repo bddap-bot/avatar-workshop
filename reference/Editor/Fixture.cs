@@ -114,7 +114,8 @@ namespace AvatarWorkshop.Reference
         // write-defaults fill and additive hold probe. GridRule: the frame-grid rule probe. GenericRig: the generic-rig
         // playable probe. GenericHold: the generic-rig hold probe. GenericWeight: the generic-rig playable-weight probe.
         // These three alone have no humanoid avatar. LoopDrift: the Loop Pose drift probe. Feet: the Feet height basis probe.
-        public enum Kind { Fixture, Probe, Human, Blend, WriteDefaults, Layering, SampleTime, Rotation, Dense, Crossfade, Generic, GridHold, GridRule, GenericRig, GenericHold, GenericWeight, LoopDrift, Feet }
+        // Dynamics: the constraint and contact probe.
+        public enum Kind { Fixture, Probe, Human, Blend, WriteDefaults, Layering, SampleTime, Rotation, Dense, Crossfade, Generic, GridHold, GridRule, GenericRig, GenericHold, GenericWeight, LoopDrift, Feet, Dynamics }
 
         // Generates the avatar into Dir and returns its scene's path.
         public static string Build(Kind kind)
@@ -193,6 +194,7 @@ namespace AvatarWorkshop.Reference
             if (kind == Kind.GenericHold || kind == Kind.GenericWeight) HoldLayers(d, fxPlays: kind == Kind.GenericHold);
             if (kind == Kind.LoopDrift) LoopDriftLayers(d);
             if (kind == Kind.Feet) FeetLayers(d);
+            if (kind == Kind.Dynamics) DynamicsLayers(d, t, root.transform);
             if (kind != Kind.Fixture)
             {
                 AssetDatabase.SaveAssets();

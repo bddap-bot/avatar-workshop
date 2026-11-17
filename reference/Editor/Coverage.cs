@@ -1517,6 +1517,118 @@ namespace AvatarWorkshop.Reference
             return c;
         }
 
+        static readonly string[] ConstraintKindKeys = { "position", "rotation", "scale", "parent", "aim", "look_at" };
+
+        static string ConstraintKind(VRCConstraintBase c) => c is VRCPositionConstraint ? "position" : c is VRCRotationConstraint ? "rotation"
+            : c is VRCScaleConstraint ? "scale" : c is VRCParentConstraint ? "parent" : c is VRCAimConstraint ? "aim" : c is VRCLookAtConstraint ? "look_at" : null;
+
+        static readonly Dictionary<string, string[]> MaskKeys = new Dictionary<string, string[]>
+        {
+            ["position"] = new[] { "position_x", "position_y", "position_z" },
+            ["rotation"] = new[] { "rotation_x", "rotation_y", "rotation_z" },
+            ["scale"] = new[] { "scale_x", "scale_y", "scale_z" },
+            ["parent"] = new[] { "position_x", "position_y", "position_z", "rotation_x", "rotation_y", "rotation_z" },
+            ["aim"] = new[] { "rotation_x", "rotation_y", "rotation_z" },
+            ["look_at"] = new string[0],
+        };
+
+        static readonly string[] ReceiverTypes = { "constant", "on_enter", "proximity" };
+
+        // The dynamics probe's settings, one constraint or contact each: "constraint.<kind>.<setting>",
+        // "receiver.<setting>" and "sender.<whose>".
+        public static readonly string[] DynamicsSettings =
+            ConstraintKindKeys.SelectMany(k => new[] { "sources_one", "sources_weighted", "at_rest", "offset", "local" }.Concat(MaskKeys[k].Select(m => "mask_" + m))
+                .Select(x => $"constraint.{k}.{x}"))
+            .Concat(new[] { "scene_up", "object_up", "object_rotation_up", "vector", "none" }.Select(u => "constraint.aim.world_up_" + u))
+            .Concat(new[]
+            {
+                "constraint.aim.axes", "constraint.look_at.roll", "constraint.look_at.up_object",
+                "constraint.freeze_to_world.rebake", "constraint.freeze_to_world.keep",
+                "constraint.source_moved_by_physbone", "constraint.chained", "physbone.under_constraint",
+            })
+            .Concat(ReceiverTypes.SelectMany(t => new[] { "sphere", "capsule" }.Select(sh => $"receiver.{t}.{sh}")))
+            .Concat(new[]
+            {
+                "receiver.allow.self_and_others", "receiver.allow.self_only", "receiver.allow.others_only", "receiver.allow.nobody",
+                "receiver.local_only", "receiver.tags.one", "receiver.tags.several", "receiver.tags.unmatched", "receiver.min_velocity",
+                "sender.avatar", "sender.other_part", "sender.other_hand",
+            }).ToArray();
+
+        public static SortedDictionary<string, int> CountDynamics(GameObject root, VRCAvatarDescriptor d, IEnumerable<ContactSender> outside)
+        {
+            var c = new SortedDictionary<string, int>(System.StringComparer.Ordinal);
+            foreach (var k in DynamicsSettings) c[k] = 0;
+            void Add(string k) => c[k] = c.TryGetValue(k, out var n) ? n + 1 : 1;
+            bool Off(Vector3 v, Vector3 d0) => (v - d0).sqrMagnitude > 0;
+
+            var frozenPaths = new HashSet<(string, System.Type)>(d.baseAnimationLayers.Concat(d.specialAnimationLayers ?? new VRCAvatarDescriptor.CustomAnimLayer[0])
+                .Select(l => l.animatorController).Where(x => x != null).SelectMany(x => x.animationClips).SelectMany(AnimationUtility.GetCurveBindings)
+                .Where(b => b.propertyName == "FreezeToWorld").Select(b => (b.path, b.type)));
+            var constraints = root.GetComponentsInChildren<VRCConstraintBase>(true);
+            var targets = new HashSet<Transform>(constraints.Select(x => x.GetEffectiveTargetTransform()));
+            var chainBones = new HashSet<Transform>();
+            foreach (var pb in root.GetComponentsInChildren<VRCPhysBoneBase>(true))
+            {
+                var start = pb.GetRootTransform();
+                foreach (var t in start.GetComponentsInChildren<Transform>(true)) if (t != start) chainBones.Add(t);
+                for (var x = start; x != null; x = x.parent) if (targets.Contains(x)) { Add("physbone.under_constraint"); break; }
+            }
+            foreach (var x in constraints)
+            {
+                var kind = ConstraintKind(x);
+                if (kind == null) continue;
+                var weights = Enumerable.Range(0, x.Sources.Count).Select(i => x.Sources[i].Weight).ToList();
+                if (weights.Count == 1) Add($"constraint.{kind}.sources_one");
+                if (weights.Count > 1 && weights.Distinct().Count() > 1) Add($"constraint.{kind}.sources_weighted");
+                var type = x.GetType();
+                object F(string name) => type.GetField(name)?.GetValue(x);
+                foreach (var m in MaskKeys[kind])
+                {
+                    var field = "Affects" + string.Concat(m.Split('_').Select(p => char.ToUpperInvariant(p[0]) + p.Substring(1)));
+                    if (F(field) is bool on && !on) Add($"constraint.{kind}.mask_{m}");
+                }
+                if ((F("PositionAtRest") is Vector3 pr && Off(pr, Vector3.zero)) || (F("RotationAtRest") is Vector3 rr && Off(rr, Vector3.zero))
+                    || (F("ScaleAtRest") is Vector3 sr && Off(sr, Vector3.one))) Add($"constraint.{kind}.at_rest");
+                if ((F("PositionOffset") is Vector3 po && Off(po, Vector3.zero)) || (F("RotationOffset") is Vector3 ro && Off(ro, Vector3.zero))
+                    || (F("ScaleOffset") is Vector3 so && Off(so, Vector3.one))
+                    || Enumerable.Range(0, x.Sources.Count).Any(i => Off(x.Sources[i].ParentPositionOffset, Vector3.zero) || Off(x.Sources[i].ParentRotationOffset, Vector3.zero)))
+                    Add($"constraint.{kind}.offset");
+                if (x.SolveInLocalSpace) Add($"constraint.{kind}.local");
+                if (x is VRCAimConstraint aim)
+                {
+                    var up = aim.WorldUp;
+                    if ((up != VRCConstraintBase.WorldUpType.ObjectUp && up != VRCConstraintBase.WorldUpType.ObjectRotationUp) || aim.WorldUpTransform != null)
+                        Add("constraint.aim.world_up_" + Snake(up.ToString()));
+                    if (aim.AimAxis != Vector3.forward || aim.UpAxis != Vector3.up) Add("constraint.aim.axes");
+                }
+                if (x is VRCLookAtConstraint look)
+                {
+                    if (look.Roll != 0) Add("constraint.look_at.roll");
+                    if (look.UseUpTransform && look.WorldUpTransform != null) Add("constraint.look_at.up_object");
+                }
+                if (frozenPaths.Contains((AnimationUtility.CalculateTransformPath(x.transform, root.transform), type)))
+                    Add(x.RebakeOffsetsWhenUnfrozen ? "constraint.freeze_to_world.rebake" : "constraint.freeze_to_world.keep");
+                var sources = Enumerable.Range(0, x.Sources.Count).Select(i => x.Sources[i].SourceTransform).Where(t => t != null).ToList();
+                if (sources.Any(chainBones.Contains)) Add("constraint.source_moved_by_physbone");
+                if (sources.Any(t => targets.Contains(t) && t != x.GetEffectiveTargetTransform())) Add("constraint.chained");
+            }
+
+            var senders = root.GetComponentsInChildren<ContactSender>(true).Concat(outside).ToList();
+            foreach (var r in root.GetComponentsInChildren<ContactReceiver>(true))
+            {
+                if (r.shapeType != ContactBase.ShapeType.Box) Add($"receiver.{Snake(r.receiverType.ToString())}.{Snake(r.shapeType.ToString())}");
+                Add("receiver.allow." + (r.allowSelf ? r.allowOthers ? "self_and_others" : "self_only" : r.allowOthers ? "others_only" : "nobody"));
+                if (r.localOnly) Add("receiver.local_only");
+                Add(senders.Any(s => s.collisionTags.Any(r.collisionTags.Contains)) ? r.collisionTags.Count > 1 ? "receiver.tags.several" : "receiver.tags.one" : "receiver.tags.unmatched");
+                if (r.receiverType == ContactReceiver.ReceiverType.OnEnter && r.minVelocity > 0.05f) Add("receiver.min_velocity");
+            }
+            var player = root.GetComponentsInChildren<ContactBase>(true).Select(x => x.playerId).Distinct().ToList();
+            foreach (var s in root.GetComponentsInChildren<ContactSender>(true)) Add("sender.avatar");
+            foreach (var s in outside)
+                if (!player.Contains(s.playerId)) Add(s.collisionTags.Contains("Hand") ? "sender.other_hand" : "sender.other_part");
+            return c;
+        }
+
         static string TreeKey(BlendTree bt) => "blendtree." + Snake(bt.blendType.ToString()).Replace("2_d", "2d").Replace("1_d", "1d");
 
         static string Snake(string s) => string.Concat(s.Select((ch, i) => i > 0 && (char.IsUpper(ch) || char.IsDigit(ch) && !char.IsDigit(s[i - 1])) ? "_" + char.ToLowerInvariant(ch) : char.ToLowerInvariant(ch).ToString()));

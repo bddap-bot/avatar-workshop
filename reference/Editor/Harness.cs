@@ -64,7 +64,8 @@ namespace AvatarWorkshop.Reference
                 : scenePath == "gridhold" ? Fixture.Kind.GridHold : scenePath == "gridrule" ? Fixture.Kind.GridRule
                 : scenePath == "genericrig" ? Fixture.Kind.GenericRig : scenePath == "generichold" ? Fixture.Kind.GenericHold
                 : scenePath == "genericweight" ? Fixture.Kind.GenericWeight
-                : scenePath == "loopdrift" ? Fixture.Kind.LoopDrift : scenePath == "feet" ? Fixture.Kind.Feet : (Fixture.Kind?)null;
+                : scenePath == "loopdrift" ? Fixture.Kind.LoopDrift : scenePath == "feet" ? Fixture.Kind.Feet
+                : scenePath == "dynamics" ? Fixture.Kind.Dynamics : (Fixture.Kind?)null;
             if (kind.HasValue) scenePath = Fixture.Build(kind.Value);
 
             EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
@@ -136,6 +137,7 @@ namespace AvatarWorkshop.Reference
         struct RecordStage { }
         struct DriversStage { }
         struct DynamicsStage { }
+        struct ConstrainedStage { }
 
         static void Install()
         {
@@ -160,6 +162,9 @@ namespace AvatarWorkshop.Reference
                         list.Insert(sdk, new PlayerLoopSystem { type = typeof(DriversStage), updateDelegate = () => Guard(recorder.Drivers) });
                         dynamics = true;
                     }
+                    int done = list.FindIndex(s => s.type?.Name == "VRCAvatarDynamicsComplete");
+                    if (done < 0) throw new Exception("the VRChat SDK's VRCAvatarDynamicsComplete stage is not in the player loop");
+                    list.Insert(done + 1, new PlayerLoopSystem { type = typeof(ConstrainedStage), updateDelegate = () => Guard(recorder.Constrained) });
                 }
                 if (sys.type == typeof(PostLateUpdate))
                     list.Add(new PlayerLoopSystem { type = typeof(RecordStage), updateDelegate = () => Guard(recorder.Record) });
@@ -306,7 +311,7 @@ namespace AvatarWorkshop.Reference
         public bool Finished;
         readonly string output;
         readonly string avatarName;
-        readonly bool fixture, probe, human, blend, layering, sampleTime, rotation, dense, crossfade, generic, gridHold, gridRule, genericRig, genericHold, genericWeight, loopDrift, feet;
+        readonly bool fixture, probe, human, blend, layering, sampleTime, rotation, dense, crossfade, generic, gridHold, gridRule, genericRig, genericHold, genericWeight, loopDrift, feet, dynamicsProbe;
         bool Cased => human || blend || layering || sampleTime || rotation || dense || crossfade || generic || gridHold || gridRule || genericRig || genericHold || genericWeight || loopDrift || feet;
         readonly bool migratedDynamicBones;
         bool exported;
@@ -336,6 +341,11 @@ namespace AvatarWorkshop.Reference
         AnimationLayerMixerPlayable mixer;
         (Transform t, string path)[] drivers = new (Transform, string)[0];
         (Transform t, string path)[] bones = new (Transform, string)[0];
+        (Transform t, string path)[] targets = new (Transform, string)[0];
+        int constrainedFrame = -1;
+        readonly List<(Transform t, string name)> others = new List<(Transform, string)>();
+        readonly Dictionary<string, string> lastOthers = new Dictionary<string, string>();
+        StreamWriter othersOut;
         readonly Dictionary<string, string> lastPoses = new Dictionary<string, string>();
         readonly Dictionary<string, string> simulated = new Dictionary<string, string>();
         int posedFrame = -1;
@@ -354,7 +364,7 @@ namespace AvatarWorkshop.Reference
         NativeArray<int> humanRuns;
         int humanSeen;
 
-        StreamWriter dynamicsOut, paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, grabsOut, inputsOut;
+        StreamWriter dynamicsOut, paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, constrainedOut, grabsOut, inputsOut;
         readonly List<string> applied = new List<string>();
         string placed, swung;
         PhysBoneManager.Grab grab;
@@ -384,6 +394,7 @@ namespace AvatarWorkshop.Reference
             genericWeight = kind == Fixture.Kind.GenericWeight;
             loopDrift = kind == Fixture.Kind.LoopDrift;
             feet = kind == Fixture.Kind.Feet;
+            dynamicsProbe = kind == Fixture.Kind.Dynamics;
             this.output = output;
             this.avatarName = avatarName;
             this.migratedDynamicBones = migratedDynamicBones;
@@ -444,6 +455,13 @@ namespace AvatarWorkshop.Reference
                 BeginStep(steps[stepIndex]);
             }
             steps[stepIndex].Each?.Invoke(this, stepFrame);
+            foreach (var (t, name) in others)
+            {
+                var pose = Xf(Local(t.position), Quaternion.Inverse(root.rotation) * t.rotation);
+                if (lastOthers.TryGetValue(name, out var old) && old == pose) continue;
+                othersOut.Write($"{frame.ToString(inv)}\t{name}\t{pose}\n");
+                lastOthers[name] = pose;
+            }
             inputsOut.Write($"{frame.ToString(inv)}\t{placed ?? "-"}\t{swung ?? "-"}{string.Concat(applied.Select(a => "\t" + a))}\n");
             applied.Clear();
             placed = swung = null;
@@ -585,6 +603,28 @@ namespace AvatarWorkshop.Reference
             posedFrame = frame;
         }
 
+        public void Constrained()
+        {
+            if (root == null || stepIndex < 0 || Finished) return;
+            var f = frame.ToString(inv);
+            if (posedFrame != frame) throw new Exception($"the SDK's dynamics completed at frame {f} without driver poses taken before them");
+            foreach (var (t, path) in targets)
+            {
+                if (t == null) throw new Exception($"constraint target {path} is gone at frame {f}");
+                var s = t.lossyScale;
+                foreach (var (space, pose) in new[] { ("root", $"{Xf(Local(t.position), Quaternion.Inverse(root.rotation) * t.rotation)},{F(s.x)},{F(s.y)},{F(s.z)}"), ("local", LocalPose(t)) })
+                {
+                    var key = space + "\t" + path;
+                    if (lastConstrained.TryGetValue(key, out var old) && old == pose) continue;
+                    constrainedOut.Write($"{f}\t{space}\t{path}\t{pose}\n");
+                    lastConstrained[key] = pose;
+                }
+            }
+            constrainedFrame = frame;
+        }
+
+        readonly Dictionary<string, string> lastConstrained = new Dictionary<string, string>();
+
         string LocalPose(Transform t)
         {
             var s = t.localScale;
@@ -601,6 +641,7 @@ namespace AvatarWorkshop.Reference
             Clocks(f);
             if (root == null || stepIndex < 0) return;
             if (posedFrame != frame) throw new Exception($"no driver poses were taken before the SDK's dynamics at frame {f}");
+            if (constrainedFrame != frame) throw new Exception($"no constrained poses were taken after the SDK's dynamics at frame {f}");
             if (applied.Count > 0 || placed != null || swung != null) throw new Exception($"scripted inputs were applied after frame {f}'s were logged");
             foreach (var (t, path) in bones) simulated[path] = LocalPose(t);
             foreach (var (name, value) in Parameters())
@@ -687,6 +728,7 @@ namespace AvatarWorkshop.Reference
             foreach (var pb in physBones)
                 Tips(pb, physBones);
             Inputs(physBones);
+            if (dynamicsProbe) Others();
 
             Directory.CreateDirectory(output);
             Directory.CreateDirectory(Path.Combine(output, "render"));
@@ -698,6 +740,7 @@ namespace AvatarWorkshop.Reference
             rendersOut = Open("renders.tsv");
             trackOut = Open("track.tsv");
             posesOut = Open("poses.tsv");
+            constrainedOut = Open("constrained.tsv");
             grabsOut = Open("grabs.tsv");
             inputsOut = Open("inputs.tsv");
             trackOut.Write("frame\troot (world)\thead\tleft hand\tright hand\thips (each from the root position and rotation, its scale ignored, in metres: px,py,pz,qx,qy,qz,qw)\n");
@@ -729,6 +772,13 @@ namespace AvatarWorkshop.Reference
                 if (absent.Count > 0) throw new Exception($"the {name} probe lacks {string.Join(", ", absent)}");
                 if (genericWeight && Coverage.WeightPlays(descriptor) is string plays) throw new Exception($"the {name} probe can play {plays}");
             }
+            if (dynamicsProbe)
+            {
+                var settings = Coverage.CountDynamics(root.gameObject, descriptor, others.Select(o => o.t.GetComponent<ContactSender>()));
+                File.WriteAllText(Path.Combine(output, "compositions.json"), Json(settings) + "\n");
+                var absent = Coverage.DynamicsSettings.Where(k => settings[k] == 0).ToList();
+                if (absent.Count > 0) throw new Exception($"the dynamics probe lacks {string.Join(", ", absent)}");
+            }
             SetupCamera();
             Schedule(descriptor);
             File.WriteAllText(Path.Combine(output, "menu.tsv"), menuRows.ToString());
@@ -752,6 +802,12 @@ namespace AvatarWorkshop.Reference
                 ["genericweight"] = genericWeight,
                 ["loopdrift"] = loopDrift,
                 ["feet"] = feet,
+                ["dynamics"] = dynamicsProbe,
+                ["others"] = Fixture.Others.Where(_ => dynamicsProbe).Select(o => new Dictionary<string, object>
+                {
+                    ["name"] = o.name, ["shape"] = o.shape.ToString().ToLowerInvariant(), ["radius"] = o.radius, ["height"] = o.height,
+                    ["tags"] = o.tags, ["player"] = Fixture.OtherPlayer,
+                }).ToList(),
                 ["root_scale"] = new[] { root.lossyScale.x, root.lossyScale.y, root.lossyScale.z },
                 ["unity"] = Application.unityVersion,
                 ["dynamic_bones_migrated"] = migratedDynamicBones,
@@ -902,13 +958,13 @@ namespace AvatarWorkshop.Reference
             var animator = runtime.GetComponent<Animator>();
             if (animator != null && animator.isHuman)
                 for (var b = HumanBodyBones.Hips; b < HumanBodyBones.LastBone; b++) Role(animator.GetBoneTransform(b), "humanoid:" + b);
-            var targets = new HashSet<Transform>();
+            var constrained = new HashSet<Transform>();
             foreach (var c in root.GetComponentsInChildren<VRCPhysBoneColliderBase>(true)) Role(c.GetRootTransform(), "collider");
             foreach (var c in root.GetComponentsInChildren<ContactBase>(true)) Role(c.GetRootTransform(), "contact");
             foreach (var c in root.GetComponentsInChildren<VRCConstraintBase>(true))
             {
                 var target = c.GetEffectiveTargetTransform();
-                targets.Add(target);
+                constrained.Add(target);
                 Role(target, "constraint-target");
                 Role(target.parent, "constraint-parent");
                 for (int i = 0; i < c.Sources.Count; i++) Role(c.Sources[i].SourceTransform, "constraint-source");
@@ -916,10 +972,12 @@ namespace AvatarWorkshop.Reference
             }
             foreach (var t in roles.Keys.ToList())
                 for (var x = t; x != null; x = x.parent)
-                    if (bone.Contains(x) || (x != t && targets.Contains(x))) { roles[t].Add("moved-by-dynamics"); break; }
+                    if (bone.Contains(x) || (x != t && constrained.Contains(x))) { roles[t].Add("moved-by-dynamics"); break; }
             foreach (var t in bone) Role(t, "physbone-bone");
             drivers = roles.Keys.Where(t => roles[t].Any(r => r != "physbone-bone")).Select(t => (t, PathOf(t))).OrderBy(x => x.Item2, StringComparer.Ordinal).ToArray();
             bones = bone.Select(t => (t, PathOf(t))).OrderBy(x => x.Item2, StringComparer.Ordinal).ToArray();
+            targets = constrained.Concat(root.GetComponentsInChildren<IConstraint>(true).Select(c => ((Component)c).transform)).Distinct()
+                .Select(t => (t, PathOf(t))).OrderBy(x => x.Item2, StringComparer.Ordinal).ToArray();
             var dupes = roles.Keys.GroupBy(PathOf).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
             if (dupes.Count > 0) throw new Exception("transforms share a path: " + string.Join(", ", dupes));
             File.WriteAllText(Path.Combine(output, "drivers.tsv"), "transform\troles\n" +
@@ -1035,6 +1093,28 @@ namespace AvatarWorkshop.Reference
             return v;
         }
 
+        // Senders outside the avatar, which a scene's other avatars and their hands would carry: a contact player id of
+        // their own, so a receiver takes them for another player's.
+        void Others()
+        {
+            foreach (var o in Fixture.Others)
+            {
+                var go = new GameObject(o.name);
+                var c = go.AddComponent<VRC.SDK3.Dynamics.Contact.Components.VRCContactSender>();
+                c.shapeType = o.shape; c.radius = o.radius; c.height = o.height; c.collisionTags = o.tags.ToList();
+                c.playerId = Fixture.OtherPlayer;
+                go.transform.SetPositionAndRotation(root.position + root.rotation * Fixture.Parked, root.rotation);
+                others.Add((go.transform, o.name));
+            }
+            othersOut = Open("others.tsv");
+        }
+
+        void Other(string name, Vector3 local)
+        {
+            var t = others.Single(o => o.name == name).t;
+            t.SetPositionAndRotation(root.position + root.rotation * local, root.rotation);
+        }
+
         void Place(Vector3 position, Quaternion rotation)
         {
             placed = Xf(position, rotation);
@@ -1135,6 +1215,25 @@ namespace AvatarWorkshop.Reference
             stop.Each = (r, k) => { if (k == 0) { r.Place(r.rootPos, r.rootRot); r.Swing(Vector2.zero); } };
 
             if (probe) return;
+            if (dynamicsProbe)
+            {
+                var pass = S("self pass", Mathf.RoundToInt(Fixture.SelfPassFrames));
+                pass.Set[Fixture.SelfPass] = 1;
+                var parked = S("self parked", 30);
+                parked.Set[Fixture.SelfPass] = 0;
+                float half = Fixture.RowHalfLength;
+                foreach (var (o, _, _, _, _) in Fixture.Others)
+                    foreach (var speed in new[] { 0.5f, 3f })
+                    {
+                        int frames = Mathf.CeilToInt(2 * half / speed * Harness.Rate);
+                        var step = S($"{o} pass at {F(speed)} m/s", frames + 1);
+                        var name = o;
+                        step.Each = (r, k) => r.Other(name, Fixture.OnRow(-half + 2 * half * Mathf.Min(k, frames) / frames));
+                        S($"{o} parked", 30).Each = (r, k) => { if (k == 0) r.Other(name, Fixture.Parked); };
+                    }
+                S("final", 60, render: true);
+                return;
+            }
             var linger = root.GetComponentsInChildren<ParticleSystem>(true).Select(p => p.main.startLifetime)
                 .Select(l => Mathf.Max(l.constant, l.constantMax, l.curveMultiplier)).DefaultIfEmpty(0).Max();
             if (linger > 0) S("quiet", Mathf.CeilToInt(linger * Harness.Rate));
@@ -1440,7 +1539,7 @@ namespace AvatarWorkshop.Reference
         void Complete()
         {
             Finished = true;
-            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, grabsOut, inputsOut, timeOut, dynamicsOut, clocksOut }) w?.Dispose();
+            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, constrainedOut, othersOut, grabsOut, inputsOut, timeOut, dynamicsOut, clocksOut }) w?.Dispose();
             CheckInputs();
             File.WriteAllText(Path.Combine(output, "done"), frame.ToString(inv) + "\n");
             Debug.Log($"[aw-reference] recorded {frame} frames, {steps.Count} steps, {tips.Count} tips, {renderCount} renders into {output}");
