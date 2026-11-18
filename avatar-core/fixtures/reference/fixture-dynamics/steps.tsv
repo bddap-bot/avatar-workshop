@@ -1,0 +1,149 @@
+0	5	90	-	rest	GestureLeft=0,GestureRight=0,GestureLeftWeight=0,GestureRightWeight=0,Viseme=0,Voice=0,Grounded=1,Seated=0,AFK=0,VelocityX=0,VelocityY=0,VelocityZ=0,AngularY=0,Upright=1,TrackingType=3,VRMode=1,InStation=0,IsOnFriendsList=0
+1	95	360	-	motion	
+2	455	120	-	settle	
+3	575	45	00:Hat	base	Hat=0
+4	620	45	00:Hat	Toggle 00:Hat Hat=1	Hat=1
+5	665	45	-	reset	Hat=0
+6	710	45	01:Outfit Red	base	Outfit=0
+7	755	45	01:Outfit Red	Toggle 01:Outfit Red Outfit=1	Outfit=1
+8	800	45	-	reset	Outfit=0
+9	845	45	02:Outfit Tint	base	Outfit=0
+10	890	45	02:Outfit Tint	Toggle 02:Outfit Tint Outfit=2	Outfit=2
+11	935	45	-	reset	Outfit=0
+12	980	45	03:Wave	base	Wave=0
+13	1025	20	03:Wave	Button 03:Wave Wave=1	Wave=1
+14	1045	45	-	reset	Wave=0
+15	1090	45	04:Smile	base	Smile=0
+16	1135	30	04:Smile	Radial 04:Smile Smile=0	Smile=0
+17	1165	30	04:Smile	Radial 04:Smile Smile=0.25	Smile=0.25
+18	1195	30	04:Smile	Radial 04:Smile Smile=0.5	Smile=0.5
+19	1225	30	04:Smile	Radial 04:Smile Smile=0.75	Smile=0.75
+20	1255	30	04:Smile	Radial 04:Smile Smile=1	Smile=1
+21	1285	45	-	reset	Smile=0
+22	1330	45	05:Hue	base	Hue=0.25
+23	1375	30	05:Hue	Radial 05:Hue Hue=0	Hue=0
+24	1405	30	05:Hue	Radial 05:Hue Hue=0.25	Hue=0.25
+25	1435	30	05:Hue	Radial 05:Hue Hue=0.5	Hue=0.5
+26	1465	30	05:Hue	Radial 05:Hue Hue=0.75	Hue=0.75
+27	1495	30	05:Hue	Radial 05:Hue Hue=1	Hue=1
+28	1525	45	-	reset	Hue=0.25
+29	1570	45	06:Puppets/00:Lean	base	InPuppets=1,PuppetX=0,PuppetY=0
+30	1615	30	06:Puppets/00:Lean	TwoAxis 06:Puppets/00:Lean (0,1)	InPuppets=1,PuppetX=0,PuppetY=1
+31	1645	30	06:Puppets/00:Lean	TwoAxis 06:Puppets/00:Lean (1,0)	InPuppets=1,PuppetX=1,PuppetY=0
+32	1675	30	06:Puppets/00:Lean	TwoAxis 06:Puppets/00:Lean (0,-1)	InPuppets=1,PuppetX=0,PuppetY=-1
+33	1705	30	06:Puppets/00:Lean	TwoAxis 06:Puppets/00:Lean (-1,0)	InPuppets=1,PuppetX=-1,PuppetY=0
+34	1735	45	-	reset	InPuppets=0,PuppetX=0,PuppetY=0
+35	1780	45	06:Puppets/01:Blend	base	InPuppets=1,Up=0,Right=0,Down=0,Left=0
+36	1825	30	06:Puppets/01:Blend	FourAxis 06:Puppets/01:Blend Up=1	InPuppets=1,Up=1,Right=0,Down=0,Left=0
+37	1855	30	06:Puppets/01:Blend	FourAxis 06:Puppets/01:Blend Right=1	InPuppets=1,Up=0,Right=1,Down=0,Left=0
+38	1885	30	06:Puppets/01:Blend	FourAxis 06:Puppets/01:Blend Down=1	InPuppets=1,Up=0,Right=0,Down=1,Left=0
+39	1915	30	06:Puppets/01:Blend	FourAxis 06:Puppets/01:Blend Left=1	InPuppets=1,Up=0,Right=0,Down=0,Left=1
+40	1945	45	-	reset	InPuppets=0,Up=0,Right=0,Down=0,Left=0
+41	1990	45	06:Puppets/02:Swap	base	InPuppets=1,Swap=0
+42	2035	45	06:Puppets/02:Swap	Toggle 06:Puppets/02:Swap Swap=1	InPuppets=1,Swap=1
+43	2080	45	-	reset	InPuppets=0,Swap=0
+44	2125	45	06:Puppets/03:Flip	base	InPuppets=1,Flip=0
+45	2170	45	06:Puppets/03:Flip	Toggle 06:Puppets/03:Flip Flip=1	InPuppets=1,Flip=1
+46	2215	45	-	reset	InPuppets=0,Flip=0
+47	2260	45	06:Puppets/04:Pose	base	InPuppets=1,Pose=0
+48	2305	45	06:Puppets/04:Pose	Toggle 06:Puppets/04:Pose Pose=1	InPuppets=1,Pose=1
+49	2350	45	-	reset	InPuppets=0,Pose=0
+50	2395	45	06:Puppets/05:Dial	base	InPuppets=1,Dial=0
+51	2440	30	06:Puppets/05:Dial	Radial 06:Puppets/05:Dial Dial=0	InPuppets=1,Dial=0
+52	2470	30	06:Puppets/05:Dial	Radial 06:Puppets/05:Dial Dial=0.25	InPuppets=1,Dial=0.25
+53	2500	30	06:Puppets/05:Dial	Radial 06:Puppets/05:Dial Dial=0.5	InPuppets=1,Dial=0.5
+54	2530	30	06:Puppets/05:Dial	Radial 06:Puppets/05:Dial Dial=0.75	InPuppets=1,Dial=0.75
+55	2560	30	06:Puppets/05:Dial	Radial 06:Puppets/05:Dial Dial=1	InPuppets=1,Dial=1
+56	2590	45	-	reset	InPuppets=0,Dial=0
+57	2635	45	builtin/GestureLeft	base	GestureLeft=0,GestureLeftWeight=0
+58	2680	30	builtin/GestureLeft	builtin GestureLeft=1	GestureLeft=1,GestureLeftWeight=1
+59	2710	45	-	reset	GestureLeft=0,GestureLeftWeight=0
+60	2755	30	builtin/GestureLeft	builtin GestureLeft=2	GestureLeft=2,GestureLeftWeight=1
+61	2785	45	-	reset	GestureLeft=0,GestureLeftWeight=0
+62	2830	30	builtin/GestureLeft	builtin GestureLeft=3	GestureLeft=3,GestureLeftWeight=1
+63	2860	45	-	reset	GestureLeft=0,GestureLeftWeight=0
+64	2905	30	builtin/GestureLeft	builtin GestureLeft=4	GestureLeft=4,GestureLeftWeight=1
+65	2935	45	-	reset	GestureLeft=0,GestureLeftWeight=0
+66	2980	30	builtin/GestureLeft	builtin GestureLeft=5	GestureLeft=5,GestureLeftWeight=1
+67	3010	45	-	reset	GestureLeft=0,GestureLeftWeight=0
+68	3055	30	builtin/GestureLeft	builtin GestureLeft=6	GestureLeft=6,GestureLeftWeight=1
+69	3085	45	-	reset	GestureLeft=0,GestureLeftWeight=0
+70	3130	30	builtin/GestureLeft	builtin GestureLeft=7	GestureLeft=7,GestureLeftWeight=1
+71	3160	45	-	reset	GestureLeft=0,GestureLeftWeight=0
+72	3205	45	builtin/GestureRight	base	GestureRight=0,GestureRightWeight=0
+73	3250	30	builtin/GestureRight	builtin GestureRight=1	GestureRight=1,GestureRightWeight=1
+74	3280	45	-	reset	GestureRight=0,GestureRightWeight=0
+75	3325	30	builtin/GestureRight	builtin GestureRight=2	GestureRight=2,GestureRightWeight=1
+76	3355	45	-	reset	GestureRight=0,GestureRightWeight=0
+77	3400	30	builtin/GestureRight	builtin GestureRight=3	GestureRight=3,GestureRightWeight=1
+78	3430	45	-	reset	GestureRight=0,GestureRightWeight=0
+79	3475	30	builtin/GestureRight	builtin GestureRight=4	GestureRight=4,GestureRightWeight=1
+80	3505	45	-	reset	GestureRight=0,GestureRightWeight=0
+81	3550	30	builtin/GestureRight	builtin GestureRight=5	GestureRight=5,GestureRightWeight=1
+82	3580	45	-	reset	GestureRight=0,GestureRightWeight=0
+83	3625	30	builtin/GestureRight	builtin GestureRight=6	GestureRight=6,GestureRightWeight=1
+84	3655	45	-	reset	GestureRight=0,GestureRightWeight=0
+85	3700	30	builtin/GestureRight	builtin GestureRight=7	GestureRight=7,GestureRightWeight=1
+86	3730	45	-	reset	GestureRight=0,GestureRightWeight=0
+87	3775	45	builtin/Viseme	base	Viseme=0,Voice=0
+88	3820	12	builtin/Viseme	builtin Viseme=1	Viseme=1,Voice=0.6
+89	3832	12	builtin/Viseme	builtin Viseme=2	Viseme=2,Voice=0.6
+90	3844	12	builtin/Viseme	builtin Viseme=3	Viseme=3,Voice=0.6
+91	3856	12	builtin/Viseme	builtin Viseme=4	Viseme=4,Voice=0.6
+92	3868	12	builtin/Viseme	builtin Viseme=5	Viseme=5,Voice=0.6
+93	3880	12	builtin/Viseme	builtin Viseme=6	Viseme=6,Voice=0.6
+94	3892	12	builtin/Viseme	builtin Viseme=7	Viseme=7,Voice=0.6
+95	3904	12	builtin/Viseme	builtin Viseme=8	Viseme=8,Voice=0.6
+96	3916	12	builtin/Viseme	builtin Viseme=9	Viseme=9,Voice=0.6
+97	3928	12	builtin/Viseme	builtin Viseme=10	Viseme=10,Voice=0.6
+98	3940	12	builtin/Viseme	builtin Viseme=11	Viseme=11,Voice=0.6
+99	3952	12	builtin/Viseme	builtin Viseme=12	Viseme=12,Voice=0.6
+100	3964	12	builtin/Viseme	builtin Viseme=13	Viseme=13,Voice=0.6
+101	3976	12	builtin/Viseme	builtin Viseme=14	Viseme=14,Voice=0.6
+102	3988	45	-	reset	Viseme=0,Voice=0
+103	4033	45	builtin/Grounded	base	Grounded=1
+104	4078	45	builtin/Grounded	builtin Grounded=0	Grounded=0
+105	4123	45	-	reset	Grounded=1
+106	4168	45	builtin/Seated	base	Seated=0
+107	4213	45	builtin/Seated	builtin Seated=1	Seated=1
+108	4258	45	-	reset	Seated=0
+109	4303	45	builtin/AFK	base	AFK=0
+110	4348	45	builtin/AFK	builtin AFK=1	AFK=1
+111	4393	45	-	reset	AFK=0
+112	4438	45	builtin/VelocityZ	base	VelocityZ=0
+113	4483	45	builtin/VelocityZ	builtin VelocityZ=3	VelocityZ=3
+114	4528	45	-	reset	VelocityZ=0
+115	4573	45	builtin/VelocityX	base	VelocityX=0
+116	4618	45	builtin/VelocityX	builtin VelocityX=-2	VelocityX=-2
+117	4663	45	-	reset	VelocityX=0
+118	4708	45	builtin/VelocityY	base	VelocityY=0
+119	4753	45	builtin/VelocityY	builtin VelocityY=-4	VelocityY=-4
+120	4798	45	-	reset	VelocityY=0
+121	4843	45	builtin/AngularY	base	AngularY=0
+122	4888	45	builtin/AngularY	builtin AngularY=120	AngularY=120
+123	4933	45	-	reset	AngularY=0
+124	4978	45	builtin/Upright	base	Upright=1
+125	5023	45	builtin/Upright	builtin Upright=0.4	Upright=0.4
+126	5068	45	-	reset	Upright=1
+127	5113	45	builtin/TrackingType	base	TrackingType=3
+128	5158	45	builtin/TrackingType	builtin TrackingType=6	TrackingType=6
+129	5203	45	-	reset	TrackingType=3
+130	5248	45	builtin/TrackingType	builtin TrackingType=1	TrackingType=1
+131	5293	45	-	reset	TrackingType=3
+132	5338	45	builtin/VRMode	base	VRMode=1
+133	5383	45	builtin/VRMode	builtin VRMode=0	VRMode=0
+134	5428	45	-	reset	VRMode=1
+135	5473	45	builtin/InStation	base	InStation=0
+136	5518	45	builtin/InStation	builtin InStation=1	InStation=1
+137	5563	45	-	reset	InStation=0
+138	5608	45	builtin/IsOnFriendsList	base	IsOnFriendsList=0
+139	5653	45	builtin/IsOnFriendsList	builtin IsOnFriendsList=1	IsOnFriendsList=1
+140	5698	45	-	reset	IsOnFriendsList=0
+141	5743	60	-	grab Tail	
+142	5803	60	-	posed Tail	
+143	5863	45	-	grab Tail again	
+144	5908	60	-	released Tail	
+145	5968	30	-	grab Antenna	
+146	5998	45	-	grab EarL	
+147	6043	45	-	released EarL	
+148	6088	60	-	final	

@@ -176,6 +176,44 @@ No recording shows these, so the core claims nothing for them:
   controllers' properties; a material slot under a partial playable; a playable at weight 0.
 - Behaviours: a normalized pose-space delay on a state whose speed is not 1, still counted in seconds.
 
+### Constraint and contact coverage
+
+The core's constraints and contacts replay the fixture, the dynamics probe and every corpus avatar's recording.
+Each target a constraint moves without reading a PhysBone lies within 1e-4 m and 0.1° of the SDK's on every frame
+(largest differences 5e-6 m and 0.056°), as does the scale of each scale constraint that does read one; every
+receiver parameter equals the reference on every frame but one parameter each on corpus 5 and 6.
+`avatar-core/tests/dynamics.rs` checks every probe setting and the fixture. What the recordings showed:
+
+- Order: constraints whose sources, world-up object or target's parent sit at or under a node a PhysBone moves, or
+  under such a constraint's target, run after PhysBones; the rest before them; within each, a constraint after
+  those whose targets move what it reads, constraints sharing a target in component order. Contacts read the final
+  poses.
+- A constraint or receiver first runs the frame after it becomes enabled and active; a receiver not running leaves
+  its parameter as the animator holds it.
+- Position and parent constraints sum the weighted world positions of their sources, dividing by the total weight
+  only past one, so a total below one pulls toward the world origin; aim and look-at aim at that point. Rotation
+  and parent constraints blend their sources' rotations normalised by the total; scale constraints take the
+  weighted geometric mean of the sources' world scales. The global weight blends from the at-rest value: linearly
+  for position and scale, by a normalised linear blend for rotation. Offsets apply before that blend.
+- An axis a constraint does not affect keeps the target's animated value. Masking passes rotations through Euler
+  angles in Unity's order, and a rotation whose X angle's sine lies within 2e-6 of one loses its flip at the
+  gimbal lock.
+- Aim with no world up turns the aim axis by the shortest arc from the world's axis; look-at's up object gives the
+  up direction toward its position.
+- Freeze to world holds the affected channels at their world pose from the frame it froze; a position or parent
+  constraint unfreezing with rebaked offsets keeps the target's local pose of that frame and follows the sources
+  from it.
+- A proximity receiver reads zero on the frame a sender enters; on-enter fires for one frame when the sender's
+  speed since the previous frame reaches the minimum velocity.
+
+Not measured, as the recordings lack the input:
+
+- Constraints that read where a PhysBone put a bone (one on the probe, 4 on corpus 2, 3 on corpus 5) and receivers
+  whose shapes or senders ride PhysBones (41 parameters on corpus 2, 61 on corpus 5, all equal to the reference when
+  replayed on the poses before the PhysBones): no recording holds a PhysBone's output pose.
+- Receivers listening for the avatar's own hands (one parameter each on corpus 5 and 6, 210 frames each): VRChat
+  places standard senders on the descriptor's colliders, which the model does not hold.
+
 ## What goes
 
 Code that exists because VRM came first:

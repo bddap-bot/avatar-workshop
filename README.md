@@ -54,6 +54,20 @@ median error, grabs, poses and their filters, the parameters, and that 72, 90 an
 within 1% of chain length. `cargo run --release --example physbones -- RECORDING AVATAR.glb [--chains]` scores
 any recording (`--names` prints chain names), and `--example physbones_cost -- AVATAR.glb` times a joint step.
 
+`avatar_core::constraints` solves VRChat's six constraint kinds and `avatar_core::contacts` its contacts, as the
+SDK's dynamics do. A host gives the constraints each node's local pose and active flag as animation left them
+(`Scene`), calls `solve_before_physbones` and, once the PhysBones' output is in the scene, `solve_after_physbones`
+(`after_physbones` tells which constraints read a bone a PhysBone moves, directly or through another constraint),
+and sets fields a curve drives with `set`. Each frame it then calls `Contacts::advance` with every node's world pose and active flag and the
+senders outside the avatar (`Sender`: another player's part or a hand it tracks, the wearer's or another's, each
+with an id that names it across frames), and
+reads each receiver's parameter from `values()`: none while a receiver is not running, which leaves the parameter to
+the animator. `cargo test --test dynamics` replays the dynamics probe and the fixture from
+`avatar-core/fixtures/reference/` (trimmed to what the replay reads), requiring every constrained target within
+1e-4 m and 0.1° of `constrained.tsv` and every receiver parameter equal to `params.tsv` on every frame.
+`cargo run --release --example dynamics -- RECORDING AVATAR.glb` scores any recording, numbering each target and
+receiver parameter; `--names` prints their names.
+
 `avatar_core::animator` runs the playable layers as VRChat stacks them: Unity's state machines with crossfades,
 offsets, ordered interruption, sub-machines, synced layers and write defaults, every blend-tree algorithm,
 layer masks and additive layers, humanoid clips as whole poses and their mirrors, the expression parameters

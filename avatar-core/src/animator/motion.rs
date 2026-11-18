@@ -131,7 +131,7 @@ pub fn euler_degrees(q: Quat) -> [f32; 3] {
     [x.to_degrees(), y.to_degrees(), z.to_degrees()]
 }
 
-fn from_euler_degrees(e: [f32; 3]) -> Quat {
+pub(crate) fn from_euler_degrees(e: [f32; 3]) -> Quat {
     Quat::from_euler(EulerRot::YXZ, e[1].to_radians(), e[0].to_radians(), e[2].to_radians())
 }
 

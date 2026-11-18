@@ -33,6 +33,16 @@ impl Transform {
         self.translation + self.rotation * (self.scale * local)
     }
 
+    /// `child`, a pose in the same space as `self`, relative to `self`.
+    pub fn relative(&self, child: &Transform) -> Transform {
+        let r = self.rotation.inverse();
+        Transform {
+            translation: (r * (child.translation - self.translation)) / self.scale,
+            rotation: (r * child.rotation).normalize(),
+            scale: child.scale / self.scale,
+        }
+    }
+
     fn rigid(&self) -> Transform {
         Transform { scale: Vec3::ONE, ..*self }
     }

@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 
 pub mod animator;
+pub mod dynamics;
 mod names;
 pub use names::{args, names};
 
@@ -36,7 +37,7 @@ fn floats(s: &str) -> Vec<f32> {
 }
 
 /// Unity's left-handed values to glTF's: mirror X.
-fn unity(v: &[f32]) -> Transform {
+pub fn unity(v: &[f32]) -> Transform {
     Transform {
         translation: Vec3::new(-v[0], v[1], v[2]),
         rotation: Quat::from_xyzw(v[3], -v[4], -v[5], v[6]).normalize(),

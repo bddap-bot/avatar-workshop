@@ -1,4 +1,6 @@
 pub mod animator;
+pub mod constraints;
+pub mod contacts;
 pub mod curve;
 pub mod glb;
 pub mod model;

@@ -1,0 +1,14 @@
+0	5	90	-	rest	GestureLeft=0,GestureRight=0,GestureLeftWeight=0,GestureRightWeight=0,Viseme=0,Voice=0,Grounded=1,Seated=0,AFK=0,VelocityX=0,VelocityY=0,VelocityZ=0,AngularY=0,Upright=1,TrackingType=3,VRMode=1,InStation=0,IsOnFriendsList=0
+1	95	360	-	motion	
+2	455	120	-	settle	
+3	575	1080	-	self pass	SelfPass=1
+4	1655	30	-	self parked	SelfPass=0
+5	1685	566	-	OtherPart pass at 0.5 m/s	
+6	2251	30	-	OtherPart parked	
+7	2281	96	-	OtherPart pass at 3 m/s	
+8	2377	30	-	OtherPart parked	
+9	2407	566	-	OtherHand pass at 0.5 m/s	
+10	2973	30	-	OtherHand parked	
+11	3003	96	-	OtherHand pass at 3 m/s	
+12	3099	30	-	OtherHand parked	
+13	3129	60	-	final	
