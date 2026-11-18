@@ -342,6 +342,7 @@ namespace AvatarWorkshop.Reference
         (Transform t, string path)[] drivers = new (Transform, string)[0];
         (Transform t, string path)[] bones = new (Transform, string)[0];
         (Transform t, string path)[] targets = new (Transform, string)[0];
+        (Transform t, string path)[] movedReads = new (Transform, string)[0];
         int constrainedFrame = -1;
         readonly List<Transform> others = new List<Transform>();
         readonly Dictionary<string, string> lastPoses = new Dictionary<string, string>();
@@ -362,7 +363,7 @@ namespace AvatarWorkshop.Reference
         NativeArray<int> humanRuns;
         int humanSeen;
 
-        StreamWriter dynamicsOut, paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, constrainedOut, grabsOut, inputsOut;
+        StreamWriter dynamicsOut, paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, constrainedOut, movedOut, grabsOut, inputsOut;
         readonly List<string> applied = new List<string>();
         string placed, swung;
         PhysBoneManager.Grab grab;
@@ -571,18 +572,11 @@ namespace AvatarWorkshop.Reference
         {
             if (root == null || stepIndex < 0 || Finished) return;
             var f = frame.ToString(inv);
-            void Write(string space, string path, string pose)
-            {
-                var key = space + "\t" + path;
-                if (lastPoses.TryGetValue(key, out var old) && old == pose) return;
-                posesOut.Write($"{f}\t{space}\t{path}\t{pose}\n");
-                lastPoses[key] = pose;
-            }
+            void Write(string space, string path, string pose) => WritePose(posesOut, lastPoses, f, space, path, pose);
             foreach (var (t, path) in drivers)
             {
                 if (t == null) throw new Exception($"driver transform {path} is gone at frame {f}");
-                var s = t.lossyScale;
-                Write("root", path, $"{Xf(Local(t.position), Quaternion.Inverse(root.rotation) * t.rotation)},{F(s.x)},{F(s.y)},{F(s.z)}");
+                Write("root", path, RootPose(t));
             }
             foreach (var (t, path) in bones)
             {
@@ -601,19 +595,33 @@ namespace AvatarWorkshop.Reference
             foreach (var (t, path) in targets)
             {
                 if (t == null) throw new Exception($"constraint target {path} is gone at frame {f}");
-                var s = t.lossyScale;
-                foreach (var (space, pose) in new[] { ("root", $"{Xf(Local(t.position), Quaternion.Inverse(root.rotation) * t.rotation)},{F(s.x)},{F(s.y)},{F(s.z)}"), ("local", LocalPose(t)) })
-                {
-                    var key = space + "\t" + path;
-                    if (lastConstrained.TryGetValue(key, out var old) && old == pose) continue;
-                    constrainedOut.Write($"{f}\t{space}\t{path}\t{pose}\n");
-                    lastConstrained[key] = pose;
-                }
+                WritePose(constrainedOut, lastConstrained, f, "root", path, RootPose(t));
+                WritePose(constrainedOut, lastConstrained, f, "local", path, LocalPose(t));
+            }
+            foreach (var (t, path) in movedReads)
+            {
+                if (t == null) throw new Exception($"PhysBone-moved transform {path} is gone at frame {f}");
+                WritePose(movedOut, lastMoved, f, "root", path, RootPose(t));
             }
             constrainedFrame = frame;
         }
 
         readonly Dictionary<string, string> lastConstrained = new Dictionary<string, string>();
+        readonly Dictionary<string, string> lastMoved = new Dictionary<string, string>();
+
+        static void WritePose(StreamWriter w, Dictionary<string, string> last, string f, string space, string path, string pose)
+        {
+            var key = space + "\t" + path;
+            if (last.TryGetValue(key, out var old) && old == pose) return;
+            w.Write($"{f}\t{space}\t{path}\t{pose}\n");
+            last[key] = pose;
+        }
+
+        string RootPose(Transform t)
+        {
+            var s = t.lossyScale;
+            return $"{Xf(Local(t.position), Quaternion.Inverse(root.rotation) * t.rotation)},{F(s.x)},{F(s.y)},{F(s.z)}";
+        }
 
         string LocalPose(Transform t)
         {
@@ -731,6 +739,7 @@ namespace AvatarWorkshop.Reference
             trackOut = Open("track.tsv");
             posesOut = Open("poses.tsv");
             constrainedOut = Open("constrained.tsv");
+            movedOut = Open("moved.tsv");
             grabsOut = Open("grabs.tsv");
             inputsOut = Open("inputs.tsv");
             trackOut.Write("frame\troot (world)\thead\tleft hand\tright hand\thips (each from the root position and rotation, its scale ignored, in metres: px,py,pz,qx,qy,qz,qw)\n");
@@ -970,6 +979,9 @@ namespace AvatarWorkshop.Reference
             drivers = roles.Keys.Where(t => roles[t].Any(r => r != "physbone-bone")).Select(t => (t, PathOf(t))).OrderBy(x => x.Item2, StringComparer.Ordinal).ToArray();
             bones = bone.Select(t => (t, PathOf(t))).OrderBy(x => x.Item2, StringComparer.Ordinal).ToArray();
             targets = constrained.Select(t => (t, PathOf(t))).OrderBy(x => x.Item2, StringComparer.Ordinal).ToArray();
+            bool UnderBone(Transform t) { for (var x = t; x != null; x = x.parent) if (bone.Contains(x)) return true; return false; }
+            var reads = new[] { "constraint-source", "constraint-world-up", "constraint-parent", "contact" };
+            movedReads = roles.Keys.Where(t => roles[t].Overlaps(reads) && UnderBone(t)).Select(t => (t, PathOf(t))).OrderBy(x => x.Item2, StringComparer.Ordinal).ToArray();
             var dupes = roles.Keys.GroupBy(PathOf).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
             if (dupes.Count > 0) throw new Exception("transforms share a path: " + string.Join(", ", dupes));
             File.WriteAllText(Path.Combine(output, "drivers.tsv"), "transform\troles\n" +
@@ -1530,7 +1542,7 @@ namespace AvatarWorkshop.Reference
         void Complete()
         {
             Finished = true;
-            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, constrainedOut, grabsOut, inputsOut, timeOut, dynamicsOut, clocksOut }) w?.Dispose();
+            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, constrainedOut, movedOut, grabsOut, inputsOut, timeOut, dynamicsOut, clocksOut }) w?.Dispose();
             CheckInputs();
             File.WriteAllText(Path.Combine(output, "done"), frame.ToString(inv) + "\n");
             Debug.Log($"[aw-reference] recorded {frame} frames, {steps.Count} steps, {tips.Count} tips, {renderCount} renders into {output}");
