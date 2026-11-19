@@ -251,6 +251,50 @@ pub struct Descriptor {
     pub view_position: Vec3,
     pub lip_sync: LipSync,
     pub eyes: Eyes,
+    pub colliders: DescriptorColliders,
+}
+
+/// The descriptor's body colliders, on which VRChat places the avatar's standard contact senders, tagged by
+/// part and, for the mirrored ones, by side. Each is a capsule on its bone at its offsets; a finger's sits on
+/// its bone's parent, at its position plus the bone's own local position.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DescriptorColliders {
+    pub head: DescriptorCollider,
+    pub torso: DescriptorCollider,
+    pub hand_left: DescriptorCollider,
+    pub hand_right: DescriptorCollider,
+    pub foot_left: DescriptorCollider,
+    pub foot_right: DescriptorCollider,
+    pub finger_index_left: DescriptorCollider,
+    pub finger_middle_left: DescriptorCollider,
+    pub finger_ring_left: DescriptorCollider,
+    pub finger_little_left: DescriptorCollider,
+    pub finger_index_right: DescriptorCollider,
+    pub finger_middle_right: DescriptorCollider,
+    pub finger_ring_right: DescriptorCollider,
+    pub finger_little_right: DescriptorCollider,
+}
+
+/// As the descriptor stores it: an automatic collider's values are the ones the SDK last computed.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DescriptorCollider {
+    pub state: DescriptorColliderState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bone: Option<NodeIndex>,
+    pub radius: f32,
+    pub height: f32,
+    pub position: Vec3,
+    pub rotation: Quat,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum DescriptorColliderState {
+    Automatic,
+    Custom,
+    Disabled,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]

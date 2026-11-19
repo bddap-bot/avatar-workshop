@@ -60,6 +60,7 @@ namespace AvatarWorkshop.Exporter
                     { "physbones", all.OfType<VRCPhysBoneBase>().Select(p => (object)Fields(p)).ToList() },
                     { "colliders", all.OfType<VRCPhysBoneColliderBase>().Select(c => (object)Reference(c)).ToList() },
                     { "contacts", all.OfType<ContactBase>().Select(c => (object)new Obj { { "sender", c is ContactSender }, { "box", c.shapeType == ContactBase.ShapeType.Box }, { "enabled", c.enabled } }).ToList() },
+                    { "descriptorColliders", DescriptorColliders() },
                     { "constraints", all.Where(c => c is VRCConstraintBase || c is IConstraint).Select(c => (object)new Obj { { "type", c.GetType().Name }, { "enabled", ((Behaviour)c).enabled } }).ToList() },
                 };
                 var renderers = all.OfType<Renderer>().Where(r => r is SkinnedMeshRenderer || r is MeshRenderer).ToList();
@@ -85,6 +86,15 @@ namespace AvatarWorkshop.Exporter
                 o.Add("humanRest", HumanRest());
                 o.Add("curves", Curves(clips, Use));
                 o.Add("materials", materials.Select(m => (object)MaterialCensus(m)).ToList());
+                return o;
+            }
+
+            Obj DescriptorColliders()
+            {
+                var o = new Obj();
+                var p = new SerializedObject(descriptor).GetIterator();
+                for (bool more = p.Next(true); more; more = p.Next(false))
+                    if (p.name.StartsWith("collider_")) o.Add(p.name, Value(p));
                 return o;
             }
 

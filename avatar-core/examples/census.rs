@@ -137,6 +137,7 @@ impl Check<'_> {
     fn run(&mut self) {
         self.nodes();
         self.physbones();
+        self.descriptor_colliders();
         self.counts();
         self.renderers();
         self.parameters_and_menu();
@@ -287,6 +288,63 @@ impl Check<'_> {
             }
         }
         self.report.line(&format!("physbones ({checked} fields compared)"), unity.len(), model.len(), faults);
+    }
+
+    fn descriptor_colliders(&mut self) {
+        let unity = self.census["descriptorColliders"].as_object().cloned().unwrap_or_default();
+        let model = serde_json::to_value(&self.model().descriptor.colliders).unwrap();
+        let model = model.as_object().unwrap();
+        let outside = self.unsupported("avatar descriptor collider bone outside the avatar");
+        let mut faults = vec![];
+        let (mut checked, mut placed, mut outside_seen) = (0, 0, 0);
+        for (field, u) in &unity {
+            let Some(side) = field.strip_prefix("collider_") else { continue };
+            let slot = match (side.strip_suffix('L'), side.strip_suffix('R')) {
+                (Some(part), _) => format!("{part}Left"),
+                (_, Some(part)) => format!("{part}Right"),
+                _ => side.to_string(),
+            };
+            let Some(m) = model.get(&slot) else {
+                faults.push(format!("{field}: no model collider {slot}"));
+                continue;
+            };
+            let state = u["state"].as_str().unwrap_or("").to_lowercase();
+            let bone = &u["transform"];
+            if bone.get("outside").is_some() {
+                outside_seen += 1;
+            }
+            placed += usize::from(state != "disabled" && bone.get("node").is_some());
+            for (name, value) in u.as_object().into_iter().flatten() {
+                let (expected, at) = match name.as_str() {
+                    "isMirrored" => continue,
+                    "state" => (json!(state), "/state"),
+                    "transform" => (bone.get("node").cloned().unwrap_or(json!("<absent>")), "/bone"),
+                    "radius" | "height" => (jf(num(value)), if name == "radius" { "/radius" } else { "/height" }),
+                    "position" => (mirror(value), "/position"),
+                    "rotation" => (mirror_quat(value), "/rotation"),
+                    other => {
+                        faults.push(format!("{field}.{other}: a field the model does not hold"));
+                        continue;
+                    }
+                };
+                checked += 1;
+                let actual = m.pointer(at).cloned().unwrap_or(json!("<absent>"));
+                if !values_equal(&expected, &actual, false) {
+                    faults.push(format!("{field}.{name}: Unity {expected}, model {slot}{at} {actual}"));
+                }
+            }
+        }
+        if unity.len() != model.len() {
+            faults.push(format!("Unity {} descriptor colliders, model {}", unity.len(), model.len()));
+        }
+        if outside_seen != outside {
+            faults.push(format!("{outside_seen} collider bones outside the avatar, {outside} reported"));
+        }
+        let on = model.values().filter(|m| m["state"] != "disabled" && m.get("bone").is_some()).count();
+        if on != placed {
+            faults.push(format!("{placed} enabled with a bone in Unity, {on} in the model"));
+        }
+        self.report.line(&format!("descriptor colliders ({checked} fields compared; enabled with a bone)"), placed, on, faults);
     }
 
     fn counts(&mut self) {
@@ -1016,6 +1074,11 @@ impl Check<'_> {
 fn mirror(v: &Value) -> Value {
     let a = arr(v);
     json!([jf(-num(&a[0])), jf(num(&a[1])), jf(num(&a[2]))])
+}
+
+fn mirror_quat(v: &Value) -> Value {
+    let a = arr(v);
+    json!([jf(num(&a[0])), jf(-num(&a[1])), jf(-num(&a[2])), jf(num(&a[3]))])
 }
 
 fn mirror_euler(v: &Value) -> Value {

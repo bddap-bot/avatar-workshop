@@ -662,6 +662,7 @@ fn model() -> AwAvatar {
                     excitement: 0.25,
                 },
             },
+            colliders: descriptor_colliders(),
         },
         renderers: vec![Renderer {
             node: n(BODY),
@@ -1715,4 +1716,49 @@ pub fn avatar() -> Avatar {
     assert_eq!(model.nodes.len(), NODE_COUNT as usize);
     let (gltf, bin) = gltf(model.materials.len());
     Avatar { gltf, bin, model }
+}
+
+fn descriptor_colliders() -> DescriptorColliders {
+    let on = |bone: u32, radius: f32, height: f32, position: Vec3| DescriptorCollider {
+        state: DescriptorColliderState::Custom,
+        bone: Some(n(bone)),
+        radius,
+        height,
+        position,
+        rotation: IDENTITY,
+    };
+    let off = DescriptorCollider {
+        state: DescriptorColliderState::Disabled,
+        bone: None,
+        radius: 0.0,
+        height: 0.0,
+        position: [0.0; 3],
+        rotation: IDENTITY,
+    };
+    DescriptorColliders {
+        head: on(HEAD, 0.1, 0.25, [0.0, 0.08, 0.0]),
+        torso: DescriptorCollider {
+            state: DescriptorColliderState::Automatic,
+            rotation: [0.0, 0.0, 0.707_107, 0.707_107],
+            ..on(SPINE, 0.12, 0.4, [0.0, 0.1, 0.0])
+        },
+        hand_left: on(LEFT_HAND, 0.04, 0.1, [-0.05, 0.0, 0.0]),
+        hand_right: DescriptorCollider {
+            state: DescriptorColliderState::Disabled,
+            ..on(RIGHT_HAND, 0.04, 0.1, [0.05, 0.0, 0.0])
+        },
+        foot_left: off.clone(),
+        foot_right: off.clone(),
+        finger_index_left: DescriptorCollider {
+            rotation: [0.0, 0.0, 0.707_107, 0.707_107],
+            ..on(PROP, 0.015, 0.1, [0.0; 3])
+        },
+        finger_middle_left: off.clone(),
+        finger_ring_left: off.clone(),
+        finger_little_left: off.clone(),
+        finger_index_right: off.clone(),
+        finger_middle_right: off.clone(),
+        finger_ring_right: off.clone(),
+        finger_little_right: off,
+    }
 }

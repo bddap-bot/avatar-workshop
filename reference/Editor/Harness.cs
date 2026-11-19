@@ -343,6 +343,8 @@ namespace AvatarWorkshop.Reference
         (Transform t, string path)[] bones = new (Transform, string)[0];
         (Transform t, string path)[] targets = new (Transform, string)[0];
         (Transform t, string path)[] movedReads = new (Transform, string)[0];
+        (string slot, ContactSender sender)[] standardSenders = new (string, ContactSender)[0];
+        HashSet<ContactSender> builtSenders;
         int constrainedFrame = -1;
         readonly List<Transform> others = new List<Transform>();
         readonly Dictionary<string, string> lastPoses = new Dictionary<string, string>();
@@ -405,6 +407,7 @@ namespace AvatarWorkshop.Reference
             if (avatar.name != avatarName && avatar.name != avatarName + "(Clone)") return;
             if (exported) throw new Exception($"the build preprocess ran twice on {avatarName}");
             exported = true;
+            builtSenders = new HashSet<ContactSender>(avatar.GetComponentsInChildren<ContactSender>(true));
             Directory.CreateDirectory(output);
             var name = avatar.name;
             avatar.name = avatarName;
@@ -573,6 +576,8 @@ namespace AvatarWorkshop.Reference
             if (root == null || stepIndex < 0 || Finished) return;
             var f = frame.ToString(inv);
             void Write(string space, string path, string pose) => WritePose(posesOut, lastPoses, f, space, path, pose);
+            foreach (var (slot, sender) in standardSenders)
+                if (sender == null) throw new Exception($"the standard {slot} sender is gone at frame {f}");
             foreach (var (t, path) in drivers)
             {
                 if (t == null) throw new Exception($"driver transform {path} is gone at frame {f}");
@@ -725,6 +730,7 @@ namespace AvatarWorkshop.Reference
             var physBones = root.GetComponentsInChildren<VRCPhysBoneBase>(true).OrderBy(p => PathOf(p.transform), StringComparer.Ordinal).ToList();
             foreach (var pb in physBones)
                 Tips(pb, physBones);
+            StandardSenders(descriptor);
             if (dynamicsProbe) CreateOutsideSenders();
             Inputs(physBones);
 
@@ -808,6 +814,15 @@ namespace AvatarWorkshop.Reference
                     ["position"] = new[] { c.position.x, c.position.y, c.position.z },
                     ["rotation"] = new[] { c.rotation.x, c.rotation.y, c.rotation.z, c.rotation.w },
                     ["tags"] = c.collisionTags, ["local_only"] = c.localOnly, ["player"] = c.GetPlayerId(),
+                }).ToList(),
+                ["standard_senders"] = standardSenders.Select(x => new Dictionary<string, object>
+                {
+                    ["slot"] = x.slot, ["transform"] = PathOf(x.sender.GetRootTransform()),
+                    ["shape"] = x.sender.shapeType.ToString().ToLowerInvariant(), ["radius"] = x.sender.radius, ["height"] = x.sender.height,
+                    ["position"] = new[] { x.sender.position.x, x.sender.position.y, x.sender.position.z },
+                    ["rotation"] = new[] { x.sender.rotation.x, x.sender.rotation.y, x.sender.rotation.z, x.sender.rotation.w },
+                    ["tags"] = x.sender.collisionTags, ["local_only"] = x.sender.localOnly, ["player"] = x.sender.GetPlayerId(),
+                    ["copies"] = copies[x.slot],
                 }).ToList(),
                 ["root_scale"] = new[] { root.lossyScale.x, root.lossyScale.y, root.lossyScale.z },
                 ["unity"] = Application.unityVersion,
@@ -963,6 +978,7 @@ namespace AvatarWorkshop.Reference
             foreach (var c in root.GetComponentsInChildren<VRCPhysBoneColliderBase>(true)) Role(c.GetRootTransform(), "collider");
             foreach (var c in root.GetComponentsInChildren<ContactBase>(true)) Role(c.GetRootTransform(), "contact");
             foreach (var t in others) Role(t, "outside-sender");
+            foreach (var (slot, sender) in standardSenders) Role(sender.GetRootTransform(), "standard-sender:" + slot);
             foreach (var c in root.GetComponentsInChildren<VRCConstraintBase>(true))
             {
                 var target = c.GetEffectiveTargetTransform();
@@ -1096,6 +1112,39 @@ namespace AvatarWorkshop.Reference
             }
             return v;
         }
+
+        // The senders Av3Emulator places on the descriptor's colliders when the avatar loads, standing for VRChat's: every
+        // sender the build did not hold, each matched to the collider on whose bone (a finger's parent) it sits with its part's tag.
+        void StandardSenders(VRCAvatarDescriptor descriptor)
+        {
+            if (builtSenders == null) throw new Exception("the build's contact senders were never listed");
+            var placed = root.GetComponentsInChildren<ContactSender>(true).Where(c => !builtSenders.Contains(c)).ToList();
+            var matched = new List<(string, ContactSender)>();
+            foreach (var (slot, config) in AvatarWorkshop.Exporter.Exporter.DescriptorColliders(descriptor))
+            {
+                if (config.state == VRCAvatarDescriptor.ColliderConfig.State.Disabled || config.transform == null || !config.transform.IsChildOf(root)) continue;
+                var finger = slot.StartsWith("finger");
+                var bone = finger ? config.transform.parent : config.transform;
+                var part = char.ToUpperInvariant(slot[0]) + slot.Substring(1).Replace("Left", "").Replace("Right", "");
+                var side = slot.EndsWith("Left") ? part + "L" : slot.EndsWith("Right") ? part + "R" : part;
+                var found = placed.Where(c => c.GetRootTransform() == bone && c.collisionTags.Contains(part) && c.collisionTags.Contains(side)).ToList();
+                if (found.Count == 0) throw new Exception($"no placed sender tagged {part} is on the descriptor's {slot} collider bone");
+                if (found.Any(c => c.radius != config.radius || c.height != config.height || !c.rotation.Equals(config.rotation) || (!finger && !c.position.Equals(config.position))))
+                    throw new Exception($"a sender placed on the descriptor's {slot} collider has other dimensions or offsets than the collider");
+                if (found.Select(SenderSpec).Distinct().Count() != 1) throw new Exception($"the {found.Count} senders placed on the descriptor's {slot} collider differ");
+                matched.Add((slot, found[0]));
+                copies[slot] = found.Count;
+                placed.RemoveAll(found.Contains);
+            }
+            if (placed.Count > 0) throw new Exception($"{placed.Count} senders the build did not hold match no descriptor collider: {string.Join(", ", placed.Select(c => PathOf(c.transform)))}");
+            standardSenders = matched.ToArray();
+        }
+
+        // The emulator may place a collider's sender more than once; identical copies are one sender to a receiver.
+        readonly Dictionary<string, int> copies = new Dictionary<string, int>();
+
+        string SenderSpec(ContactSender c) => string.Join("|", PathOf(c.GetRootTransform()), c.shapeType, F(c.radius), F(c.height),
+            Xf(c.position, c.rotation), string.Join(",", c.collisionTags), c.localOnly, c.enabled);
 
         // Senders outside the avatar, which a scene's other avatars and their hands would carry: a contact player id of
         // their own, so a receiver takes them for another player's.

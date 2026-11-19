@@ -205,6 +205,7 @@ namespace AvatarWorkshop.Reference
             Orbs(root.transform, t, mats["Orb"]);
             PhysBones(t);
             Contacts(t);
+            Colliders(d, t);
 
             var parameters = Parameters();
             var menu = Menu(parameters);
@@ -611,6 +612,21 @@ namespace AvatarWorkshop.Reference
             c.rotation = rot;
             p.gravity = 0.4f;
             p.colliders = new List<VRCPhysBoneColliderBase> { c };
+        }
+
+        // One collider per stored state and placement rule: custom and automatic with a bone, disabled with one, a foot, a finger
+        // (its sender on the bone's parent), and the defaults, automatic without a bone, which place no sender.
+        static void Colliders(VRCAvatarDescriptor d, Dictionary<string, Transform> t)
+        {
+            VRCAvatarDescriptor.ColliderConfig C(VRCAvatarDescriptor.ColliderConfig.State state, string bone, float radius, float height, Vector3 position, Quaternion rotation) =>
+                new VRCAvatarDescriptor.ColliderConfig { state = state, transform = t[bone], radius = radius, height = height, position = position, rotation = rotation };
+            var custom = VRCAvatarDescriptor.ColliderConfig.State.Custom;
+            d.collider_head = C(custom, "Head", 0.09f, 0.22f, new Vector3(0, 0.1f, 0), Quaternion.identity);
+            d.collider_torso = C(VRCAvatarDescriptor.ColliderConfig.State.Automatic, "Chest", 0.14f, 0.4f, new Vector3(0, 0.05f, 0), Quaternion.Euler(0, 0, 90));
+            d.collider_handL = C(custom, "LeftHand", 0.05f, 0.15f, new Vector3(-0.05f, 0, 0), Quaternion.Euler(0, 0, 90));
+            d.collider_handR = C(VRCAvatarDescriptor.ColliderConfig.State.Disabled, "RightHand", 0.05f, 0.15f, Vector3.zero, Quaternion.identity);
+            d.collider_footL = C(custom, "LeftToes", 0.04f, 0, new Vector3(0, 0, 0.02f), Quaternion.identity);
+            d.collider_fingerIndexL = C(custom, "LeftHandTip", 0.015f, 0.1f, Vector3.zero, Quaternion.Euler(0, 0, 90));
         }
 
         static void Contacts(Dictionary<string, Transform> t)

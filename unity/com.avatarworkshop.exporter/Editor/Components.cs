@@ -214,11 +214,23 @@ namespace AvatarWorkshop.Exporter
             eyes.Add("eyelids", lids);
             eyes.Add("eyeMovement", new Obj { { "confidence", e.eyeMovement.confidence }, { "excitement", e.eyeMovement.excitement } });
 
-            var colliders = new[] { d.collider_head, d.collider_torso, d.collider_footR, d.collider_footL, d.collider_handR, d.collider_handL,
-                d.collider_fingerIndexL, d.collider_fingerMiddleL, d.collider_fingerRingL, d.collider_fingerLittleL,
-                d.collider_fingerIndexR, d.collider_fingerMiddleR, d.collider_fingerRingR, d.collider_fingerLittleR };
-            Drop("avatar descriptor collider", colliders.Count(c => c.state != VRCAvatarDescriptor.ColliderConfig.State.Disabled));
-            return new Obj { { "viewPosition", Space.P(d.ViewPosition) }, { "lipSync", lip }, { "eyes", eyes } };
+            var colliders = new Obj();
+            foreach (var (slot, c) in Exporter.DescriptorColliders(d))
+            {
+                var record = new Obj
+                {
+                    { "state", c.state switch { VRCAvatarDescriptor.ColliderConfig.State.Automatic => "automatic", VRCAvatarDescriptor.ColliderConfig.State.Custom => "custom",
+                        VRCAvatarDescriptor.ColliderConfig.State.Disabled => "disabled", _ => throw new Exception($"descriptor collider state {c.state}") } },
+                };
+                if (Node(c.transform) is int bone) record.Add("bone", bone);
+                else if (c.transform != null) Drop("avatar descriptor collider bone outside the avatar");
+                record.Add("radius", c.radius);
+                record.Add("height", c.height);
+                record.Add("position", Space.P(c.position));
+                record.Add("rotation", Space.Q(c.rotation));
+                colliders.Add(slot, record);
+            }
+            return new Obj { { "viewPosition", Space.P(d.ViewPosition) }, { "lipSync", lip }, { "eyes", eyes }, { "colliders", colliders } };
         }
 
         static Obj Curve(AnimationCurve c)

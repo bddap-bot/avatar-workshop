@@ -75,7 +75,7 @@ by its mesh's `extras.targetNames` entry.
 |---|---|
 | `source` | importer name and version, source format, licence text and author as found in the source (absent when the source has none; never invented) |
 | `humanoid` | Unity HumanBodyBones name → node; the source's rest pose as given (no assumed T-pose); muscle limits from the human description; the body and the four IK goals as Unity's humanoid stream holds them with every muscle at rest |
-| `descriptor` | view position, lip-sync mode and the 15 viseme blendshapes, eyelid mode and shapes, eye bones and their rotation limits |
+| `descriptor` | view position, lip-sync mode and the 15 viseme blendshapes, eyelid mode and shapes, eye bones and their rotation limits; the 14 body colliders (head, torso, hands, feet, four fingers a side) as stored: state (automatic, custom or disabled), bone, radius, height, position and rotation offsets. Each is a capsule at its offsets on its bone, a finger's on its bone's parent at its position plus the bone's local position, as Av3Emulator places a standard contact sender on each enabled one with a bone, tagged by part and side |
 | `renderers` | per mesh node: initially enabled, material slots |
 | `nodes` | per node: active as the uploaded avatar holds it; the evaluation core's animator applies the default states |
 | `materials` | per material: shader family (`poiyomi`, `liltoon`, `vrchat-mobile`, `mtoon`, `standard`, `unknown`), version, its saved properties as a typed map (floats, colours, vectors, texture references with tiling/offset, keywords) and each property its shader declares at the value the material resolves for it; render queue, cull, blend and depth state |
@@ -212,7 +212,9 @@ Not measured, as the recordings lack the input:
   whose shapes or senders ride PhysBones (41 parameters on corpus 2, 61 on corpus 5, all equal to the reference when
   replayed on the poses before the PhysBones): no recording holds a PhysBone's output pose.
 - Receivers listening for the avatar's own hands (one parameter each on corpus 5 and 6, 210 frames each): VRChat
-  places standard senders on the descriptor's colliders, which the model does not hold.
+  places standard senders on the descriptor's colliders. The model holds the colliders and recordings hold each
+  standard sender's root transform pose (`standard-sender:` drivers in `poses.tsv`) and its shape, offsets and tags
+  (`meta.json`'s `standard_senders`), but the core does not place them yet.
 
 ## What goes
 

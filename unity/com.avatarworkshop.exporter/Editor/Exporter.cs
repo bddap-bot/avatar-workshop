@@ -33,6 +33,16 @@ namespace AvatarWorkshop.Exporter
             return false;
         }
 
+        public static (string slot, VRCAvatarDescriptor.ColliderConfig config)[] DescriptorColliders(VRCAvatarDescriptor d) => new[]
+        {
+            ("head", d.collider_head), ("torso", d.collider_torso), ("handLeft", d.collider_handL), ("handRight", d.collider_handR),
+            ("footLeft", d.collider_footL), ("footRight", d.collider_footR),
+            ("fingerIndexLeft", d.collider_fingerIndexL), ("fingerMiddleLeft", d.collider_fingerMiddleL),
+            ("fingerRingLeft", d.collider_fingerRingL), ("fingerLittleLeft", d.collider_fingerLittleL),
+            ("fingerIndexRight", d.collider_fingerIndexR), ("fingerMiddleRight", d.collider_fingerMiddleR),
+            ("fingerRingRight", d.collider_fingerRingR), ("fingerLittleRight", d.collider_fingerLittleR),
+        };
+
         public const string Version = "0.1.0";
 
         // Exports the avatar as the SDK would upload it: a clone, DynamicBones migrated by the SDK's own

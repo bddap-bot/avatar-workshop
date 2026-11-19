@@ -596,13 +596,17 @@
         },
         "eyes": {
           "$ref": "#/$defs/Eyes"
+        },
+        "colliders": {
+          "$ref": "#/$defs/DescriptorColliders"
         }
       },
       "additionalProperties": false,
       "required": [
         "viewPosition",
         "lipSync",
-        "eyes"
+        "eyes",
+        "colliders"
       ]
     },
     "LipSync": {
@@ -1042,6 +1046,132 @@
       "required": [
         "confidence",
         "excitement"
+      ]
+    },
+    "DescriptorColliders": {
+      "description": "The descriptor's body colliders, on which VRChat places the avatar's standard contact senders, tagged by\npart and, for the mirrored ones, by side. Each is a capsule on its bone at its offsets; a finger's sits on\nits bone's parent, at its position plus the bone's own local position.",
+      "type": "object",
+      "properties": {
+        "head": {
+          "$ref": "#/$defs/DescriptorCollider"
+        },
+        "torso": {
+          "$ref": "#/$defs/DescriptorCollider"
+        },
+        "handLeft": {
+          "$ref": "#/$defs/DescriptorCollider"
+        },
+        "handRight": {
+          "$ref": "#/$defs/DescriptorCollider"
+        },
+        "footLeft": {
+          "$ref": "#/$defs/DescriptorCollider"
+        },
+        "footRight": {
+          "$ref": "#/$defs/DescriptorCollider"
+        },
+        "fingerIndexLeft": {
+          "$ref": "#/$defs/DescriptorCollider"
+        },
+        "fingerMiddleLeft": {
+          "$ref": "#/$defs/DescriptorCollider"
+        },
+        "fingerRingLeft": {
+          "$ref": "#/$defs/DescriptorCollider"
+        },
+        "fingerLittleLeft": {
+          "$ref": "#/$defs/DescriptorCollider"
+        },
+        "fingerIndexRight": {
+          "$ref": "#/$defs/DescriptorCollider"
+        },
+        "fingerMiddleRight": {
+          "$ref": "#/$defs/DescriptorCollider"
+        },
+        "fingerRingRight": {
+          "$ref": "#/$defs/DescriptorCollider"
+        },
+        "fingerLittleRight": {
+          "$ref": "#/$defs/DescriptorCollider"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "head",
+        "torso",
+        "handLeft",
+        "handRight",
+        "footLeft",
+        "footRight",
+        "fingerIndexLeft",
+        "fingerMiddleLeft",
+        "fingerRingLeft",
+        "fingerLittleLeft",
+        "fingerIndexRight",
+        "fingerMiddleRight",
+        "fingerRingRight",
+        "fingerLittleRight"
+      ]
+    },
+    "DescriptorCollider": {
+      "description": "As the descriptor stores it: an automatic collider's values are the ones the SDK last computed.",
+      "type": "object",
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/DescriptorColliderState"
+        },
+        "bone": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NodeIndex"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "radius": {
+          "type": "number",
+          "format": "float"
+        },
+        "height": {
+          "type": "number",
+          "format": "float"
+        },
+        "position": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "rotation": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "radius",
+        "height",
+        "position",
+        "rotation"
+      ]
+    },
+    "DescriptorColliderState": {
+      "type": "string",
+      "enum": [
+        "automatic",
+        "custom",
+        "disabled"
       ]
     },
     "Renderer": {
