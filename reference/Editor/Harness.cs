@@ -821,7 +821,7 @@ namespace AvatarWorkshop.Reference
                     ["shape"] = x.sender.shapeType.ToString().ToLowerInvariant(), ["radius"] = x.sender.radius, ["height"] = x.sender.height,
                     ["position"] = new[] { x.sender.position.x, x.sender.position.y, x.sender.position.z },
                     ["rotation"] = new[] { x.sender.rotation.x, x.sender.rotation.y, x.sender.rotation.z, x.sender.rotation.w },
-                    ["tags"] = x.sender.collisionTags, ["local_only"] = x.sender.localOnly, ["player"] = x.sender.GetPlayerId(),
+                    ["tags"] = x.sender.collisionTags, ["local_only"] = x.sender.localOnly,
                     ["copies"] = copies[x.slot],
                 }).ToList(),
                 ["root_scale"] = new[] { root.lossyScale.x, root.lossyScale.y, root.lossyScale.z },
