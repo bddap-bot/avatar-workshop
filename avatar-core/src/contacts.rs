@@ -89,8 +89,8 @@ pub struct Contacts {
     centers: std::collections::BTreeMap<Key, Vec3>,
 }
 
-/// The standard senders on the descriptor's enabled colliders, placed as Av3Emulator places them and tagged as the
-/// VRChat client tags them: a finger's also carries `Finger` and `Finger` with its side, which Av3Emulator leaves out.
+/// The standard senders on the descriptor's enabled colliders, placed and tagged as the VRChat client places and tags
+/// them; a finger's also carries `Finger` and `Finger` with its side.
 pub fn standard_senders(colliders: &DescriptorColliders, nodes: &Nodes) -> Vec<model::ContactSender> {
     let c = colliders;
     let all: [(&DescriptorCollider, &str, &str, bool); 14] = [
@@ -113,10 +113,18 @@ pub fn standard_senders(colliders: &DescriptorColliders, nodes: &Nodes) -> Vec<m
     for (collider, part, side, finger) in all {
         let Some(bone) = collider.bone.filter(|_| collider.state != DescriptorColliderState::Disabled) else { continue };
         let bone = bone.0 as usize;
-        let (node, offset) = match (finger, nodes.parent[bone]) {
-            (true, Some(parent)) => (parent, nodes.rest[bone].translation),
+        let (node, shape, position, rotation) = match (finger, nodes.parent[bone]) {
+            (true, Some(parent)) => {
+                let (shape, position, rotation) = finger_capsule(collider, &nodes.rest[bone]);
+                (parent, shape, position, rotation)
+            }
             (true, None) => continue,
-            (false, _) => (bone, Vec3::ZERO),
+            (false, _) => (
+                bone,
+                ContactShape::Capsule { radius: collider.radius, height: collider.height },
+                collider.position,
+                collider.rotation,
+            ),
         };
         let mut collision_tags = vec![part.to_string()];
         if !side.is_empty() {
@@ -128,13 +136,24 @@ pub fn standard_senders(colliders: &DescriptorColliders, nodes: &Nodes) -> Vec<m
         out.push(model::ContactSender {
             node: model::NodeIndex(node as u32),
             enabled: true,
-            shape: ContactShape::Capsule { radius: collider.radius, height: collider.height },
-            position: (Vec3::from(collider.position) + offset).to_array(),
-            rotation: collider.rotation,
+            shape,
+            position,
+            rotation,
             collision_tags,
         });
     }
     out
+}
+
+/// A finger's capsule in its bone's parent's space, from the parent's origin through the bone, run on in the bone's own
+/// space to the collider's height; the collider's offsets go unused.
+fn finger_capsule(collider: &DescriptorCollider, bone: &Transform) -> (ContactShape, model::Vec3, model::Quat) {
+    let length = bone.translation.length();
+    let reach = bone.translation.normalize_or_zero() * (collider.height - length).max(0.0);
+    let end = bone.point(reach);
+    let radius = collider.radius * bone.scale.abs().max_element();
+    let rotation = Quat::from_rotation_arc(Vec3::Y, end.normalize_or(Vec3::Y));
+    (ContactShape::Capsule { radius, height: end.length() + 2.0 * radius }, (end * 0.5).to_array(), rotation.to_array())
 }
 
 impl Contacts {

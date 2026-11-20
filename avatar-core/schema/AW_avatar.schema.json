@@ -1049,7 +1049,7 @@
       ]
     },
     "DescriptorColliders": {
-      "description": "The descriptor's body colliders, on which VRChat places the avatar's standard contact senders, tagged by\npart and, for the mirrored ones, by side. Each is a capsule on its bone at its offsets; a finger's sits on\nits bone's parent, at its position plus the bone's own local position.",
+      "description": "The descriptor's body colliders, on which VRChat places the avatar's standard contact senders, tagged by\npart and, for the mirrored ones, by side. Each is a capsule on its bone at its offsets; a finger's runs from\nits bone's parent to its bone and on to its height, ignoring its offsets.",
       "type": "object",
       "properties": {
         "head": {

@@ -138,9 +138,9 @@ fn a_receiver_drives_its_parameter_from_the_frame_after_it_starts() {
     assert_eq!(step(&active), Some(1.0));
 }
 
-/// The core places VRChat's standard senders where the recording found them: on each enabled descriptor
-/// collider's bone, a finger's on its parent, with the collider's shape, offsets and the part and side tags; the
-/// client's `Finger` tags, which the emulator leaves out, have their own test.
+/// The core places VRChat's standard senders other than the fingers' where the recording found them: on each
+/// enabled descriptor collider's bone, with the collider's shape, offsets and the part and side tags. The fingers',
+/// which the client places apart from the emulator, have their own tests.
 #[test]
 fn standard_senders_as_the_reference_placed_them() {
     let avatar = avatar_core::read(&std::fs::read(path("fixtures/unity-synthetic-dynamics.glb")).unwrap()).unwrap();
@@ -158,19 +158,21 @@ fn standard_senders_as_the_reference_placed_them() {
             tags.sort();
             (s["transform"].as_str().unwrap().to_string(), tags, s["radius"].as_f64().unwrap() as f32, s["height"].as_f64().unwrap() as f32, t.translation, t.rotation)
         })
+        .filter(|s| !s.1.iter().any(|t| t.starts_with("Finger")))
         .collect();
     let mut got: Vec<(String, Vec<String>, f32, f32, Vec3, Quat)> = avatar_core::contacts::standard_senders(&avatar.model.descriptor.colliders, &nodes)
         .into_iter()
         .map(|s| {
             let ContactShape::Capsule { radius, height } = s.shape else { panic!("a standard sender is a capsule") };
-            let mut tags: Vec<String> = s.collision_tags.into_iter().filter(|t| !["Finger", "FingerL", "FingerR"].contains(&t.as_str())).collect();
+            let mut tags = s.collision_tags;
             tags.sort();
             (names[s.node.0 as usize].clone().unwrap(), tags, radius, height, Vec3::from(s.position), Quat::from_array(s.rotation))
         })
+        .filter(|s| !s.1.iter().any(|t| t.starts_with("Finger")))
         .collect();
     want.sort_by(|a, b| a.1.cmp(&b.1));
     got.sort_by(|a, b| a.1.cmp(&b.1));
-    assert_eq!(got.len(), 5);
+    assert_eq!(got.len(), 4);
     assert_eq!(got.len(), want.len());
     for (g, w) in got.iter().zip(&want) {
         assert_eq!((&g.0, &g.1, g.2, g.3), (&w.0, &w.1, w.2, w.3));
@@ -219,6 +221,102 @@ fn standard_finger_senders_carry_the_clients_tags() {
         .collect();
     want.sort();
     assert_eq!(got, want);
+}
+
+/// Each standard finger sender lies where the VRChat client put it on the fixture's hands, one finger collider
+/// configuration per finger: a capsule from the bone's parent to the bone, run on along the bone's offset in the
+/// bone's own turned and scaled space to the collider's height, its radius scaled by the bone, its position and
+/// rotation unused. The client's segment ends and radii, in the hand's space in Unity's axes, are fitted from
+/// proximity receivers to within `CLIENT_FIT` (`docs/model.md`).
+#[test]
+fn standard_finger_senders_lie_where_the_client_put_them() {
+    const CLIENT_FIT: f32 = 1e-5;
+    struct Finger {
+        name: &'static str,
+        side: &'static str,
+        parent: Option<([f32; 3], [f32; 4])>,
+        bone: ([f32; 3], [f32; 4], f32),
+        radius: f32,
+        height: f32,
+        position: [f32; 3],
+        rotation: [f32; 4],
+        client: ([f32; 3], [f32; 3], f32),
+    }
+    let id = [0.0, 0.0, 0.0, 1.0];
+    let z90 = [0.0, 0.0, 0.70710677, 0.70710677];
+    let y45 = [0.0, 0.38268343, 0.0, 0.9238795];
+    let x90 = [0.70710677, 0.0, 0.0, 0.70710677];
+    let fingers = [
+        Finger { name: "Index", side: "L", parent: Some(([-0.04, 0.0, 0.15], id)), bone: ([-0.04, 0.0, 0.0], id, 1.0), radius: 0.01, height: 0.02, position: [0.0, 0.05, 0.0], rotation: z90, client: ([-0.04, 0.0, 0.15], [-0.08, 0.0, 0.15], 0.01) },
+        Finger { name: "Middle", side: "L", parent: Some(([-0.04, 0.0, 0.05], id)), bone: ([-0.04, 0.0, 0.0], id, 1.0), radius: 0.015, height: 0.08, position: [0.0; 3], rotation: id, client: ([-0.04, 0.000001, 0.05], [-0.119999, 0.0, 0.05], 0.015) },
+        Finger { name: "Ring", side: "L", parent: Some(([-0.04, 0.0, -0.05], id)), bone: ([-0.04, 0.0, 0.0], z90, 1.0), radius: 0.01, height: 0.08, position: [0.0; 3], rotation: id, client: ([-0.04, 0.0, -0.05], [-0.08, -0.04, -0.05], 0.01) },
+        Finger { name: "Little", side: "L", parent: Some(([-0.04, 0.0, -0.15], id)), bone: ([-0.02, 0.02, 0.01], id, 1.0), radius: 0.02, height: 0.0, position: [0.0; 3], rotation: id, client: ([-0.040001, 0.0, -0.150001], [-0.06, 0.020001, -0.139999], 0.02) },
+        Finger { name: "Index", side: "R", parent: Some(([0.04, 0.0, 0.15], id)), bone: ([0.03, 0.0, 0.0], id, 2.0), radius: 0.01, height: 0.06, position: [0.0; 3], rotation: id, client: ([0.04, 0.0, 0.15], [0.13, 0.0, 0.15], 0.02) },
+        Finger { name: "Middle", side: "R", parent: Some(([0.04, 0.0, 0.05], y45)), bone: ([0.04, 0.0, 0.0], id, 1.0), radius: 0.03, height: 0.04, position: [0.0, 0.0, 0.03], rotation: id, client: ([0.04, 0.0, 0.050001], [0.068284, 0.0, 0.021715], 0.03) },
+        Finger { name: "Ring", side: "R", parent: None, bone: ([0.06, 0.0, -0.05], id, 1.0), radius: 0.01, height: 0.1, position: [0.0; 3], rotation: x90, client: ([0.0, 0.0, 0.0], [0.076823, 0.0, -0.064018], 0.01) },
+    ];
+    let unity = |p: [f32; 3], r: [f32; 4], s: f32| reference::unity(&[p.to_vec(), r.to_vec(), vec![s; 3]].concat());
+    let mut nodes = avatar_core::physbones::Nodes { children: vec![vec![]], parent: vec![None], rest: vec![Transform::IDENTITY] };
+    let mut add = |parent: usize, t: Transform| {
+        let i = nodes.rest.len();
+        nodes.rest.push(t);
+        nodes.parent.push(Some(parent));
+        nodes.children.push(vec![]);
+        nodes.children[parent].push(i);
+        i
+    };
+    let avatar = avatar_core::read(&std::fs::read(path("fixtures/unity-synthetic-dynamics.glb")).unwrap()).unwrap();
+    let mut colliders = avatar.model.descriptor.colliders.clone();
+    let disabled = avatar_core::model::DescriptorCollider { state: avatar_core::model::DescriptorColliderState::Disabled, ..colliders.hand_right.clone() };
+    for c in [&mut colliders.head, &mut colliders.torso, &mut colliders.hand_left, &mut colliders.hand_right, &mut colliders.foot_left, &mut colliders.foot_right, &mut colliders.finger_little_right] {
+        *c = disabled.clone();
+    }
+    let mut world = vec![Transform::IDENTITY];
+    for f in &fingers {
+        let parent = match f.parent {
+            Some((p, r)) => add(0, unity(p, r, 1.0)),
+            None => 0,
+        };
+        let bone = add(parent, unity(f.bone.0, f.bone.1, f.bone.2));
+        let slot = match (f.name, f.side) {
+            ("Index", "L") => &mut colliders.finger_index_left,
+            ("Middle", "L") => &mut colliders.finger_middle_left,
+            ("Ring", "L") => &mut colliders.finger_ring_left,
+            ("Little", "L") => &mut colliders.finger_little_left,
+            ("Index", "R") => &mut colliders.finger_index_right,
+            ("Middle", "R") => &mut colliders.finger_middle_right,
+            ("Ring", "R") => &mut colliders.finger_ring_right,
+            _ => unreachable!(),
+        };
+        let at = unity(f.position, f.rotation, 1.0);
+        *slot = avatar_core::model::DescriptorCollider {
+            state: avatar_core::model::DescriptorColliderState::Custom,
+            bone: Some(avatar_core::model::NodeIndex(bone as u32)),
+            radius: f.radius,
+            height: f.height,
+            position: at.translation.to_array(),
+            rotation: at.rotation.to_array(),
+        };
+    }
+    for i in 1..nodes.rest.len() {
+        world.push(world[nodes.parent[i].unwrap()].mul(&nodes.rest[i]));
+    }
+    let senders = avatar_core::contacts::standard_senders(&colliders, &nodes);
+    assert_eq!(senders.len(), fingers.len());
+    for f in &fingers {
+        let tag = format!("Finger{}{}", f.name, f.side);
+        let s = senders.iter().find(|s| s.collision_tags.contains(&tag)).unwrap();
+        let ContactShape::Capsule { radius, height } = s.shape else { panic!("a finger sender is a capsule") };
+        let at = &world[s.node.0 as usize];
+        let center = at.point(Vec3::from(s.position));
+        let half = (at.rotation * Quat::from_array(s.rotation)) * Vec3::Y * ((height * 0.5 - radius) * at.scale.x).max(0.0);
+        let (a, b) = (unity(f.client.0, id, 1.0).translation, unity(f.client.1, id, 1.0).translation);
+        let ends = [center - half, center + half];
+        let near = ends.iter().map(|e| (*e - a).length()).fold(f32::MAX, f32::min);
+        let far = ends.iter().map(|e| (*e - b).length()).fold(f32::MAX, f32::min);
+        let r = radius * at.scale.x;
+        assert!(near < CLIENT_FIT && far < CLIENT_FIT && (r - f.client.2).abs() < CLIENT_FIT, "{tag}: ends {ends:?} radius {r} against the client's {a} {b} {}", f.client.2);
+    }
 }
 
 /// A receiver listening for the wearer's own hand hears the standard sender on it, and only while it allows self.

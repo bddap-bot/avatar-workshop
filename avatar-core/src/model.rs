@@ -255,8 +255,8 @@ pub struct Descriptor {
 }
 
 /// The descriptor's body colliders, on which VRChat places the avatar's standard contact senders, tagged by
-/// part and, for the mirrored ones, by side. Each is a capsule on its bone at its offsets; a finger's sits on
-/// its bone's parent, at its position plus the bone's own local position.
+/// part and, for the mirrored ones, by side. Each is a capsule on its bone at its offsets; a finger's runs from
+/// its bone's parent to its bone and on to its height, ignoring its offsets.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DescriptorColliders {

@@ -75,7 +75,7 @@ by its mesh's `extras.targetNames` entry.
 |---|---|
 | `source` | importer name and version, source format, licence text and author as found in the source (absent when the source has none; never invented) |
 | `humanoid` | Unity HumanBodyBones name → node; the source's rest pose as given (no assumed T-pose); muscle limits from the human description; the body and the four IK goals as Unity's humanoid stream holds them with every muscle at rest |
-| `descriptor` | view position, lip-sync mode and the 15 viseme blendshapes, eyelid mode and shapes, eye bones and their rotation limits; the 14 body colliders (head, torso, hands, feet, four fingers a side) as stored: state (automatic, custom or disabled), bone, radius, height, position and rotation offsets. Each is a capsule at its offsets on its bone, a finger's on its bone's parent at its position plus the bone's local position, as Av3Emulator places a standard contact sender on each enabled one with a bone, tagged by part and side |
+| `descriptor` | view position, lip-sync mode and the 15 viseme blendshapes, eyelid mode and shapes, eye bones and their rotation limits; the 14 body colliders (head, torso, hands, feet, four fingers a side) as stored: state (automatic, custom or disabled), bone, radius, height, position and rotation offsets. A standard contact sender sits on each enabled one with a bone, tagged by part and side: a capsule at its offsets on its bone, and a finger's from its bone's parent to its bone, or past it to its height, as the VRChat client places them |
 | `renderers` | per mesh node: initially enabled, material slots |
 | `nodes` | per node: active as the uploaded avatar holds it; the evaluation core's animator applies the default states |
 | `materials` | per material: shader family (`poiyomi`, `liltoon`, `vrchat-mobile`, `mtoon`, `standard`, `unknown`), version, its saved properties as a typed map (floats, colours, vectors, texture references with tiling/offset, keywords) and each property its shader declares at the value the material resolves for it; render queue, cull, blend and depth state |
@@ -208,16 +208,33 @@ standard senders. What the recordings showed:
   from it.
 - A proximity receiver reads zero on the frame a sender enters; on-enter fires for one frame when the sender's
   speed since the previous frame reaches the minimum velocity.
-- The avatar's own senders include a standard one on each enabled descriptor collider, as Av3Emulator places
-  them: a capsule with the collider's dimensions and offsets on its bone, tagged by part and, for hands, feet and
-  fingers, by side (`Hand` and `HandL`, `FingerIndex` and `FingerIndexL`); a finger's sits on its bone's parent,
-  moved by the bone's rest position.
+- The avatar's own senders include a standard one on each enabled descriptor collider, tagged by part and, for
+  hands, feet and fingers, by side (`Hand` and `HandL`, `FingerIndex` and `FingerIndexL`). The head's, torso's,
+  hands' and feet's are capsules with the collider's dimensions and offsets on its bone, as Av3Emulator places
+  them; a finger's is placed as the VRChat client places it, below.
 - In the VRChat client each finger's standard sender also carries `Finger` and `Finger` with its side (`FingerL`),
   which Av3Emulator leaves out, and no other finger's or side's tag. Measured on variants of the fixture as local
   test avatars with one finger collider enabled per hand, all eight fingers over four builds: receivers allowing
   self, each listening for one tag alone in a zone around each hand's fingers, read through the client's OSC
   output, heard exactly those four tags; one listening for a tag nothing sends stayed silent, and ones for the
   fixture's own sender and the head's standard sender fired.
+- In the VRChat client a finger's standard sender is a capsule whose spheres' centres are its bone's parent's
+  origin and a point in the bone's own space: the bone's local offset from its parent, scaled to the length by
+  which the collider's height exceeds that offset's length (none when it does not). Its radius is the collider's
+  times the bone's scale; the collider's position and rotation are not used. So the bone's rotation
+  turns the part beyond the bone and its scale lengthens it, while turning the parent turns the whole capsule.
+  Measured on a variant of the fixture as a local test avatar, its eight finger colliders on bones of their own
+  under each hand and one configuration each: height short of, equal to and past the bone, zero height, a bone
+  turned 90 degrees off its offset's direction, a bone at twice its parent's scale, a turned parent, a bone directly on
+  the hand, and position and rotation offsets. Twelve proximity receivers per finger, each listening for that
+  finger's own tag and allowing self, sat on the hand at two radii, read through the client's OSC output. Every
+  reading is one less the distance from the receiver's centre to the sender's surface over the receiver's
+  radius, as the core computes it: fitting each of the seven custom fingers' two centres and radius to its readings left residuals
+  under 0.0006 mm, the placement above predicted every reading to 0.0013 mm, and readings varied by at most
+  0.0032 mm over the 24 seconds they were read, so the placement holds to 0.01 mm. One listening for a tag
+  nothing sends and one for a disabled hand's stayed silent, and one for the fixture's own sender fired. The
+  same build's receivers around the head's, left hand's and left foot's custom colliders read their stored
+  capsules to 0.0005 mm.
 
 Not measured:
 
@@ -225,9 +242,11 @@ Not measured:
   2 and 5). The replay takes that chain's transforms from the recording, so the targets' bar holds whichever order
   VRChat uses; the core's order runs every PhysBone before those constraints, and how far a host's chain then lies
   from the SDK's is not measured.
-- Where the client places a finger's standard sender. Receivers 0.03 m across at the position Av3Emulator gives
-  each finger's sender heard none of that finger's tags in the client, so the client places it elsewhere; the core
-  keeps the emulator's placement until a measurement finds the client's.
+- An automatic collider's sender in the client. A finger set to automatic on a bone of its own, outside the
+  humanoid's fingers, was heard by none of its receivers, and the automatic torso's receivers did not read the
+  stored capsule; the core places both from the stored values.
+- A finger's sender on a bone with uneven scale, under a scaled ancestor, past the descriptor's size limit, or on
+  a bone moved after the avatar loads.
 
 ## What goes
 
