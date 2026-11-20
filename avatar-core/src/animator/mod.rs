@@ -295,8 +295,14 @@ fn default_of(avatar: &Avatar, t: &Target, rest: &[crate::physbones::Transform])
                 _ => (prop.as_str(), None),
             };
             let Some(r) = m.renderers.iter().find(|r| r.node.0 == *n) else { return 0.0 };
-            let Some(p) = r.materials.iter().filter_map(|i| m.materials.get(i.0 as usize)).find_map(|x| x.declared.get(base)) else { return 0.0 };
             let i = comp.map(|c| "rgbaxyzw".find(c).unwrap() % 4);
+            if let Some(texture) = base.strip_suffix("_ST") {
+                let found = r.materials.iter().filter_map(|i| m.materials.get(i.0 as usize)).find_map(|x| x.declared.get(texture));
+                if let Some(MaterialProperty::Texture(t)) = found {
+                    return [t.tiling[0], t.tiling[1], t.offset[0], t.offset[1]][i.unwrap_or(0)];
+                }
+            }
+            let Some(p) = r.materials.iter().filter_map(|i| m.materials.get(i.0 as usize)).find_map(|x| x.declared.get(base)) else { return 0.0 };
             match (p, i) {
                 (MaterialProperty::Float(v), _) => *v,
                 (MaterialProperty::Int(v), _) => *v as f32,

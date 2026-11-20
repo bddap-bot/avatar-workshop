@@ -288,7 +288,8 @@ fn malformed_files_are_refused() {
     let mut bin = bin;
     bin.resize(bin.len().next_multiple_of(4), 0);
     assert!(importer::import(&glb_of(&src, &bin)).is_ok());
-    let edits: Vec<(&str, Box<dyn Fn(&mut Value)>)> = vec![
+    type Edit = Box<dyn Fn(&mut Value)>;
+    let edits: Vec<(&str, Edit)> = vec![
         ("huge stiffness", Box::new(|j| j["extensions"]["VRMC_springBone"]["springs"][0]["joints"][0]["stiffness"] = serde_json::json!(1e39))),
         ("huge collider radius", Box::new(|j| j["extensions"]["VRMC_springBone"]["colliders"][0]["shape"]["sphere"]["radius"] = serde_json::json!(1e39))),
         ("huge translation", Box::new(|j| j["nodes"][3]["translation"] = serde_json::json!([1e39, 0, 0]))),
@@ -408,4 +409,13 @@ fn texture_transform_binds_become_curves() {
     let clip = avatar.model.clips.iter().find(|c| c.name == "scroll").unwrap();
     let z = clip.curves.iter().find(|c| matches!(&c.binding, avatar_core::model::Binding::MaterialProperty { property, .. } if property == "_MainTex_ST.z")).expect("an offset curve");
     assert_eq!(z.curve.keys[0].value, 0.5);
+    let MaterialProperty::Texture(t) = &avatar.model.materials[material.as_u64().unwrap() as usize].properties["_MainTex"] else { panic!() };
+    let (targets, rest) = {
+        let mut targets = avatar_core::animator::motion::Targets::default();
+        let ids: Vec<u32> = "xyzw".chars().map(|c| targets.id(avatar_core::animator::motion::Target::MaterialProperty(renderer as u32, format!("_MainTex_ST.{c}")))).collect();
+        let all = avatar_core::animator::authored_all(&avatar, &targets);
+        (ids, all)
+    };
+    let authored: Vec<f32> = targets.iter().map(|&i| rest[i as usize]).collect();
+    assert_eq!(authored, vec![t.tiling[0], t.tiling[1], t.offset[0], t.offset[1]], "an idle offset bind holds the texture's own tiling and offset");
 }
