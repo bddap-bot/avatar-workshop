@@ -74,7 +74,7 @@ by its mesh's `extras.targetNames` entry.
 | Section | Contents |
 |---|---|
 | `source` | importer name and version, source format, licence text and author as found in the source (absent when the source has none; never invented) |
-| `humanoid` | Unity HumanBodyBones name → node; the source's rest pose as given (no assumed T-pose); muscle limits from the human description; the body and the four IK goals as Unity's humanoid stream holds them with every muscle at rest |
+| `humanoid` | Unity HumanBodyBones name → node; the source's rest pose as given (no assumed T-pose); muscle limits from the human description; the body and the four IK goals as Unity's humanoid stream holds them with every muscle at rest; each humanoid bone's transform in the collider pose, the pose the VRChat client computes automatic colliders on (below), as Unity poses the avatar |
 | `descriptor` | view position, lip-sync mode and the 15 viseme blendshapes, eyelid mode and shapes, eye bones and their rotation limits; the 14 body colliders (head, torso, hands, feet, four fingers a side) as stored: state (automatic, custom or disabled), bone, radius, height, position and rotation offsets. A standard contact sender sits on each enabled one with a bone, tagged by part and side: a capsule at its offsets on its bone, and a finger's from its bone's parent to its bone, or past it to its height, as the VRChat client places them. On a humanoid avatar an automatic one's stored values go unused: its collider is computed from the skeleton |
 | `renderers` | per mesh node: initially enabled, material slots |
 | `nodes` | per node: active as the uploaded avatar holds it; the evaluation core's animator applies the default states |
@@ -237,8 +237,8 @@ standard senders. What the recordings showed:
   same build's receivers around the head's, left hand's and left foot's custom colliders read their stored
   capsules to 0.0005 mm.
 - In the VRChat client an automatic collider on a humanoid avatar is the one the SDK's descriptor computes from the
-  humanoid skeleton, whatever the descriptor stores, and is then placed as a custom one of its part (the head's
-  height and the palms' axis aside, below). A finger's sits
+  humanoid skeleton in its collider pose, whatever the descriptor stores, and is then placed as a custom one of its
+  part. A finger's sits
   on its distal bone (its intermediate when the humanoid has no distal), with radius 0.4 and height 2 times the
   distance from the finger's humanoid bone before it, over the bone's scale; one whose humanoid lacks the proximal or intermediate
   places no sender. The torso's sits on the chest (the spine without one), its height the distance from hips to
@@ -247,7 +247,7 @@ standard senders. What the recordings showed:
   lower leg to foot. A palm's sits on the hand, centred at 0.85 of the way to the mean of the finger proximals,
   height that distance and radius a quarter of it, across the hand. The head's is a sphere on the head, at the
   view position's height (the eyes' mean height when the humanoid has eye bones) straight above it, radius the larger
-  of 0.8 times that height and 0.33 times the distance between the upper arms. The core computes these from the skeleton at rest. Measured on the fixture as a local
+  of 0.8 times that height and 0.33 times the distance between the upper arms. Measured on the fixture as a local
   test avatar with three-bone humanoid chains under each hand (one with a turned and one with a scaled distal bone,
   a two-bone little finger on the left, a right little finger with only a proximal), every collider automatic with
   stored values nothing like the rule's except a custom right ring finger with no bone and a disabled right foot.
@@ -260,6 +260,24 @@ standard senders. What the recordings showed:
   over the 47 seconds they were read, so these hold to 0.01 mm. The right little finger, the custom finger with no
   bone and the disabled foot were heard by none of their receivers, one listening for a tag nothing sends stayed
   silent, and one for the fixture's own sender fired.
+- The collider pose is a fixed human pose, whatever the avatar's rest: every muscle at zero but each side's Upper
+  Leg Front-Back at 0.6001087, Lower Leg Stretch and Forearm Stretch at 0.9999163 and Arm Front-Back at 0.3000543,
+  the values Unity gives the fixture's T-pose, with the arms' Down-Up at zero rather than that T-pose's 0.4, and
+  the body at height one and unturned. The exporter poses the avatar so with Unity's human pose handler and records
+  each humanoid bone's local transform. The pose turns the hands against the world's up, which sets the palms'
+  axis, and puts the head higher against the view position than at rest, which fits the arms' fall moving the
+  body's centre of mass. Measured as above on that build and on two more builds of the fixture, each with the head
+  and both palms automatic and the other colliders disabled, worn in turn in one session: one with the upper arms
+  rested 30 degrees lower and 15 forward and the knees bent 15 degrees, where a pose taken from the avatar's rest
+  (that rest with the arms' Down-Up at zero, or lowered by a further 0.4) puts the palms' capsule ends 5.2 mm or
+  more and the head 2.2 mm or more from where the client read them, and the fixed pose with the body placed as at
+  rest puts the head 1.5 mm off; and one with eye bones 0.2 m above the head and the hands turned 25 degrees about
+  their length, where the palms' axis follows the turn and the head's sphere sits at the eyes with radius 0.16, set
+  by their height. The skeleton at rest puts the fixture's palms' axes about 11.7 degrees off, turned about the
+  hand's length, and its head 14.4 mm high. The fixed pose predicted every palm's capsule and head's sphere to
+  0.001 mm; fits left residuals under 0.0005 mm and readings varied by at most 0.0023 mm over the 42 to 47 seconds
+  each build was read, so the pose holds to 0.01 mm. Round values (0.6, 1 and 0.3) move the prediction by at most
+  0.0012 mm, which this does not resolve.
 
 Not measured:
 
@@ -267,14 +285,14 @@ Not measured:
   2 and 5). The replay takes that chain's transforms from the recording, so the targets' bar holds whichever order
   VRChat uses; the core's order runs every PhysBone before those constraints, and how far a host's chain then lies
   from the SDK's is not measured.
-- Why an automatic palm's axis and head's height differ from the rule on the skeleton at rest. The same build read
-  both palms' axes turned about 11.7 degrees about the hand's long axis, and the head's centre 14.4 mm lower than
-  the view position puts it, their radii and the palms' centres matching; the client seems to compute them on a
-  posed skeleton, and the core uses the one at rest.
-- An automatic collider on an avatar with no humanoid definition, a palm with no finger proximals, a head with eye
-  bones, a foot whose humanoid has no toes, a torso with no upper arms or chest, a head whose height rather than the
-  upper arms sets its radius, and an automatic collider on a scaled bone other than a finger's or under a scaled
-  ancestor.
+- The collider pose's muscles that move neither the hands' turn against the world's up nor the head's height, such
+  as the spine's and chest's Twist Left-Right: the exporter holds them at zero, which these readings cannot tell
+  from another value.
+- An automatic torso, foot or finger on an avatar whose rest differs from the collider pose in the bones its rule
+  reads: every build that read them had both agree there.
+- An automatic collider on an avatar with no humanoid definition, a palm with no finger proximals, a foot whose
+  humanoid has no toes, a torso with no upper arms or chest, and an automatic collider on a scaled bone other than
+  a finger's or under a scaled ancestor.
 - A finger's sender on a bone with uneven scale, under a scaled ancestor, past the descriptor's size limit, or on
   a bone moved after the avatar loads.
 

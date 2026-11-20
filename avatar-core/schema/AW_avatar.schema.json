@@ -425,6 +425,17 @@
               "type": "null"
             }
           ]
+        },
+        "colliderPose": {
+          "description": "The bone's local transform in the pose the VRChat client computes automatic descriptor colliders on, as Unity\nposes the avatar; absent where the exporter did not pose it (a VRM import), which the core then takes at rest.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HumanTransform"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false,
@@ -479,6 +490,34 @@
         "max",
         "center",
         "axisLength"
+      ]
+    },
+    "HumanTransform": {
+      "type": "object",
+      "properties": {
+        "position": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "rotation": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "position",
+        "rotation"
       ]
     },
     "SkeletonBone": {
@@ -549,34 +588,6 @@
         "rightFoot",
         "leftHand",
         "rightHand"
-      ]
-    },
-    "HumanTransform": {
-      "type": "object",
-      "properties": {
-        "position": {
-          "type": "array",
-          "items": {
-            "type": "number",
-            "format": "float"
-          },
-          "minItems": 3,
-          "maxItems": 3
-        },
-        "rotation": {
-          "type": "array",
-          "items": {
-            "type": "number",
-            "format": "float"
-          },
-          "minItems": 4,
-          "maxItems": 4
-        }
-      },
-      "additionalProperties": false,
-      "required": [
-        "position",
-        "rotation"
       ]
     },
     "Descriptor": {

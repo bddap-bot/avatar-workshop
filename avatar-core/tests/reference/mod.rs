@@ -31,11 +31,11 @@ pub fn text(path: &Path) -> String {
     s
 }
 
-fn rows(path: &Path) -> Vec<Vec<String>> {
+pub fn rows(path: &Path) -> Vec<Vec<String>> {
     text(path).lines().map(|l| l.split('\t').map(str::to_string).collect()).collect()
 }
 
-fn floats(s: &str) -> Vec<f32> {
+pub fn floats(s: &str) -> Vec<f32> {
     s.split(',').map(|x| x.parse().unwrap()).collect()
 }
 

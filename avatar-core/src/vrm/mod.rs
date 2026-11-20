@@ -401,7 +401,7 @@ fn humanoid(doc: &Doc) -> Result<Humanoid, Error> {
             center: xyz(entry.get("center")).unwrap_or_default().to_array(),
             axis_length: number(entry.get("axisLength"), 0.0),
         });
-        if bones.insert(bone, HumanBone { node, limit }).is_some() {
+        if bones.insert(bone, HumanBone { node, limit, collider_pose: None }).is_some() {
             return Err(malformed(format!("humanoid bone {name} is given twice")));
         }
     }

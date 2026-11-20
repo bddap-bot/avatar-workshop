@@ -163,6 +163,10 @@ pub struct HumanBone {
     pub node: NodeIndex,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<MuscleLimit>,
+    /// The bone's local transform in the pose the VRChat client computes automatic descriptor colliders on, as Unity
+    /// poses the avatar; absent where the exporter did not pose it (a VRM import), which the core then takes at rest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collider_pose: Option<HumanTransform>,
 }
 
 /// Degrees; absent on a bone that uses Unity's default limits.

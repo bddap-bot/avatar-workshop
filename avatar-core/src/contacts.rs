@@ -91,7 +91,7 @@ pub struct Contacts {
 
 /// The standard senders on the descriptor's enabled colliders, placed and tagged as the VRChat client places and tags
 /// them; a finger's also carries `Finger` and `Finger` with its side. On a humanoid avatar an automatic collider is
-/// the one the client computes from the skeleton at rest, whatever the descriptor stores.
+/// the one the client computes from the skeleton in the humanoid's collider pose, whatever the descriptor stores.
 pub fn standard_senders(descriptor: &Descriptor, humanoid: &Humanoid, nodes: &Nodes) -> Vec<model::ContactSender> {
     use HumanBodyBone as H;
     let c = &descriptor.colliders;
@@ -192,14 +192,24 @@ impl Skeleton<'_> {
     }
 
     fn at(&self, node: usize) -> Transform {
-        self.world.get_or_init(|| self.nodes.world(&self.nodes.rest))[node]
+        self.world.get_or_init(|| {
+            let mut locals = self.nodes.rest.clone();
+            for b in self.humanoid.bones.values() {
+                if let Some(pose) = &b.collider_pose {
+                    let local = &mut locals[b.node.0 as usize];
+                    local.translation = Vec3::from(pose.position);
+                    local.rotation = Quat::from_array(pose.rotation).normalize();
+                }
+            }
+            self.nodes.world(&locals)
+        })[node]
     }
 
     fn pos(&self, b: HumanBodyBone) -> Option<Vec3> {
         self.bone(b).map(|n| self.at(n).translation)
     }
 
-    /// The collider the client computes for an automatic one, as the SDK's descriptor does from the skeleton at rest;
+    /// The collider the client computes for an automatic one, as the SDK's descriptor does from the skeleton;
     /// none with a bone when the humanoid lacks the bones it needs.
     fn automatic(&self, part: Part, view: model::Vec3) -> DescriptorCollider {
         use HumanBodyBone as H;

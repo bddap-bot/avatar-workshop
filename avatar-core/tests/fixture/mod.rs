@@ -518,6 +518,7 @@ fn model() -> AwAvatar {
                     HumanBodyBone::Hips,
                     HumanBone {
                         node: n(HIPS),
+                        collider_pose: None,
                         limit: None,
                     },
                 ),
@@ -525,6 +526,7 @@ fn model() -> AwAvatar {
                     HumanBodyBone::Spine,
                     HumanBone {
                         node: n(SPINE),
+                        collider_pose: None,
                         limit: Some(MuscleLimit {
                             min: [-40.0, -40.0, -40.0],
                             max: [40.0, 40.0, 40.0],
@@ -537,6 +539,7 @@ fn model() -> AwAvatar {
                     HumanBodyBone::Head,
                     HumanBone {
                         node: n(HEAD),
+                        collider_pose: None,
                         limit: None,
                     },
                 ),
@@ -544,6 +547,7 @@ fn model() -> AwAvatar {
                     HumanBodyBone::LeftHand,
                     HumanBone {
                         node: n(LEFT_HAND),
+                        collider_pose: None,
                         limit: None,
                     },
                 ),
@@ -551,6 +555,7 @@ fn model() -> AwAvatar {
                     HumanBodyBone::RightHand,
                     HumanBone {
                         node: n(RIGHT_HAND),
+                        collider_pose: None,
                         limit: None,
                     },
                 ),
@@ -558,6 +563,7 @@ fn model() -> AwAvatar {
                     HumanBodyBone::LeftEye,
                     HumanBone {
                         node: n(LEFT_EYE),
+                        collider_pose: None,
                         limit: None,
                     },
                 ),
@@ -565,6 +571,7 @@ fn model() -> AwAvatar {
                     HumanBodyBone::RightEye,
                     HumanBone {
                         node: n(RIGHT_EYE),
+                        collider_pose: None,
                         limit: None,
                     },
                 ),

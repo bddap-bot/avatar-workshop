@@ -42,6 +42,8 @@ namespace AvatarWorkshop.Exporter
             }
             var desc = animator.avatar.humanDescription;
             var limits = desc.human.ToDictionary(b => b.humanName, b => b.limit);
+            var colliderPose = ColliderPose(animator);
+            if (colliderPose == null) Drop("humanoid collider pose Unity did not evaluate");
             for (int i = 0; i < (int)HumanBodyBones.LastBone; i++)
             {
                 var bone = (HumanBodyBones)i;
@@ -49,6 +51,7 @@ namespace AvatarWorkshop.Exporter
                 var record = new Obj { { "node", n } };
                 if (limits.TryGetValue(HumanTrait.BoneName[i], out var limit) && !limit.useDefaultValues)
                     record.Add("limit", new Obj { { "min", Space.S(limit.min) }, { "max", Space.S(limit.max) }, { "center", Space.S(limit.center) }, { "axisLength", limit.axisLength } });
+                if (colliderPose != null && colliderPose.TryGetValue(bone, out var posed)) record.Add("colliderPose", posed);
                 bones.Add(bone.ToString(), record);
             }
             var byName = new Dictionary<string, Transform>();
@@ -75,6 +78,37 @@ namespace AvatarWorkshop.Exporter
             if (Rest(animator) is Obj rest) h.Add("rest", rest);
             else Drop("humanoid rest pose Unity did not evaluate");
             return h;
+        }
+
+        // The pose the VRChat client computes automatic descriptor colliders on, as measured on test avatars: Unity's
+        // muscle values for a T-pose with the arms' Down-Up at zero, the body at height one and unturned. Each humanoid
+        // bone's local transform in it; null when Unity cannot pose the avatar.
+        Dictionary<HumanBodyBones, Obj> ColliderPose(Animator animator)
+        {
+            var saved = nodes.Select(t => (t, t.localPosition, t.localRotation, t.localScale)).ToList();
+            try
+            {
+                var muscles = new float[HumanTrait.MuscleCount];
+                foreach (var side in new[] { "Left ", "Right " })
+                    foreach (var (name, value) in new[] { ("Upper Leg Front-Back", 0.6001087f), ("Lower Leg Stretch", 0.9999163f), ("Arm Front-Back", 0.3000543f), ("Forearm Stretch", 0.9999163f) })
+                        muscles[Array.IndexOf(HumanTrait.MuscleName, side + name)] = value;
+                var pose = new HumanPose { bodyPosition = Vector3.up, bodyRotation = Quaternion.identity, muscles = muscles };
+                using (var handler = new HumanPoseHandler(animator.avatar, animator.transform)) handler.SetHumanPose(ref pose);
+                var o = new Dictionary<HumanBodyBones, Obj>();
+                for (int i = 0; i < (int)HumanBodyBones.LastBone; i++)
+                    if (animator.GetBoneTransform((HumanBodyBones)i) is Transform t)
+                        o[(HumanBodyBones)i] = new Obj { { "position", Space.P(t.localPosition) }, { "rotation", Space.Q(t.localRotation) } };
+                return o;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[aw] collider pose: " + e.Message);
+                return null;
+            }
+            finally
+            {
+                foreach (var (t, p, r, sc) in saved) { t.localPosition = p; t.localRotation = r; t.localScale = sc; }
+            }
         }
 
         struct RestJob : IAnimationJob

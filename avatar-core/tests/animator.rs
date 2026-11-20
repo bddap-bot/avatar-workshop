@@ -587,7 +587,7 @@ fn fingered() -> avatar_core::Avatar {
     let mut avatar = fixture();
     let hand = avatar.model.humanoid.bones[&HumanBodyBone::LeftHand].node;
     for b in [HumanBodyBone::LeftIndexProximal, HumanBodyBone::LeftMiddleProximal, HumanBodyBone::LeftRingProximal] {
-        avatar.model.humanoid.bones.insert(b, HumanBone { node: hand, limit: None });
+        avatar.model.humanoid.bones.insert(b, HumanBone { node: hand, limit: None, collider_pose: None });
     }
     clip_mut(&mut avatar, "Stand").curves.extend([muscle("LeftHand.Index.1 Stretched", 0.5), muscle("LeftHand.Ring.1 Stretched", 0.5)]);
     avatar
