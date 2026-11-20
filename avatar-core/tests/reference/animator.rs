@@ -6,7 +6,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
 use avatar_core::animator::motion::Target;
-use avatar_core::animator::{Animator, BUILT_INS};
+use avatar_core::animator::BUILT_INS;
+use avatar_core::evaluate::{Evaluator, Input};
 use avatar_core::model::Axis;
 use avatar_core::physbones::{Nodes, Transform};
 use glam::{Quat, Vec3};
@@ -407,7 +408,7 @@ impl Run {
     }
 
     pub fn run(&self, frames: Option<usize>) -> Report {
-        let mut anim = Animator::new(&self.avatar);
+        let mut ev = Evaluator::new(&self.avatar).unwrap();
         let dump = std::env::var("AW_DUMP").ok();
         let steps = steps(&self.dir);
         let params = log(&self.dir, "params.tsv");
@@ -429,12 +430,12 @@ impl Run {
             by_name.entry(k.split_once(':').expect("a dynamics key is <playable>:<name>").1).or_default().push(l);
         }
         let mut dynamic: BTreeMap<String, Vec<&BTreeMap<usize, String>>> = BTreeMap::new();
-        for n in self.dynamic().into_iter().filter(|n| anim.get(n).is_some()) {
+        for n in self.dynamic().into_iter().filter(|n| ev.animator().get(n).is_some()) {
             let logs = by_name.remove(canonical(&n).as_str()).unwrap_or_else(|| panic!("the recording holds no animator value of {n}"));
             dynamic.insert(n, logs);
         }
         let mut raw: HashMap<String, String> = HashMap::new();
-        for p in anim.parameters() {
+        for p in ev.animator().parameters() {
             if let Some(other) = raw.insert(canonical(&p.name), p.name.clone()) {
                 panic!("parameters {other} and {} share the name {}", p.name, canonical(&p.name));
             }
@@ -442,7 +443,7 @@ impl Run {
         let authored: std::cell::RefCell<HashMap<Target, f32>> = Default::default();
         let heads = heads(&self.dir);
         let builtin: BTreeSet<&str> = BUILT_INS.iter().map(|b| b.0).collect();
-        let kinds = anim.playable_kinds();
+        let kinds = ev.animator().playable_kinds();
         let order: Vec<usize> = kinds
             .iter()
             .map(|k| avatar_core::animator::PLAYABLE_ORDER.iter().position(|o| o == k).unwrap())
@@ -454,14 +455,14 @@ impl Run {
         // The emulator binds the animator during the blink window of its first frame, so the eyelid's bound default
         // is the shut shape.
         if let Some(t) = blink_shape.as_ref().filter(|_| emulator_blink(created)) {
-            anim.bind_default(t, 100.0);
+            ev.animator_mut().bind_default(t, 100.0);
         }
         let keys: Vec<(String, Key)> = values.keys().filter_map(|k| self.key(k).map(|t| (k.clone(), t))).collect();
         let materials: Vec<String> = self.avatar.gltf["materials"]
             .as_array()
             .map(|a| a.iter().map(|m| m["name"].as_str().unwrap_or("").to_string()).collect())
             .unwrap_or_default();
-        let index: HashMap<Target, usize> = anim.targets().iter().enumerate().map(|(i, t)| (t.clone(), i)).collect();
+        let index: HashMap<Target, usize> = ev.animator().targets().iter().enumerate().map(|(i, t)| (t.clone(), i)).collect();
         let inputs = inputs(&self.dir);
         for f in first..end {
             assert!(inputs.contains_key(&f), "the recording has no scripted inputs at frame {f}");
@@ -493,9 +494,9 @@ impl Run {
         for f in 0..end {
             for (n, v) in inputs.get(&f).into_iter().flatten() {
                 if builtin.contains(n.as_str()) {
-                    anim.set_builtin(raw.get(n).map_or(n.as_str(), String::as_str), *v);
+                    ev.animator_mut().set_builtin(raw.get(n).map_or(n.as_str(), String::as_str), *v);
                 } else {
-                    anim.set(raw.get(n).map_or(n.as_str(), String::as_str), *v);
+                    ev.animator_mut().set(raw.get(n).map_or(n.as_str(), String::as_str), *v);
                 }
             }
             for (n, logs) in &dynamic {
@@ -506,19 +507,20 @@ impl Run {
                     .iter()
                     .map(|l| at(l, f).unwrap_or_else(|| panic!("the recording holds no animator value of {n} at frame {f}")).parse().unwrap())
                     .collect();
-                anim.set(n, held_value(n, f, &values));
+                ev.animator_mut().set(n, held_value(n, f, &values));
             }
             if let Some(h) = f.checked_sub(1).and_then(|g| heads.get(&g)) {
-                anim.set_head(*h);
+                ev.animator_mut().set_head(*h);
             }
-            anim.set_eyes(emulator_blink(f) as u8 as f32, 0.0);
+            ev.animator_mut().set_eyes(emulator_blink(f) as u8 as f32, 0.0);
+            let mut dt = 0.0;
             if let Some(&t) = times.get(&f) {
                 assert!(t >= clock, "the graph's time went back at frame {f}");
-                if t > clock {
-                    anim.step((t - clock) as f32);
-                    clock = t;
-                }
+                dt = (t - clock) as f32;
+                clock = t;
             }
+            ev.evaluate(&Input { dt, root: Transform::IDENTITY, poses: &[], held: &[], senders: &[], local: true });
+            let anim = ev.animator();
             if let Ok(k) = std::env::var("AW_CLOCK") {
                 for s in anim.states().iter().filter(|s| format!("{}:{}", order[s.playable], s.layer) == k) {
                     eprintln!("{f}\t{k}\t{} {} {:?} {:?}", s.current, s.current_time, s.next, s.next_time);

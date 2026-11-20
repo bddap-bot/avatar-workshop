@@ -4,6 +4,7 @@
 
 pub mod animator;
 pub mod dynamics;
+pub mod run;
 mod names;
 pub use names::{args, names};
 
@@ -12,7 +13,9 @@ use std::io::Read;
 use std::ops::Range;
 use std::path::Path;
 
-use avatar_core::physbones::{Frame, Nodes, PhysBones, Toucher, Transform};
+use avatar_core::contacts::Sender;
+use avatar_core::evaluate::{Animated, Evaluator, Input, Output};
+use avatar_core::physbones::{Frame, Nodes, Toucher, Transform};
 use avatar_core::Avatar;
 use glam::{Quat, Vec3};
 
@@ -95,13 +98,28 @@ pub struct Grab {
     pub at: Option<Vec3>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Component {
+    Constraint,
+    Sender,
+    Receiver,
+}
+
 pub struct Replay {
     pub avatar: Avatar,
     pub nodes: Nodes,
     pub names: Vec<Option<String>>,
     /// The first recorded frame replayed.
     pub first: usize,
+    /// What the host gives the core each recorded frame: the root, every node's root-space pose (those the
+    /// recording does not hold at rest), its animated local pose, and the active and PhysBone enabled flags.
     pub frames: Vec<Frame>,
+    /// The nodes whose root-space pose the recording holds, and the root node, which it holds at the origin
+    /// unscaled: its poses are metres from the root whatever its scale.
+    pub posed: Vec<usize>,
+    /// Each constraint and contact field a curve drives, by frame: (component, index, field, value), signed as the
+    /// model holds it; the changes before the first frame replayed are on it.
+    pub fields: BTreeMap<usize, Vec<(Component, usize, String, f32)>>,
     pub grabs: BTreeMap<usize, Grab>,
 }
 
@@ -128,6 +146,7 @@ impl Replay {
             stack.extend(nodes.children[n].iter().map(|&c| (c, space[n])));
         }
         let mut locals = nodes.rest.clone();
+        let mut posed = std::collections::BTreeSet::from([root]);
         let mut active = vec![true; count];
         let mut enabled = vec![true; avatar.model.physbones.len()];
         let physbones: BTreeMap<String, usize> = avatar
@@ -165,7 +184,12 @@ impl Replay {
                     ("root", 4) | ("local", 4) => {
                         if let Some(&n) = index.get(canonical(&r[2]).as_str()) {
                             let t = unity(&floats(&r[3]));
-                            if r[1] == "root" { space[n] = t } else { locals[n] = t }
+                            if r[1] == "root" {
+                                space[n] = t;
+                                posed.insert(n);
+                            } else {
+                                locals[n] = t
+                            }
                         }
                     }
                     (key, 3) => {
@@ -197,17 +221,45 @@ impl Replay {
                 grabs.insert(f, Grab { node, event: r[1].clone(), at });
             }
         }
-        Replay { avatar, nodes, names, first, frames: out.into_iter().map(|(_, fr)| fr).collect(), grabs }
+        let mut replay = Replay {
+            avatar,
+            nodes,
+            names,
+            first,
+            frames: out.into_iter().map(|(_, fr)| fr).collect(),
+            posed: posed.into_iter().collect(),
+            fields: BTreeMap::new(),
+            grabs,
+        };
+        replay.fields = fields(dir, &replay, frames.end);
+        replay
     }
 
-    /// Steps the avatar at `rate` Hz, its input interpolated between recorded frames, and replays the
-    /// recorded grabs as the wearer's.
-    pub fn run(&self, rate: f64) -> Trace {
-        let mut pb = PhysBones::new(&self.avatar).unwrap();
+    /// Steps the core at `rate` Hz on the recording's input, interpolated between recorded frames, replaying the
+    /// recorded grabs as the wearer's and the recorded constraint and contact fields. `held` gives, by recorded frame,
+    /// root-space poses the core holds after PhysBones (each kept until it changes), and `senders` the senders outside
+    /// the avatar on a recorded frame. The host poses `posed` (parents first) where the frame places them. `each` sees
+    /// every host frame (a fractional recording frame at other rates).
+    pub fn drive(
+        &self,
+        rate: f64,
+        posed: &[usize],
+        held: &BTreeMap<usize, Vec<(usize, Transform)>>,
+        senders: &mut dyn FnMut(usize, &Transform) -> Vec<Sender>,
+        each: &mut dyn FnMut(f64, &Evaluator),
+    ) {
+        let mut ev = Evaluator::new(&self.avatar).unwrap();
+        for (_, changes) in self.fields.range(..self.first) {
+            apply(&mut ev, changes);
+        }
         let span = (self.frames.len() - 1) as f64 / 60.0;
-        let mut trace = Trace { frames: vec![], tips: vec![], parameters: vec![] };
         let (mut starts, mut firsts) = (BTreeMap::new(), BTreeMap::new());
         let physbones = &self.avatar.model.physbones;
+        let mut holding = BTreeMap::<usize, Transform>::new();
+        for (_, poses) in held.range(..self.first) {
+            holding.extend(poses.iter().copied());
+        }
+        let mut outside = vec![];
         for k in 0.. {
             let t = k as f64 / rate;
             if t > span + 1e-9 {
@@ -215,9 +267,20 @@ impl Replay {
             }
             let x = t * 60.0;
             let i = (x.floor() as usize).min(self.frames.len() - 1);
-            let frame = if i + 1 < self.frames.len() { blend(&self.frames[i], &self.frames[i + 1], (x - i as f64) as f32) } else { self.frames[i].clone() };
             let whole = (x - x.round()).abs() < 1e-6;
-            if let Some(g) = self.grabs.get(&(self.first + x.round() as usize)).filter(|_| whole) {
+            let at = self.first + x.round() as usize;
+            let frame = match (whole, i + 1 < self.frames.len()) {
+                (true, _) => self.frames[(at - self.first).min(self.frames.len() - 1)].clone(),
+                (false, true) => blend(&self.frames[i], &self.frames[i + 1], (x - i as f64) as f32),
+                (false, false) => self.frames[i].clone(),
+            };
+            if whole {
+                apply(&mut ev, self.fields.get(&at).map_or(&[][..], Vec::as_slice));
+                holding.extend(held.get(&at).into_iter().flatten().copied());
+                outside = senders(at, &frame.root);
+            }
+            if let Some(g) = self.grabs.get(&at).filter(|_| whole) {
+                let pb = ev.physbones_mut();
                 let chain = (0..physbones.len()).find(|&c| pb.bones(c).any(|n| n == g.node)).unwrap();
                 let world = g.at.map(|a| frame.root.point(a));
                 match g.event.as_str() {
@@ -235,49 +298,121 @@ impl Replay {
                     _ => pb.release(chain, true, Toucher::Wearer),
                 }
             }
-            pb.advance(if k == 0 { 0.0 } else { (1.0 / rate) as f32 }, &frame);
-            trace.frames.push(self.first as f64 + x);
-            trace.tips.push(self.tips(&pb, &frame));
-            let mut parameters = BTreeMap::new();
-            for (c, model) in physbones.iter().enumerate() {
-                let Some(name) = &model.parameter else { continue };
-                let p = pb.parameters(c);
-                for (suffix, value) in [("IsGrabbed", p.is_grabbed as u8 as f32), ("IsPosed", p.is_posed as u8 as f32), ("Angle", p.angle), ("Stretch", p.stretch), ("Squish", p.squish)] {
-                    parameters.insert(format!("{name}_{suffix}"), value);
-                }
-            }
-            trace.parameters.push(parameters);
+            let poses: Vec<(usize, Transform)> = posed.iter().map(|&n| (n, frame.nodes[n])).collect();
+            let mut pinned: Vec<(usize, Transform)> = holding.iter().map(|(n, t)| (*n, *t)).collect();
+            pinned.sort_by_key(|(n, _)| depth(&self.nodes.parent, *n));
+            let input = Input {
+                dt: if k == 0 { 0.0 } else { (1.0 / rate) as f32 },
+                root: frame.root,
+                poses: &poses,
+                held: &pinned,
+                senders: &outside,
+                local: true,
+            };
+            ev.evaluate_animated(&input, &Animated { locals: &frame.locals, active: &frame.active, enabled: &frame.enabled });
+            each(self.first as f64 + x, &ev);
         }
+    }
+
+    /// The PhysBone tips and parameters at `rate` Hz.
+    pub fn run(&self, rate: f64) -> Trace {
+        let mut trace = Trace { frames: vec![], tips: vec![], parameters: vec![] };
+        let mut posed = self.posed.clone();
+        posed.sort_by_key(|n| depth(&self.nodes.parent, *n));
+        self.drive(rate, &posed, &BTreeMap::new(), &mut |_, _| vec![], &mut |f, ev| {
+            trace.frames.push(f);
+            trace.tips.push(self.tips(ev, ev.output()));
+            trace.parameters.push(physbone_parameters(&self.avatar, ev));
+        });
         trace
     }
 
-    /// Every simulated bone below each root, and a root with no simulated children, with the endpoint on leaves.
-    fn tips(&self, pb: &PhysBones, frame: &Frame) -> BTreeMap<String, Vec3> {
-        let root_inverse = frame.root.rotation.inverse();
-        let base = Transform { scale: Vec3::ONE, ..frame.root };
-        let mut tips = BTreeMap::new();
-        for (c, model) in self.avatar.model.physbones.iter().enumerate() {
-            let bones: Vec<usize> = pb.bones(c).collect();
-            let mut world = BTreeMap::<usize, Transform>::new();
-            for (n, l) in bones.iter().zip(pb.local(c)) {
-                let parent = self.nodes.parent[*n].unwrap();
-                let pw = world.get(&parent).copied().unwrap_or_else(|| base.mul(&frame.nodes[parent]));
-                world.insert(*n, pw.mul(&l));
-            }
-            let endpoint = Vec3::from(model.endpoint_position);
-            let root = self.names[model.root.0 as usize].clone().unwrap();
-            for (k, n) in bones.iter().enumerate() {
-                let leaf = !self.nodes.children[*n].iter().any(|c| bones.contains(c));
-                if k == 0 && !leaf {
-                    continue;
-                }
-                let w = world[n];
-                let p = root_inverse * ((if leaf && endpoint != Vec3::ZERO { w.point(endpoint) } else { w.translation }) - frame.root.translation);
-                tips.insert(format!("{root}|{}", self.names[*n].clone().unwrap()), Vec3::new(-p.x, p.y, p.z));
-            }
-        }
-        tips
+    pub fn tips(&self, ev: &Evaluator, out: &Output) -> BTreeMap<String, Vec3> {
+        tips(&self.avatar, &self.nodes, &self.names, ev, out)
     }
+}
+
+/// Every simulated bone below each root, and a root with no simulated children, with the endpoint on leaves, in
+/// metres from the root along Unity's axes.
+pub fn tips(avatar: &Avatar, nodes: &Nodes, names: &[Option<String>], ev: &Evaluator, out: &Output) -> BTreeMap<String, Vec3> {
+    let pb = ev.physbones();
+    let mut tips = BTreeMap::new();
+    for (c, model) in avatar.model.physbones.iter().enumerate() {
+        let bones: Vec<usize> = pb.bones(c).collect();
+        let endpoint = Vec3::from(model.endpoint_position);
+        let root = names[model.root.0 as usize].clone().unwrap();
+        for (k, n) in bones.iter().enumerate() {
+            let leaf = !nodes.children[*n].iter().any(|c| bones.contains(c));
+            if k == 0 && !leaf {
+                continue;
+            }
+            let s = out.space[*n];
+            let p = if leaf && endpoint != Vec3::ZERO { s.point(endpoint) } else { s.translation };
+            tips.insert(format!("{root}|{}", names[*n].clone().unwrap()), Vec3::new(-p.x, p.y, p.z));
+        }
+    }
+    tips
+}
+
+/// Each PhysBone's `{parameter}_…` values.
+pub fn physbone_parameters(avatar: &Avatar, ev: &Evaluator) -> BTreeMap<String, f32> {
+    let mut parameters = BTreeMap::new();
+    for (c, model) in avatar.model.physbones.iter().enumerate() {
+        let Some(name) = &model.parameter else { continue };
+        let p = ev.physbones().parameters(c);
+        for (suffix, value) in [("IsGrabbed", p.is_grabbed as u8 as f32), ("IsPosed", p.is_posed as u8 as f32), ("Angle", p.angle), ("Stretch", p.stretch), ("Squish", p.squish)] {
+            parameters.insert(format!("{name}_{suffix}"), value);
+        }
+    }
+    parameters
+}
+
+fn apply(ev: &mut Evaluator, changes: &[(Component, usize, String, f32)]) {
+    for (component, i, field, v) in changes {
+        match component {
+            Component::Constraint => ev.constraints_mut().set(*i, field, *v),
+            Component::Sender => ev.contacts_mut().set_sender(*i, field, *v),
+            Component::Receiver => ev.contacts_mut().set_receiver(*i, field, *v),
+        }
+    }
+}
+
+pub fn depth(parent: &[Option<usize>], mut node: usize) -> usize {
+    let mut d = 0;
+    while let Some(p) = parent[node] {
+        d += 1;
+        node = p;
+    }
+    d
+}
+
+/// Each constraint and contact field a curve drives, by frame before `end`.
+fn fields(dir: &Path, replay: &Replay, end: usize) -> BTreeMap<usize, Vec<(Component, usize, String, f32)>> {
+    let m = &replay.avatar.model;
+    let index: BTreeMap<&str, usize> = replay.names.iter().enumerate().filter_map(|(i, n)| n.as_deref().map(|n| (n, i))).collect();
+    let mut out = BTreeMap::<usize, Vec<_>>::new();
+    for line in text(&dir.join("values.tsv")).lines() {
+        let r: Vec<&str> = line.split('\t').collect();
+        let f: usize = r[0].parse().unwrap();
+        if f >= end {
+            break;
+        }
+        let Some((kind, rest)) = r[1].split_once(':') else { continue };
+        let (component, nodes): (Component, Vec<u32>) = match kind {
+            "constraint" => (Component::Constraint, m.constraints.iter().map(|c| c.node.0).collect()),
+            "sender" => (Component::Sender, m.contacts.senders.iter().map(|c| c.node.0).collect()),
+            "receiver" => (Component::Receiver, m.contacts.receivers.iter().map(|c| c.node.0).collect()),
+            _ => continue,
+        };
+        let Some((rest, field)) = rest.rsplit_once(':') else { continue };
+        let Some((path, k)) = rest.rsplit_once('#') else { continue };
+        let Some(&node) = index.get(canonical(path).as_str()) else { continue };
+        let k: usize = k.parse().unwrap();
+        let Some(index) = nodes.iter().enumerate().filter(|(_, n)| **n as usize == node).nth(k).map(|(i, _)| i) else { continue };
+        let v: f32 = r[2].parse().unwrap();
+        out.entry(f).or_default().push((component, index, field.to_string(), v));
+    }
+    out
 }
 
 fn blend(a: &Frame, b: &Frame, s: f32) -> Frame {

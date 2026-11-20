@@ -423,6 +423,11 @@ impl PhysBones {
         self.chains[physbone].bones.iter().filter_map(|b| b.node)
     }
 
+    /// Whether `physbone` simulated in the last [`PhysBones::advance`]; a stopped chain leaves its bones to animation.
+    pub fn running(&self, physbone: usize) -> bool {
+        self.chains[physbone].running
+    }
+
     pub fn parameters(&self, physbone: usize) -> Parameters {
         self.chains[physbone].parameters
     }

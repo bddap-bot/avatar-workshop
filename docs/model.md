@@ -111,6 +111,9 @@ natively, as a Godot extension, or compiled to WebAssembly. A runtime does not r
   receiver parameters.
 - Output per frame: node local transforms, blendshape weights, node active and renderer enabled states, material
   property overrides and slot choices. Renderers apply it; they hold no avatar logic.
+- Order per frame, as `avatar_core::evaluate::Evaluator` runs it: animator, constraints that read nothing a
+  PhysBone moves, PhysBones, the constraints that do, contacts; receiver and PhysBone parameters reach the next
+  frame's animator.
 
 ## Importers
 

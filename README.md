@@ -76,8 +76,7 @@ layer masks and additive layers, humanoid clips as whole poses and their mirrors
 with their synced clamps and saved values, VRChat's built-in parameters as host inputs, the parameter driver
 (local-only ones on the wearer's copy alone),
 tracking, locomotion, layer-control and temporary-pose-space behaviours, and the descriptor's lip sync and
-eyelids. A host sets built-ins (`set_builtin`), menu values (`set`), the PhysBone and contact parameters its
-dynamics produced (`set_dynamic`, read at the next step), the eyelids' blink and look (`set_eyes`) and the head's animated pose
+eyelids. A host sets built-ins (`set_builtin`), menu values (`set`), the eyelids' blink and look (`set_eyes`) and the head's animated pose
 (`set_head`), calls `step(dt)`, and reads `parameters()`, each layer's state, `values()` per target,
 `tracking`, `locomotion_disabled` and `view`; `saved()` and `restore` carry saved parameters across loads.
 Its timing and blending rules were fitted to Av3Emulator's traces, the reference the harness records.
@@ -90,6 +89,30 @@ each layer's state time from `clocks.tsv`, and the muscle, constraint and contac
 and fails if a recording lacks a frame's state times, a bound field's value or a frame's row of `inputs.tsv`.
 `cargo run --release --example animator -- RECORDING AVATAR.glb` scores any recording,
 numbering each differing key and menu control; `--names` prints their names.
+
+## Frame evaluation
+
+`avatar_core::evaluate::Evaluator` is the one entry point a runtime drives: it owns a model's animator,
+constraints, PhysBones and contacts and evaluates a frame in VRChat's order. `Evaluator::new(&avatar)` builds
+them; each frame the host sets parameters through `animator_mut()` (`set_builtin`, `set`, `set_eyes`,
+`set_head`), grabs through `physbones_mut()` (`grab`, `hold`, `release`), and calls `evaluate(&Input)` with the
+seconds since the last frame, the avatar root in the world, the root-space poses of the bones it moves (tracked
+or IK-solved), the senders outside the avatar and whether the avatar is the local player's. The frame runs the
+animator (not on a frame with no time passed), applies its node transforms, active flags, PhysBone enabled flags
+and constraint and contact fields over the rest pose, places the host's poses, solves the constraints before
+PhysBones, advances PhysBones (a stopped chain leaves its bones to animation), solves the constraints after them,
+advances contacts, and sets each receiver's and PhysBone's parameters on the animator for the next frame, where a
+host's own `set` before then wins. `output()` is the frame: every node's local pose and root-space pose, active
+flags, each renderer's enabled flag, and the blendshape weights, material properties and slots the animator
+binds. A host with poses from the avatar's own dynamics passes them as `Input::held`, and one that animates the
+avatar itself calls `evaluate_animated` with what its animation left. The PhysBones, dynamics and animator
+replays above all run on it.
+
+`cargo run --release --example run -- RECORDING AVATAR.glb OUT [--frames N]` writes the core's reference run
+of a model under a recording's scripted input: each frame the parameters `inputs.tsv` sets and the root, head and
+hands of `track.tsv`, at 60 Hz. `OUT/tips.tsv` holds every PhysBone tip each frame, and `params.tsv`,
+`states.tsv` and `output.tsv` the animator's parameters, each layer's state and the frame output as change logs.
+Two runs write the same bytes; `cargo test --test evaluate` checks that on the fixture's recording.
 
 ## Unity exporter
 

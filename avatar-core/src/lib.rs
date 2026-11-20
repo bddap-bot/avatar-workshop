@@ -2,6 +2,7 @@ pub mod animator;
 pub mod constraints;
 pub mod contacts;
 pub mod curve;
+pub mod evaluate;
 pub mod glb;
 pub mod model;
 pub mod physbones;

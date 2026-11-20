@@ -245,8 +245,6 @@ pub struct Animator {
     prev_seated: bool,
     time: f64,
     random: UnityRandom,
-    /// Values the host's PhysBones and contacts gave this frame, entering the parameters for the next.
-    dynamics: Vec<(String, f32)>,
     face: face::Face,
     /// Lip sync's and the eyelids' shapes no controller binds, which keep their last value once handed to animation.
     unbound_face: (Vec<u32>, Vec<u32>),
@@ -664,7 +662,6 @@ impl Animator {
             prev_seated: false,
             time: 0.0,
             random: UnityRandom::new(1),
-            dynamics: Vec::new(),
             face,
             unbound_face,
             blink: 0.0,
@@ -785,11 +782,6 @@ impl Animator {
 
     pub fn get(&self, name: &str) -> Option<f32> {
         self.index.get(name).map(|&i| self.parameters[i].value)
-    }
-
-    /// A PhysBone or contact parameter the host's dynamics produced this frame.
-    pub fn set_dynamic(&mut self, name: &str, value: f32) {
-        self.dynamics.push((name.to_string(), value));
     }
 
     /// Each playable's controller layers' states this frame, with their playable and layer indices.
@@ -923,16 +915,6 @@ impl Animator {
         for (n, _, _) in BUILT_INS {
             let v = self.builtins[*n];
             self.push(n, v);
-        }
-        for (n, v) in std::mem::take(&mut self.dynamics) {
-            if let Some(&i) = self.index.get(&n) {
-                let p = &mut self.parameters[i];
-                p.value = match p.kind {
-                    Kind::Int => v.trunc(),
-                    Kind::Bool | Kind::Trigger => (v != 0.0) as u8 as f32,
-                    Kind::Float => v,
-                };
-            }
         }
         self.time += dt as f64;
         self.advance_pose_spaces(dt);

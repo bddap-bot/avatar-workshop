@@ -4,17 +4,12 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use avatar_core::constraints::{Constraints, Scene};
-use avatar_core::contacts::{Contacts, Sender};
+use avatar_core::contacts::Sender;
 use avatar_core::model::ContactShape;
 use avatar_core::physbones::{Toucher, Transform};
 use glam::{Quat, Vec3};
 
 use super::{canonical, text, unity, Replay};
-
-fn relative(parent: &Transform, child: &Transform) -> Transform {
-    parent.relative(child)
-}
 
 /// One target's error against the reference: the largest position (metres) and rotation (degrees) differences
 /// and the frame of each.
@@ -23,38 +18,6 @@ pub struct Error {
     pub position: (f32, usize),
     pub rotation: (f32, usize),
     pub frames: usize,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum Component {
-    Constraint,
-    Sender,
-    Receiver,
-}
-
-/// Each constraint and contact field a curve drives, by frame: (component, index, field, value), signed as the
-/// model holds it.
-fn fields(dir: &Path, replay: &Replay) -> BTreeMap<usize, Vec<(Component, usize, String, f32)>> {
-    let m = &replay.avatar.model;
-    let mut out = BTreeMap::<usize, Vec<_>>::new();
-    for line in text(&dir.join("values.tsv")).lines() {
-        let r: Vec<&str> = line.split('\t').collect();
-        let Some((kind, rest)) = r[1].split_once(':') else { continue };
-        let (component, nodes): (Component, Vec<u32>) = match kind {
-            "constraint" => (Component::Constraint, m.constraints.iter().map(|c| c.node.0).collect()),
-            "sender" => (Component::Sender, m.contacts.senders.iter().map(|c| c.node.0).collect()),
-            "receiver" => (Component::Receiver, m.contacts.receivers.iter().map(|c| c.node.0).collect()),
-            _ => continue,
-        };
-        let Some((rest, field)) = rest.rsplit_once(':') else { continue };
-        let Some((path, k)) = rest.rsplit_once('#') else { continue };
-        let Some(node) = replay.names.iter().position(|n| n.as_deref() == Some(canonical(path).as_str())) else { continue };
-        let k: usize = k.parse().unwrap();
-        let Some(index) = nodes.iter().enumerate().filter(|(_, n)| **n as usize == node).nth(k).map(|(i, _)| i) else { continue };
-        let v: f32 = r[2].parse().unwrap();
-        out.entry(r[0].parse().unwrap()).or_default().push((component, index, field.to_string(), v));
-    }
-    out
 }
 
 /// The senders outside the avatar a dynamics probe recording moves through its receivers, and their poses by
@@ -132,18 +95,6 @@ pub struct Report {
     pub receivers: BTreeMap<String, Receiver>,
 }
 
-fn world_of(root: Transform, locals: &[Transform], parent: &[Option<usize>], node: usize) -> Transform {
-    let mut chain = vec![node];
-    while let Some(p) = parent[*chain.last().unwrap()] {
-        chain.push(p);
-    }
-    let mut t = root;
-    for n in chain.into_iter().rev() {
-        t = t.mul(&locals[n]);
-    }
-    t
-}
-
 /// Each transform a constraint or contact reads that the SDK's PhysBones move, in the avatar's root space as
 /// `moved.tsv` holds it after the SDK's dynamics, by frame when it changes; a constraint target among them is
 /// left out, as the core solves it.
@@ -163,26 +114,8 @@ fn moved(dir: &Path, replay: &Replay) -> BTreeMap<usize, Vec<(usize, Transform)>
     out
 }
 
-/// Places each node at its pose in the avatar's root space, parents first.
-fn pin(scene: &mut Scene, parent: &[Option<usize>], poses: &[(usize, Transform)]) {
-    for (n, t) in poses {
-        scene.locals[*n] = match parent[*n] {
-            Some(p) => relative(&world_of(Transform::IDENTITY, scene.locals, parent, p), t),
-            None => *t,
-        };
-    }
-}
-
-fn depth(parent: &[Option<usize>], mut node: usize) -> usize {
-    let mut d = 0;
-    while let Some(p) = parent[node] {
-        d += 1;
-        node = p;
-    }
-    d
-}
-
-/// Replays the recording's constraints and contacts frame by frame and scores each constrained target in the
+/// Replays the recording's constraints and contacts frame by frame, every node posed where the recording places it
+/// (its rest pose below the root where the recording holds none), and scores each constrained target in the
 /// avatar's root space and each receiver parameter. What the core's constraints after PhysBones and its contacts
 /// read where PhysBones put it is placed where the SDK's PhysBones left it, so their error does not enter the
 /// score: before those constraints and again after them, as one can turn a bone above a PhysBone and `moved.tsv`
@@ -197,13 +130,8 @@ pub fn score(dir: &Path, replay: &Replay) -> Report {
         let v: Vec<f32> = r[3].split(',').map(|x| x.parse().unwrap()).collect();
         reference.entry(r[0].parse().unwrap()).or_default().push((canonical(r[2]), unity(&v)));
     }
-    let fields = fields(dir, replay);
-    let mut constraints = Constraints::new(&replay.avatar).unwrap();
-    let mut contacts = Contacts::new(&replay.avatar).unwrap();
-    let (mut outside, outside_poses) = outside(dir);
+    let (outside, outside_poses) = outside(dir);
     let mut outside_at = vec![Transform::IDENTITY; outside.len()];
-    let moved_poses = moved(dir, replay);
-    let mut moved_at = BTreeMap::<usize, Transform>::new();
     let m = &replay.avatar.model;
     let parameter_names: Vec<String> = m.contacts.receivers.iter().map(|r| r.parameter.clone()).filter(|p| !p.is_empty()).collect();
     let expected = receiver_parameters(dir, &parameter_names);
@@ -215,42 +143,19 @@ pub fn score(dir: &Path, replay: &Replay) -> Report {
     }
     let mut last = BTreeMap::<String, Transform>::new();
     let mut errors = BTreeMap::<String, Error>::new();
-    let parent = &replay.nodes.parent;
-    let root_node = (0..parent.len()).find(|&n| parent[n].is_none()).unwrap();
-    for (k, frame) in replay.frames.iter().enumerate() {
-        let f = replay.first + k;
-        for (component, i, field, v) in fields.get(&f).into_iter().flatten() {
-            match component {
-                Component::Constraint => constraints.set(*i, field, *v),
-                Component::Sender => contacts.set_sender(*i, field, *v),
-                Component::Receiver => contacts.set_receiver(*i, field, *v),
-            }
-        }
+    let held = moved(dir, replay);
+    let mut senders = |f: usize, root: &Transform| -> Vec<Sender> {
         for (i, t) in outside_poses.get(&f).into_iter().flatten() {
             outside_at[*i] = *t;
         }
-        let mut locals: Vec<Transform> = (0..frame.nodes.len())
-            .map(|n| match parent[n] {
-                Some(p) => relative(&frame.nodes[p], &frame.nodes[n]),
-                None => frame.nodes[n],
-            })
-            .collect();
-        let root = Transform { scale: Vec3::ONE, ..frame.root };
-        let mut scene = Scene { root, locals: &mut locals, active: &frame.active };
-        constraints.solve_before_physbones(&mut scene);
-        for (n, t) in moved_poses.get(&f).into_iter().flatten() {
-            moved_at.insert(*n, *t);
-        }
-        let mut pinned: Vec<(usize, Transform)> = moved_at.iter().map(|(n, t)| (*n, *t)).collect();
-        pinned.sort_by_key(|(n, _)| depth(parent, *n));
-        pin(&mut scene, parent, &pinned);
-        constraints.solve_after_physbones(&mut scene);
-        pin(&mut scene, parent, &pinned);
-        let world: Vec<Transform> = (0..parent.len()).map(|n| world_of(root, &locals, parent, n)).collect();
-        for (s, at) in outside.iter_mut().zip(&outside_at) {
-            s.at = root.mul(at);
-        }
-        contacts.advance(if k == 0 { 0.0 } else { 1.0 / 60.0 }, &world, &frame.active, &outside, true);
+        let root = Transform { scale: Vec3::ONE, ..*root };
+        outside.iter().zip(&outside_at).map(|(s, at)| Sender { at: root.mul(at), ..s.clone() }).collect()
+    };
+    let mut every: Vec<usize> = (0..replay.nodes.parent.len()).collect();
+    every.sort_by_key(|n| super::depth(&replay.nodes.parent, *n));
+    replay.drive(60.0, &every, &held, &mut senders, &mut |x, ev| {
+        let f = x.round() as usize;
+        let contacts = ev.contacts();
         let mut values = BTreeMap::<&str, f32>::new();
         for (r, v) in contacts.receivers().iter().zip(contacts.values()) {
             if let (false, Some(v)) = (r.parameter.is_empty(), v) {
@@ -273,11 +178,11 @@ pub fn score(dir: &Path, replay: &Replay) -> Report {
         for (path, t) in reference.get(&f).into_iter().flatten() {
             last.insert(path.clone(), *t);
         }
-        for c in constraints.model() {
+        for c in ev.constraints().model() {
             let target = c.target.0 as usize;
             let path = replay.names[target].clone().unwrap();
             let Some(want) = last.get(&path) else { continue };
-            let space = relative(&locals[root_node], &world_of(Transform::IDENTITY, &locals, parent, target));
+            let space = ev.output().space[target];
             let e = errors.entry(path.clone()).or_default();
             let ds = (space.scale - want.scale).abs().max_element();
             let dp = (space.translation - want.translation).length().max(ds);
@@ -291,6 +196,6 @@ pub fn score(dir: &Path, replay: &Replay) -> Report {
                 e.rotation = (dq, f);
             }
         }
-    }
+    });
     Report { targets: errors, receivers }
 }
