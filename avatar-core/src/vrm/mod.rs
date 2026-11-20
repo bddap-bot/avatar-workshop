@@ -597,10 +597,18 @@ fn material_curves(doc: &mut Doc, materials: &[crate::model::Material], material
         if !slots.contains(&material) {
             continue;
         }
-        let first = slots.iter().find(|&&m| materials.get(m as usize).is_some_and(|r| r.declared.contains_key(property)));
-        if first != Some(&material) {
-            doc.report.add("vrm expression material bind that would reach another material on its renderer");
-            continue;
+        let declared = property.strip_suffix("_ST").unwrap_or(property);
+        let first = slots.iter().find(|&&m| materials.get(m as usize).is_some_and(|r| r.declared.contains_key(declared)));
+        match first {
+            None => {
+                doc.report.add("vrm expression material bind to a property its material does not have");
+                continue;
+            }
+            Some(&m) if m != material => {
+                doc.report.add("vrm expression material bind that would reach another material on its renderer");
+                continue;
+            }
+            Some(_) => {}
         }
         for (c, v) in axes.chars().zip(value) {
             out.push(Curve { binding: Binding::MaterialProperty { node: NodeIndex(i as u32), property: format!("{property}.{c}") }, curve: constant(*v) });

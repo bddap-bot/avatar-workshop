@@ -311,7 +311,8 @@ fn malformed_files_are_refused() {
         let Value::Object(gltf) = json else { unreachable!() };
         let result = std::panic::catch_unwind(|| importer::import(&glb_of(&gltf, &bin)));
         match result {
-            Ok(Err(e)) => assert!(!e.to_string().is_empty(), "{what}"),
+            Ok(Err(importer::Error::Malformed(_))) => {}
+            Ok(Err(e)) => panic!("{what} refused as {e}, not as a malformed file"),
             Ok(Ok(_)) => panic!("{what} imported"),
             Err(_) => panic!("{what} panicked"),
         }
@@ -382,4 +383,29 @@ fn collided_bones_keep_their_length() {
         }
     }
     assert!(worst < 1e-5, "a simulated bone's length moved {worst} m from its rest");
+}
+
+#[test]
+fn malformed_vrm0_collider_group_is_refused() {
+    let (mut src, bin) = source("godette-0.x");
+    let mut bin = bin;
+    bin.resize(bin.len().next_multiple_of(4), 0);
+    src["extensions"]["VRM"]["secondaryAnimation"]["boneGroups"][0]["colliderGroups"] = serde_json::json!([999]);
+    assert!(matches!(importer::import(&glb_of(&src, &bin)), Err(importer::Error::Malformed(_))));
+}
+
+/// A texture's tiling-and-offset bind reaches the material holding the texture.
+#[test]
+fn texture_transform_binds_become_curves() {
+    let (mut src, bin) = source("twist-1.0");
+    let mut bin = bin;
+    bin.resize(bin.len().next_multiple_of(4), 0);
+    let renderer = src["nodes"].as_array().unwrap().iter().position(|n| n["mesh"].is_u64()).unwrap();
+    let mesh = src["nodes"][renderer]["mesh"].as_u64().unwrap() as usize;
+    let material = src["meshes"][mesh]["primitives"][0]["material"].clone();
+    src["extensions"]["VRMC_vrm"]["expressions"]["custom"] = serde_json::json!({ "scroll": { "textureTransformBinds": [{ "material": material, "scale": [1.0, 1.0], "offset": [0.5, 0.0] }] } });
+    let avatar = importer::import(&glb_of(&src, &bin)).unwrap();
+    let clip = avatar.model.clips.iter().find(|c| c.name == "scroll").unwrap();
+    let z = clip.curves.iter().find(|c| matches!(&c.binding, avatar_core::model::Binding::MaterialProperty { property, .. } if property == "_MainTex_ST.z")).expect("an offset curve");
+    assert_eq!(z.curve.keys[0].value, 0.5);
 }

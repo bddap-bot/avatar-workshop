@@ -232,6 +232,7 @@ impl Nodes {
 
     /// Every node's pose relative to the avatar root from each node's local pose.
     pub fn world(&self, locals: &[Transform]) -> Vec<Transform> {
+        assert_eq!(locals.len(), self.parent.len(), "one local pose per node");
         let mut world: Vec<Option<Transform>> = vec![None; locals.len()];
         for start in 0..locals.len() {
             let mut path = vec![start];
