@@ -209,6 +209,12 @@ standard senders. What the recordings showed:
   them: a capsule with the collider's dimensions and offsets on its bone, tagged by part and, for hands, feet and
   fingers, by side (`Hand` and `HandL`, `FingerIndex` and `FingerIndexL`); a finger's sits on its bone's parent,
   moved by the bone's rest position.
+- In the VRChat client each finger's standard sender also carries `Finger` and `Finger` with its side (`FingerL`),
+  which Av3Emulator leaves out, and no other finger's or side's tag. Measured on variants of the fixture as local
+  test avatars with one finger collider enabled per hand, all eight fingers over four builds: receivers allowing
+  self, each listening for one tag alone in a zone around each hand's fingers, read through the client's OSC
+  output, heard exactly those four tags; one listening for a tag nothing sends stayed silent, and ones for the
+  fixture's own sender and the head's standard sender fired.
 
 Not measured:
 
@@ -216,9 +222,9 @@ Not measured:
   2 and 5). The replay takes that chain's transforms from the recording, so the targets' bar holds whichever order
   VRChat uses; the core's order runs every PhysBone before those constraints, and how far a host's chain then lies
   from the SDK's is not measured.
-- Whether VRChat's finger senders also carry `Finger` and `FingerL` or `FingerR`, which VRChat's tag list defines as
-  any finger. Av3Emulator's do not, and every receiver of the avatar's own fingers in the corpus also listens for a
-  tag the emulator places, so no recording tells the two apart.
+- Where the client places a finger's standard sender. Receivers 0.03 m across at the position Av3Emulator gives
+  each finger's sender heard none of that finger's tags in the client, so the client places it elsewhere; the core
+  keeps the emulator's placement until a measurement finds the client's.
 
 ## What goes
 

@@ -139,7 +139,8 @@ fn a_receiver_drives_its_parameter_from_the_frame_after_it_starts() {
 }
 
 /// The core places VRChat's standard senders where the recording found them: on each enabled descriptor
-/// collider's bone, a finger's on its parent, with the collider's shape, offsets and the part and side tags.
+/// collider's bone, a finger's on its parent, with the collider's shape, offsets and the part and side tags; the
+/// client's `Finger` tags, which the emulator leaves out, have their own test.
 #[test]
 fn standard_senders_as_the_reference_placed_them() {
     let avatar = avatar_core::read(&std::fs::read(path("fixtures/unity-synthetic-dynamics.glb")).unwrap()).unwrap();
@@ -153,7 +154,8 @@ fn standard_senders_as_the_reference_placed_them() {
         .map(|s| {
             let f = |k: &str| -> Vec<f32> { s[k].as_array().unwrap().iter().map(|x| x.as_f64().unwrap() as f32).collect() };
             let t = reference::unity(&[f("position"), f("rotation")].concat());
-            let tags = s["tags"].as_array().unwrap().iter().map(|t| t.as_str().unwrap().to_string()).collect();
+            let mut tags: Vec<String> = s["tags"].as_array().unwrap().iter().map(|t| t.as_str().unwrap().to_string()).collect();
+            tags.sort();
             (s["transform"].as_str().unwrap().to_string(), tags, s["radius"].as_f64().unwrap() as f32, s["height"].as_f64().unwrap() as f32, t.translation, t.rotation)
         })
         .collect();
@@ -161,7 +163,9 @@ fn standard_senders_as_the_reference_placed_them() {
         .into_iter()
         .map(|s| {
             let ContactShape::Capsule { radius, height } = s.shape else { panic!("a standard sender is a capsule") };
-            (names[s.node.0 as usize].clone().unwrap(), s.collision_tags, radius, height, Vec3::from(s.position), Quat::from_array(s.rotation))
+            let mut tags: Vec<String> = s.collision_tags.into_iter().filter(|t| !["Finger", "FingerL", "FingerR"].contains(&t.as_str())).collect();
+            tags.sort();
+            (names[s.node.0 as usize].clone().unwrap(), tags, radius, height, Vec3::from(s.position), Quat::from_array(s.rotation))
         })
         .collect();
     want.sort_by(|a, b| a.1.cmp(&b.1));
@@ -172,6 +176,49 @@ fn standard_senders_as_the_reference_placed_them() {
         assert_eq!((&g.0, &g.1, g.2, g.3), (&w.0, &w.1, w.2, w.3));
         assert!((g.4 - w.4).length() < 1e-6 && g.5.angle_between(w.5) < 1e-5, "{:?}: {:?} against {:?}", g.1, (g.4, g.5), (w.4, w.5));
     }
+}
+
+/// Each standard finger sender carries the tags the VRChat client puts on it: the finger and any finger, each
+/// alone and with its side, and no other side's or finger's.
+#[test]
+fn standard_finger_senders_carry_the_clients_tags() {
+    let mut avatar = avatar_core::read(&std::fs::read(path("fixtures/unity-synthetic-dynamics.glb")).unwrap()).unwrap();
+    let nodes = avatar_core::physbones::Nodes::read(&avatar).unwrap();
+    let c = &mut avatar.model.descriptor.colliders;
+    let enabled = c.finger_index_left.clone();
+    for f in [
+        &mut c.finger_middle_left,
+        &mut c.finger_ring_left,
+        &mut c.finger_little_left,
+        &mut c.finger_index_right,
+        &mut c.finger_middle_right,
+        &mut c.finger_ring_right,
+        &mut c.finger_little_right,
+    ] {
+        *f = enabled.clone();
+    }
+    let mut got: Vec<Vec<String>> = avatar_core::contacts::standard_senders(&avatar.model.descriptor.colliders, &nodes)
+        .into_iter()
+        .map(|s| s.collision_tags)
+        .filter(|tags| tags.iter().any(|t| t.starts_with("Finger")))
+        .map(|mut tags| {
+            tags.sort();
+            tags
+        })
+        .collect();
+    got.sort();
+    let mut want: Vec<Vec<String>> = ["Index", "Middle", "Ring", "Little"]
+        .iter()
+        .flat_map(|f| {
+            ["L", "R"].map(|side| {
+                let mut tags = vec!["Finger".to_string(), format!("Finger{side}"), format!("Finger{f}"), format!("Finger{f}{side}")];
+                tags.sort();
+                tags
+            })
+        })
+        .collect();
+    want.sort();
+    assert_eq!(got, want);
 }
 
 /// A receiver listening for the wearer's own hand hears the standard sender on it, and only while it allows self.

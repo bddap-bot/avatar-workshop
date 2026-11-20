@@ -89,7 +89,8 @@ pub struct Contacts {
     centers: std::collections::BTreeMap<Key, Vec3>,
 }
 
-/// The standard senders on the descriptor's enabled colliders, as Av3Emulator places them for VRChat.
+/// The standard senders on the descriptor's enabled colliders, placed as Av3Emulator places them and tagged as the
+/// VRChat client tags them: a finger's also carries `Finger` and `Finger` with its side, which Av3Emulator leaves out.
 pub fn standard_senders(colliders: &DescriptorColliders, nodes: &Nodes) -> Vec<model::ContactSender> {
     let c = colliders;
     let all: [(&DescriptorCollider, &str, &str, bool); 14] = [
@@ -120,6 +121,9 @@ pub fn standard_senders(colliders: &DescriptorColliders, nodes: &Nodes) -> Vec<m
         let mut collision_tags = vec![part.to_string()];
         if !side.is_empty() {
             collision_tags.push(format!("{part}{side}"));
+        }
+        if finger {
+            collision_tags.extend(["Finger".to_string(), format!("Finger{side}")]);
         }
         out.push(model::ContactSender {
             node: model::NodeIndex(node as u32),
