@@ -1,13 +1,16 @@
 //! VRM spring bones as PhysBones.
 //!
 //! A VRM spring joint moves its tail each step by its velocity `v` times `1 - dragForce`, by `stiffness · dt`
-//! metres along its rest direction `r` and by `gravityPower · dt` metres along `gravityDir`, then puts it back at
-//! its bone's length `L`. A version 1.0 PhysBone with advanced integration and no stiffness moves a bone end `p`
-//! (from its parent) to `p + spring · v + pull · (L·r - p)` and then `gravity · L / 2` down before the same
-//! projection, which is `(1 - pull)` times `p + spring / (1 - pull) · v + pull / (1 - pull) · L·r`. With
-//! `a = stiffness · dt / L` the two agree exactly for `pull = a / (1 + a)`, `spring = (1 - dragForce)(1 - pull)`
-//! and `gravity = 2 · gravityPower · dt · (1 - pull) / L` along -Y, `dt` being the PhysBone step. A chain's lengths
-//! vary, so these ride on curves over its depth.
+//! metres along `r`, its rest axis turned by its parent's current rotation, and by `gravityPower · dt` metres along
+//! `gravityDir`, then puts it back at its bone's length `L`. A version 1.0 PhysBone with advanced integration and
+//! no stiffness moves a bone end `p`, taken from its parent's position, to `p + spring · v + pull · (L·r - p)` and
+//! then `gravity · L / 2` down before the same projection, which is `(1 - pull)` times
+//! `p + spring / (1 - pull) · v + pull / (1 - pull) · L·r`. With `a = stiffness · dt / L` the two steps are equal
+//! before collision for `pull = a / (1 + a)`, `spring = (1 - dragForce)(1 - pull)` and
+//! `gravity = 2 · gravityPower · dt · (1 - pull) / L`, `dt` being the PhysBone step and `gravityPower` scaled by how
+//! far `gravityDir` points down. A chain's lengths vary, so these ride on curves over its depth; a VRM 0.x tree
+//! takes the mean length at each depth, and gravity past the PhysBone range of ±1 is clamped, so there the match is
+//! approximate.
 
 use glam::{Quat, Vec3};
 use serde_json::Value;
@@ -17,30 +20,14 @@ use crate::model::{
     AnimationCurve, Collider, ColliderIndex, ColliderShape, Curved, ImmobileType, IntegrationType, Keyframe, Limit,
     MultiChildType, NodeIndex, Permission, PhysBone, PhysBoneVersion, WeightedMode,
 };
-use crate::physbones::{Nodes, Transform, STEP};
+use crate::physbones::STEP;
 
 /// VRM 0.x gives a leaf joint a tail this far along its own offset from its parent.
 const LEAF_TAIL: f32 = 0.07;
 
-/// Every node's rest pose in the avatar root's space.
-pub fn rest_world(nodes: &Nodes) -> Vec<Transform> {
-    let mut world: Vec<Option<Transform>> = vec![None; nodes.rest.len()];
-    for start in 0..nodes.rest.len() {
-        let mut path = vec![start];
-        while let Some(p) = nodes.parent[*path.last().unwrap()].filter(|&p| world[p].is_none()) {
-            path.push(p);
-        }
-        while let Some(i) = path.pop() {
-            let parent = nodes.parent[i].and_then(|p| world[p]).unwrap_or(Transform::IDENTITY);
-            world[i] = Some(parent.mul(&nodes.rest[i]));
-        }
-    }
-    world.into_iter().map(|t| t.unwrap_or(Transform::IDENTITY)).collect()
-}
-
 /// A joint's VRM settings, for the bone from it to its tail.
 #[derive(Clone, Copy)]
-struct Settings {
+struct Joint {
     stiffness: f32,
     drag: f32,
     gravity: f32,
@@ -53,12 +40,11 @@ fn curved(values: &[f32]) -> Curved {
         return Curved { value: values.first().copied().unwrap_or(0.0), curve: None };
     }
     let last = (values.len() - 1).max(1) as f32;
-    let keys = values
+    let mut keys = values
         .iter()
         .enumerate()
         .map(|(i, v)| Keyframe { time: i as f32 / last, value: v / peak, in_tangent: 0.0, out_tangent: 0.0, in_weight: 1.0 / 3.0, out_weight: 1.0 / 3.0, weighted_mode: WeightedMode::None })
         .collect::<Vec<_>>();
-    let mut keys = keys;
     for i in 0..keys.len() {
         let slope = |a: &Keyframe, b: &Keyframe| (b.value - a.value) / (b.time - a.time);
         if i > 0 {
@@ -77,10 +63,10 @@ fn constant(value: f32) -> Curved {
 
 /// The PhysBone for one VRM chain or tree, whose bones at each depth below its root take `per_depth`'s settings
 /// and lengths.
-fn physbone(root: NodeIndex, ignore: Vec<NodeIndex>, endpoint: Vec3, per_depth: &[(Settings, f32)], colliders: Vec<ColliderIndex>) -> PhysBone {
-    let by = |f: &dyn Fn(&(Settings, f32)) -> f32| curved(&per_depth.iter().map(f).collect::<Vec<_>>());
-    let per_length = |x: f32, length: f32| if length > 1e-6 { x * STEP / length } else { 0.0 };
-    let pull = |s: &Settings, l: f32| {
+fn physbone(root: NodeIndex, ignore: Vec<NodeIndex>, endpoint: Vec3, per_depth: &[(Joint, f32)], colliders: Vec<ColliderIndex>) -> PhysBone {
+    let by = |f: &dyn Fn(&(Joint, f32)) -> f32| curved(&per_depth.iter().map(f).collect::<Vec<_>>());
+    let per_length = |x: f32, length: f32| if length > 1e-6 { x.max(0.0) * STEP / length } else { 0.0 };
+    let pull = |s: &Joint, l: f32| {
         let a = per_length(s.stiffness, l);
         a / (1.0 + a)
     };
@@ -160,16 +146,16 @@ fn v1(doc: &mut Doc, ext: Option<&Value>) -> Result<(Vec<PhysBone>, Vec<Collider
                 .and_then(Value::as_array)
                 .into_iter()
                 .flatten()
-                .filter_map(|c| c.as_u64().filter(|&c| (c as usize) < colliders.len()).map(|c| ColliderIndex(c as u32)))
-                .collect()
+                .map(|c| c.as_u64().filter(|&c| (c as usize) < colliders.len()).map(|c| ColliderIndex(c as u32)).ok_or_else(|| malformed("a spring collider group names a missing collider")))
+                .collect::<Result<Vec<_>, _>>()
         })
-        .collect();
+        .collect::<Result<_, _>>()?;
     let mut physbones = vec![];
     for (s, spring) in ext.get("springs").and_then(Value::as_array).into_iter().flatten().enumerate() {
         let mut joints = vec![];
         for j in spring.get("joints").and_then(Value::as_array).into_iter().flatten() {
             let node = doc.node(j.get("node"), &format!("spring {s} joint"))?.0 as usize;
-            let settings = Settings {
+            let settings = Joint {
                 stiffness: number(j.get("stiffness"), 1.0),
                 drag: number(j.get("dragForce"), 0.5),
                 gravity: {
@@ -181,6 +167,7 @@ fn v1(doc: &mut Doc, ext: Option<&Value>) -> Result<(Vec<PhysBone>, Vec<Collider
             joints.push((node, settings));
         }
         if joints.len() < 2 {
+            doc.report.add("vrm spring with fewer than two joints");
             continue;
         }
         if joints.windows(2).any(|w| doc.nodes.parent[w[1].0] != Some(w[0].0)) {
@@ -199,10 +186,11 @@ fn v1(doc: &mut Doc, ext: Option<&Value>) -> Result<(Vec<PhysBone>, Vec<Collider
                 }
             }
         }
-        let per_depth: Vec<(Settings, f32)> = joints.windows(2).map(|w| (w[0].1, doc.length(w[0].0, w[1].0))).collect();
+        let per_depth: Vec<(Joint, f32)> = joints.windows(2).map(|w| (w[0].1, doc.length(w[0].0, w[1].0))).collect();
         let mut used = vec![];
         for g in spring.get("colliderGroups").and_then(Value::as_array).into_iter().flatten() {
-            for c in g.as_u64().and_then(|g| groups.get(g as usize)).into_iter().flatten() {
+            let group = g.as_u64().and_then(|g| groups.get(g as usize)).ok_or_else(|| malformed(format!("spring {s} names a missing collider group")))?;
+            for c in group {
                 if !used.contains(c) {
                     used.push(*c);
                 }
@@ -269,7 +257,7 @@ fn v0(doc: &mut Doc) -> Result<(Vec<PhysBone>, Vec<Collider>), Error> {
     let mut roots = vec![];
     for (i, g) in secondary.get("boneGroups").and_then(Value::as_array).into_iter().flatten().enumerate() {
         let dir = super::xyz(g.get("gravityDir")).unwrap_or(Vec3::NEG_Y);
-        let settings = Settings {
+        let settings = Joint {
             stiffness: number(g.get("stiffiness"), 1.0),
             drag: number(g.get("dragForce"), 0.4),
             gravity: doc.gravity(number(g.get("gravityPower"), 0.0), dir),
@@ -280,7 +268,8 @@ fn v0(doc: &mut Doc) -> Result<(Vec<PhysBone>, Vec<Collider>), Error> {
         }
         let mut used = vec![];
         for k in g.get("colliderGroups").and_then(Value::as_array).into_iter().flatten() {
-            for c in k.as_u64().and_then(|k| groups.get(k as usize)).into_iter().flatten() {
+            let group = k.as_u64().and_then(|k| groups.get(k as usize)).ok_or_else(|| malformed(format!("bone group {i} names a missing collider group")))?;
+            for c in group {
                 if !used.contains(c) {
                     used.push(*c);
                 }
@@ -299,7 +288,7 @@ fn v0(doc: &mut Doc) -> Result<(Vec<PhysBone>, Vec<Collider>), Error> {
             order.push((n, d));
             walk.extend(doc.nodes.children[n].iter().map(|&c| (c, d + 1)));
         }
-        let leaves: Vec<usize> = order.iter().filter(|(n, d)| *d > 0 && doc.nodes.children[*n].is_empty()).map(|(n, _)| *n).collect();
+        let leaves: Vec<usize> = order.iter().filter(|(n, _)| doc.nodes.children[*n].is_empty()).map(|(n, _)| *n).collect();
         let tail = |n: usize| doc.nodes.rest[n].translation.normalize_or_zero() * LEAF_TAIL;
         let endpoint = leaves.first().map_or(Vec3::ZERO, |&l| tail(l));
         if leaves.iter().any(|&l| (tail(l) - endpoint).length() > 1e-4) {
@@ -316,14 +305,18 @@ fn v0(doc: &mut Doc) -> Result<(Vec<PhysBone>, Vec<Collider>), Error> {
             for &c in &doc.nodes.children[n] {
                 at(d, doc.length(n, c));
             }
-            if d > 0 && doc.nodes.children[n].is_empty() && endpoint != Vec3::ZERO {
+            if doc.nodes.children[n].is_empty() && endpoint != Vec3::ZERO {
                 at(d, LEAF_TAIL * doc.world[n].scale.x.abs());
             }
         }
         if depths.is_empty() {
+            doc.report.add("vrm 0.x spring root with no bone to move");
             continue;
         }
-        let per_depth: Vec<(Settings, f32)> = depths.iter().map(|ls| (settings, ls.iter().sum::<f32>() / ls.len().max(1) as f32)).collect();
+        if depths.iter().any(|ls| ls.iter().any(|l| (l - ls[0]).abs() > 0.01 * ls[0])) {
+            doc.report.add("vrm 0.x spring tree whose bones at one depth differ in length, given their mean");
+        }
+        let per_depth: Vec<(Joint, f32)> = depths.iter().map(|ls| (settings, ls.iter().sum::<f32>() / ls.len().max(1) as f32)).collect();
         physbones.push(physbone(root, vec![], endpoint, &per_depth, used));
     }
     Ok((physbones, colliders))

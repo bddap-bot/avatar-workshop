@@ -2,8 +2,9 @@
 //
 // usage: node springs.mjs AVATAR.vrm > AVATAR.springs.tsv
 //
-// The avatar is placed facing +Z, a VRM 0.x one turned about Y as three-vrm's VRMUtils.rotateVRM0 turns it, and
-// updated at 60 Hz by three-vrm, each joint's length taken to its child's current place. Rows, tab-separated:
+// The avatar is placed facing +Z, a VRM 0.x one turned half a turn about Y as VRMUtils.rotateVRM0 would, and
+// updated at 60 Hz by three-vrm, patched below so each joint measures its length to its child's current position.
+// Rows, tab-separated:
 //   tip    NODE LENGTH            a spring tip and the rest length of its path from its spring's root
 //   frame  F  PX PY PZ  QX QY QZ QW  HX HY HZ HW
 //                                  the avatar root in the world and the head's local rotation that frame

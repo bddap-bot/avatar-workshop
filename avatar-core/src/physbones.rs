@@ -230,6 +230,21 @@ impl Nodes {
         Nodes::of(&avatar.gltf)
     }
 
+    /// Every node's pose relative to the avatar root from each node's local pose.
+    pub fn world(&self, locals: &[Transform]) -> Vec<Transform> {
+        let mut world: Vec<Option<Transform>> = vec![None; locals.len()];
+        for start in 0..locals.len() {
+            let mut path = vec![start];
+            while let Some(p) = self.parent[*path.last().unwrap()].filter(|&p| world[p].is_none()) {
+                path.push(p);
+            }
+            while let Some(i) = path.pop() {
+                world[i] = Some(self.parent[i].and_then(|p| world[p]).map_or(locals[i], |p| p.mul(&locals[i])));
+            }
+        }
+        world.into_iter().map(|t| t.unwrap_or(Transform::IDENTITY)).collect()
+    }
+
     pub fn of(gltf: &serde_json::Map<String, Value>) -> Result<Nodes, Error> {
         let nodes = gltf.get("nodes").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
         let count = nodes.len();
@@ -833,8 +848,7 @@ fn limit(direction: Vec3, local_rest: Vec3, frame: Quat, limit: LimitAt) -> Vec3
 }
 
 /// Pushes a bone's end at `position` out of the collider, or keeps it inside an inside-bounds one; the caller then
-/// puts it back at a length its stretch allows, as VRM's spring bones do, which the SDK's collider traces match no
-/// worse overall. Bones collide as spheres of their radius at their ends, and one of radius 0 passes through spheres and capsules: both as
+/// puts it back at a length its stretch allows, as VRM's spring bones do. Bones collide as spheres of their radius at their ends, and one of radius 0 passes through spheres and capsules: both as
 /// the reference traces show, whatever the collider's bones-as-spheres setting.
 fn collide(position: Vec3, radius: f32, collider: &ColliderAt, place: &Transform) -> Vec3 {
     let center = place.point(collider.position);

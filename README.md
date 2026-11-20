@@ -123,37 +123,44 @@ missing from `unsupported`.
 
 ## VRM importer
 
-`avatar_core::vrm::import(bytes)` reads a VRM 0.x or 1.0 file into the model; the file's glTF stays as it
-was, less its VRM extensions, so meshes, skins and blendshapes arrive unchanged. A VRM 0.x avatar, which faces
+`avatar_core::vrm::import(bytes)` reads a VRM 0.x or 1.0 file into the model. Its accessors, skins, mesh
+targets and binary chunk stay as they were, so meshes, skins and blendshapes arrive unchanged; a mesh's morph
+target names move to its `extras.targetNames`, and the VRM extensions are removed. A VRM 0.x avatar, which faces
 -Z, has its scene's root nodes turned half a turn about Y, and its thumbs, expression presets, collider offsets
 and MToon properties are read as VRM 0.x holds them; nothing outside the importer sees VRM 0.x.
 
 - Humanoid bones become Unity's HumanBodyBones (VRM 1.0's thumb metacarpal is Unity's thumb proximal), with every
-  node's rest pose as given and VRM 0.x's muscle limits where it sets them.
+  node's rest pose as given and VRM 0.x's muscle limits on bones whose `useDefaultValues` is false.
 - Spring bones become version 1.0 PhysBones with advanced integration, one per VRM 1.0 spring or VRM 0.x root,
-  whose pull, spring and gravity are the values that make the PhysBone step equal VRM's spring step (derived in
-  `src/vrm/springs.rs`); VRM's per-joint values ride on curves over the chain. Colliders keep their shapes.
+  whose pull, spring and gravity make the PhysBone step equal VRM's spring step before collision (derived in
+  `avatar-core/src/vrm/springs.rs`); VRM's per-joint values ride on curves over the chain. Colliders keep their
+  shapes.
 - MToon becomes an `mtoon` material record holding every MToon property: VRM 1.0's as the `VRM10/MToon10`
-  properties UniVRM gives it, VRM 0.x's as the `VRM/MToon` properties it saved. Other materials become `standard`
+  properties UniVRM gives it, VRM 0.x's as the `VRM/MToon` properties the file stores. Other materials become `standard`
   records, or `unknown` ones for unlit shaders.
 - Each expression becomes a clip that holds it at full weight. The vowels become the descriptor's visemes and
   blink its eyelids when each is one blendshape at full weight on one mesh; a bone look-at becomes the eye
   rotations; the look-at offset from the head becomes the view position.
 - What the model cannot hold is in `unsupported`: node constraints, expression overrides and binary
   expressions, look-at by expression, a spring centre, gravity not straight down, a texture transform's
-  rotation and others by kind.
+  rotation, among others; each entry names its kind and a count.
 
 `cargo test --test vrm` imports the files in [`avatar-core/fixtures/vrm/`](avatar-core/fixtures/vrm) (their
 sources and licences are listed there) and checks that each round-trips through the writer and keeps its
-skinned vertices under a bend and its blendshapes, that every MToon property reaches its record, that faces and
-reports are as the files hold them, and that every spring tip, run through the core's PhysBones, stays within
-5% of its path length of three-vrm's under the same motion. `cargo run --release --example vrm -- AVATAR.vrm
-[--out MODEL.glb] [--springs RECORDING.tsv]` imports any file, prints its report and scores its springs.
+skinned vertices under a bend and its blendshapes, that every MToon property reaches its record, that each
+avatar faces +Z, that its visemes, eyelids, expression clips and `unsupported` report match the file, and, for
+the two fixtures with spring bones, that every spring tip run through the core's PhysBones stays within 5% of
+its path length of three-vrm's tip under the same motion. `cargo run --release --example vrm -- AVATAR.vrm
+[--bend] [--out MODEL.glb] [--springs RECORDING.tsv]` imports any file and prints its `unsupported` report, with
+`--bend` how far its skinned vertices land from the source's under that bend, and with a recording each spring
+tip's RMS distance from three-vrm's as a fraction of its path length.
 
-[`vrm-reference/run.sh AVATAR.vrm > RECORDING.tsv`](vrm-reference) records three-vrm 3.5.5 (installed by npm from
-its lockfile; MIT) moving a file's spring bones at 60 Hz under a scripted motion of the avatar and its head. Each
-joint's length is taken to its child's current place, as the VRM spring bone keeps it, where three-vrm alone
-takes it to the child's place before the joint's parent moved that step.
+[`vrm-reference/run.sh AVATAR.vrm > RECORDING.tsv`](vrm-reference) records three-vrm's spring bones
+(`@pixiv/three-vrm-springbone` 3.5.5 on `three` 0.181.0, MIT, installed by `npm ci` from the lockfile on first
+run) moving a file's spring bones at 60 Hz under a scripted motion of the avatar and its head. The script
+patches three-vrm so that each joint measures its length to its child's position in the current step, so the
+bone keeps its length as the VRM spring bone does; unpatched, three-vrm measures to the child's position from
+before the joint's parent moved that step.
 
 ## Expression mixer
 

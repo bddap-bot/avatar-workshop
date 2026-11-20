@@ -109,7 +109,7 @@ pub(super) fn materials(doc: &mut Doc) -> Result<Vec<Material>, Error> {
     for (i, m) in entries.iter().enumerate() {
         let name = m.get("name").and_then(Value::as_str);
         let saved = match doc.version {
-            Version::V0 => v0.iter().find(|p| p.get("name").and_then(Value::as_str) == name).or(v0.get(i)).filter(|p| p.get("shader").and_then(Value::as_str) != Some("VRM_USE_GLTFSHADER")),
+            Version::V0 => v0.get(i).filter(|p| p.get("name").and_then(Value::as_str) == name).or_else(|| v0.iter().find(|p| p.get("name").and_then(Value::as_str) == name)).filter(|p| p.get("shader").and_then(Value::as_str) != Some("VRM_USE_GLTFSHADER")),
             Version::V1 => None,
         };
         out.push(match (saved, m.pointer("/extensions/VRMC_materials_mtoon")) {

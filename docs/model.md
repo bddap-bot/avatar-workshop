@@ -121,7 +121,7 @@ natively, as a Godot extension, or compiled to WebAssembly. A runtime does not r
   migrated with the SDK's own conversion first. Nothing is inferred from file names or from re-importing the
   source mesh file.
 - **VRM 0.x and 1.0.** VRM maps into the model: humanoid to HumanBodyBones, spring bones to PhysBones (VRM's
-  stiffness, drag and gravity converted to the PhysBone parameters that reproduce VRM motion, measured against a
+  stiffness, drag and gravity converted to the PhysBone parameters whose step equals VRM's, measured against a
   VRM reference runtime, three-vrm), MToon to an `mtoon` material record, expressions to visemes, eyelids and animator clips.
   VRM 0.x quirks (coordinate flip, renamed thumbs, its MToon properties) live only here.
 

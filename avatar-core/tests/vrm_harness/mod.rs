@@ -37,23 +37,6 @@ pub fn parse(text: &str) -> Recording {
     r
 }
 
-/// Every node's pose relative to the avatar root from its local poses.
-pub fn forward(nodes: &Nodes, locals: &[Transform]) -> Vec<Transform> {
-    let mut out: Vec<Option<Transform>> = vec![None; locals.len()];
-    fn at(i: usize, nodes: &Nodes, locals: &[Transform], out: &mut Vec<Option<Transform>>) -> Transform {
-        if let Some(t) = out[i] {
-            return t;
-        }
-        let t = match nodes.parent[i] {
-            Some(p) => at(p, nodes, locals, out).mul(&locals[i]),
-            None => locals[i],
-        };
-        out[i] = Some(t);
-        t
-    }
-    (0..locals.len()).map(|i| at(i, nodes, locals, &mut out)).collect()
-}
-
 /// The core's tip positions for every recorded frame, the head node posed as recorded.
 pub fn replay(avatar: &Avatar, recording: &Recording, head: Option<usize>) -> Vec<Vec<Vec3>> {
     let nodes = Nodes::read(avatar).unwrap();
@@ -65,7 +48,7 @@ pub fn replay(avatar: &Avatar, recording: &Recording, head: Option<usize>) -> Ve
         if let Some(h) = head {
             locals[h].rotation = recording.heads[f];
         }
-        let frame = Frame { root: *root, nodes: forward(&nodes, &locals), locals: locals.clone(), active: vec![true; count], enabled: vec![true; avatar.model.physbones.len()] };
+        let frame = Frame { root: *root, nodes: nodes.world(&locals), locals: locals.clone(), active: vec![true; count], enabled: vec![true; avatar.model.physbones.len()] };
         physbones.advance(if f == 0 { 0.0 } else { STEP }, &frame);
         for p in 0..avatar.model.physbones.len() {
             let bones: Vec<usize> = physbones.bones(p).collect();
@@ -73,7 +56,7 @@ pub fn replay(avatar: &Avatar, recording: &Recording, head: Option<usize>) -> Ve
                 locals[n] = t;
             }
         }
-        let posed = forward(&nodes, &locals);
+        let posed = nodes.world(&locals);
         out.push(recording.tips.iter().map(|(n, _)| posed[*n].translation).collect());
     }
     out
@@ -89,6 +72,16 @@ pub fn errors(recording: &Recording, replayed: &[Vec<Vec3>]) -> Vec<(usize, f32)
             let sum: f32 = recording.at.iter().zip(replayed).map(|(r, c)| (r[k] - c[k]).length_squared()).sum();
             (*node, (sum / recording.at.len() as f32).sqrt() / length)
         })
+        .collect()
+}
+
+/// Each tip's largest distance from the recording on any frame, over its path length.
+pub fn worst(recording: &Recording, replayed: &[Vec<Vec3>]) -> Vec<(usize, f32)> {
+    recording
+        .tips
+        .iter()
+        .enumerate()
+        .map(|(k, (node, length))| (*node, recording.at.iter().zip(replayed).map(|(r, c)| (r[k] - c[k]).length()).fold(0.0, f32::max) / length))
         .collect()
 }
 
@@ -145,7 +138,7 @@ fn matrix(t: &Transform) -> Mat4 {
 /// and primitive.
 pub fn skin(gltf: &Map<String, Value>, bin: &[u8], locals: &[Transform]) -> Vec<Vec3> {
     let nodes = Nodes::of(gltf).unwrap();
-    let world = forward(&nodes, locals);
+    let world = nodes.world(locals);
     let mut out = vec![];
     for node in gltf["nodes"].as_array().unwrap() {
         let (Some(mesh), Some(skin)) = (node["mesh"].as_u64(), node["skin"].as_u64()) else { continue };
@@ -176,4 +169,27 @@ pub fn skin(gltf: &Map<String, Value>, bin: &[u8], locals: &[Transform]) -> Vec<
         }
     }
     out
+}
+
+/// The worst distance between the source's and the model's skinned vertices with the elbows, knees and spine
+/// turned alike, a VRM 0.x source turned half about Y to face +Z as the model does, and the most any vertex moved.
+pub fn bend(source: &Map<String, Value>, source_bin: &[u8], avatar: &Avatar) -> (f32, f32) {
+    use avatar_core::model::{HumanBodyBone, SourceFormat};
+    let turn = Quat::from_rotation_x(1.0) * Quat::from_rotation_z(0.5);
+    let bent = |gltf: &Map<String, Value>| {
+        let mut locals = Nodes::of(gltf).unwrap().rest;
+        for b in [HumanBodyBone::LeftLowerArm, HumanBodyBone::RightLowerArm, HumanBodyBone::LeftLowerLeg, HumanBodyBone::RightLowerLeg, HumanBodyBone::Spine] {
+            let n = avatar.model.humanoid.bones[&b].node.0 as usize;
+            locals[n].rotation = (locals[n].rotation * turn).normalize();
+        }
+        locals
+    };
+    let facing = if avatar.model.source.format == SourceFormat::Vrm0 { Quat::from_rotation_y(std::f32::consts::PI) } else { Quat::IDENTITY };
+    let rest = skin(source, source_bin, &Nodes::of(source).unwrap().rest);
+    let want = skin(source, source_bin, &bent(source));
+    let got = skin(&avatar.gltf, &avatar.bin, &bent(&avatar.gltf));
+    assert_eq!(want.len(), got.len(), "the model skins a different number of vertices");
+    let worst = want.iter().zip(&got).map(|(w, g)| (facing * *w - *g).length()).fold(0.0f32, f32::max);
+    let moved = rest.iter().zip(&want).map(|(r, w)| (*r - *w).length()).fold(0.0f32, f32::max);
+    (worst, moved)
 }

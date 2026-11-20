@@ -1,13 +1,14 @@
 //! Imports a VRM file into the model and scores its springs against a three-vrm recording.
 //!
-//! usage: vrm AVATAR.vrm [--out MODEL.glb] [--springs RECORDING.tsv [--trace NODE]]
+//! usage: vrm AVATAR.vrm [--bend] [--out MODEL.glb] [--springs RECORDING.tsv [--trace NODE]]
 //!
-//! Prints the model's unsupported report and, with `--springs` (a `vrm-reference/run.sh` output), each recorded
+//! Prints the model's unsupported report; with `--bend`, how far the model's skinned vertices lie from the
+//! source's with the elbows, knees and spine turned alike; and, with `--springs` (a `vrm-reference/run.sh` output), each recorded
 //! tip's RMS distance from three-vrm's over its path length, worst last; `--trace` prints one tip's positions
 //! and distance each frame.
 
-#[path = "../tests/springs/mod.rs"]
-mod springs;
+#[path = "../tests/vrm_harness/mod.rs"]
+mod vrm_harness;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -18,19 +19,24 @@ fn main() {
     for u in &m.unsupported {
         println!("unsupported\t{}\t{}", u.count, u.kind);
     }
+    if args.iter().any(|a| a == "--bend") {
+        let (gltf, bin) = avatar_core::glb::parts(&std::fs::read(&args[1]).unwrap()).unwrap();
+        let (worst, moved) = vrm_harness::bend(&gltf, &bin, &avatar);
+        println!("bend: skinned vertices within {worst:e} m of the source's, moved up to {moved:.3} m");
+    }
     if let Some(out) = flag("--out") {
         std::fs::write(out, avatar_core::write(&avatar).unwrap()).unwrap();
     }
     if let Some(path) = flag("--springs") {
-        let recording = springs::parse(&std::fs::read_to_string(path).unwrap());
-        let replayed = springs::replay(&avatar, &recording, springs::head(&avatar));
+        let recording = vrm_harness::parse(&std::fs::read_to_string(path).unwrap());
+        let replayed = vrm_harness::replay(&avatar, &recording, vrm_harness::head(&avatar));
         if let Some(node) = flag("--trace").map(|n| n.parse::<usize>().unwrap()) {
             let k = recording.tips.iter().position(|t| t.0 == node).expect("a recorded tip");
             for (f, (r, c)) in recording.at.iter().zip(&replayed).enumerate() {
                 println!("trace\t{f}\t{}\t{}\t{}", r[k], c[k], (r[k] - c[k]).length());
             }
         }
-        let mut errors = springs::errors(&recording, &replayed);
+        let mut errors = vrm_harness::errors(&recording, &replayed);
         errors.sort_by(|a, b| a.1.total_cmp(&b.1));
         for (tip, e) in &errors {
             println!("tip\t{tip}\t{e:.4}");

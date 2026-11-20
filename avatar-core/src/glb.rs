@@ -156,7 +156,7 @@ fn take_extension(gltf: &mut Map<String, Value>) -> Result<Value, Error> {
 
 /// The model as JSON, refused when JSON would not read back the same model: a NaN, or an
 /// out-of-range number that parsed as infinity, which JSON writes as `null`.
-fn carried(model: &AwAvatar) -> Result<Value, Error> {
+pub(crate) fn carried(model: &AwAvatar) -> Result<Value, Error> {
     let value = serde_json::to_value(model).map_err(Error::Model)?;
     match serde_json::from_value::<AwAvatar>(value.clone()) {
         Ok(again) if again == *model => Ok(value),

@@ -1,6 +1,6 @@
 # VRM fixtures
 
-Public VRM files the importer's tests read, each unchanged from its source.
+Public VRM files the importer's tests read, each unchanged from its source except where a conversion is named.
 
 - `crimsom-0.x.vrm`: "Crimsom", avatar 001 of 100Avatars by Polygonal Mind, CC0
   (https://github.com/kourtincat/100Avatars, `100Avatars_001/100Avatars_001_Crimsom.vrm`).

@@ -20,13 +20,13 @@ use crate::model::{
 };
 use crate::physbones::{Nodes, Transform};
 
-pub use springs::rest_world;
-
 #[derive(Debug)]
 pub enum Error {
     Glb(glb::Error),
     NotVrm,
     Malformed(String),
+    /// The model the importer built does not validate: a fault of the importer, not of the file.
+    Invalid(crate::validate::Invalid),
 }
 
 impl fmt::Display for Error {
@@ -35,6 +35,7 @@ impl fmt::Display for Error {
             Error::Glb(e) => write!(f, "{e}"),
             Error::NotVrm => write!(f, "no VRM or VRMC_vrm extension on the glTF root"),
             Error::Malformed(what) => write!(f, "VRM: {what}"),
+            Error::Invalid(e) => write!(f, "the VRM importer built an invalid model, at AW_avatar{}: {}", e.at, e.reason),
         }
     }
 }
@@ -136,19 +137,19 @@ pub fn import(bytes: &[u8]) -> Result<Avatar, Error> {
         (None, None) => return Err(Error::NotVrm),
     };
     if version == Version::V0 {
-        face_forward(&mut gltf);
+        face_forward(&mut gltf)?;
     }
     let mut report = Report::default();
     name_targets(&mut gltf, &mut report);
-    let primitives_without_material = default_material(&mut gltf);
+    default_material(&mut gltf, &mut report);
     let nodes = Nodes::of(&gltf).map_err(|e| malformed(e.to_string()))?;
-    let world = rest_world(&nodes);
+    let world = nodes.world(&nodes.rest);
     let mut doc = Doc { gltf: &gltf, vrm: &vrm, version, nodes, world, report };
 
     let humanoid = humanoid(&doc)?;
-    let clips = expressions(&mut doc)?;
-    let descriptor = descriptor(&mut doc, &humanoid, &clips)?;
     let materials = materials::materials(&mut doc)?;
+    let clips = expressions(&mut doc, &materials)?;
+    let descriptor = descriptor(&mut doc, &humanoid, &clips)?;
     let (physbones, colliders) = springs::springs(&mut doc, &exts)?;
     first_person(&mut doc);
     let constraints: Vec<String> = doc
@@ -170,16 +171,16 @@ pub fn import(bytes: &[u8]) -> Result<Avatar, Error> {
             Some(Renderer {
                 node: NodeIndex(i as u32),
                 enabled: true,
-                materials: slots.iter().map(|p| MaterialIndex(p.get("material").and_then(Value::as_u64).unwrap_or(0) as u32)).collect(),
+                materials: slots.iter().filter_map(|p| p.get("material").and_then(Value::as_u64)).map(|m| MaterialIndex(m as u32)).collect(),
             })
         })
         .collect();
     let node_count = doc.nodes.rest.len();
     let source = source(&doc);
-    let mut unsupported: Vec<Unsupported> = doc.report.0.into_iter().map(|(kind, count)| Unsupported { kind, count }).collect();
-    if primitives_without_material > 0 {
-        unsupported.push(Unsupported { kind: "glTF primitive without a material, given glTF's default".into(), count: primitives_without_material });
+    for name in unread_extensions(doc.gltf) {
+        doc.report.add(format!("vrm extension {name}"));
     }
+    let unsupported: Vec<Unsupported> = doc.report.0.into_iter().map(|(kind, count)| Unsupported { kind, count }).collect();
     let model = AwAvatar {
         source,
         humanoid,
@@ -200,37 +201,34 @@ pub fn import(bytes: &[u8]) -> Result<Avatar, Error> {
     };
     strip_vrm(&mut gltf);
     let avatar = Avatar { gltf, bin, model };
-    crate::validate::validate(&avatar.gltf, &avatar.model).map_err(|e| malformed(format!("{}: {}", e.at, e.reason)))?;
+    if glb::carried(&avatar.model).is_err() {
+        return Err(malformed("a number past f32's range, or one that makes the model's values infinite or NaN"));
+    }
+    crate::validate::validate(&avatar.gltf, &avatar.model).map_err(Error::Invalid)?;
     Ok(avatar)
 }
 
 /// VRM 0.x faces -Z; the model faces +Z, so its scene's root nodes turn half a turn about Y.
-fn face_forward(gltf: &mut Map<String, Value>) {
+fn face_forward(gltf: &mut Map<String, Value>) -> Result<(), Error> {
     let half = Quat::from_xyzw(0.0, 1.0, 0.0, 0.0);
-    let Some(Value::Array(nodes)) = gltf.get_mut("nodes") else { return };
-    let mut child = vec![false; nodes.len()];
-    for n in nodes.iter() {
-        for c in n.get("children").and_then(Value::as_array).into_iter().flatten() {
-            if let Some(c) = c.as_u64().filter(|&c| (c as usize) < child.len()) {
-                child[c as usize] = true;
-            }
-        }
-    }
-    for (n, is_child) in nodes.iter_mut().zip(child) {
+    let nodes = Nodes::of(gltf).map_err(|e| malformed(e.to_string()))?;
+    let Some(Value::Array(json)) = gltf.get_mut("nodes") else { return Ok(()) };
+    for (i, n) in json.iter_mut().enumerate() {
         let Value::Object(n) = n else { continue };
-        if is_child {
+        if nodes.parent[i].is_some() {
             continue;
         }
-        if let Some(m) = floats::<16>(n.get("matrix")) {
-            let turned = glam::Mat4::from_quat(half) * glam::Mat4::from_cols_slice(&m);
+        let rest = nodes.rest[i];
+        let (translation, rotation) = (half * rest.translation, (half * rest.rotation).normalize());
+        if n.contains_key("matrix") {
+            let turned = glam::Mat4::from_scale_rotation_translation(rest.scale, rotation, translation);
             n.insert("matrix".into(), Value::from(turned.to_cols_array().to_vec()));
-            continue;
+        } else {
+            n.insert("translation".into(), Value::from(translation.to_array().to_vec()));
+            n.insert("rotation".into(), Value::from(rotation.to_array().to_vec()));
         }
-        let t = floats::<3>(n.get("translation")).map_or(Vec3::ZERO, Vec3::from);
-        let r = floats::<4>(n.get("rotation")).map_or(Quat::IDENTITY, Quat::from_array);
-        n.insert("translation".into(), Value::from((half * t).to_array().to_vec()));
-        n.insert("rotation".into(), Value::from((half * r).normalize().to_array().to_vec()));
     }
+    Ok(())
 }
 
 /// The model names blendshapes by the mesh's `extras.targetNames`; VRM exporters put them there or on the
@@ -262,7 +260,7 @@ fn name_targets(gltf: &mut Map<String, Value>, report: &mut Report) {
 }
 
 /// Gives a primitive without a material glTF's default one, so every renderer slot names a material.
-fn default_material(gltf: &mut Map<String, Value>) -> u32 {
+fn default_material(gltf: &mut Map<String, Value>, report: &mut Report) {
     let missing = gltf
         .get("meshes")
         .and_then(Value::as_array)
@@ -272,9 +270,9 @@ fn default_material(gltf: &mut Map<String, Value>) -> u32 {
         .filter(|p| p.get("material").is_none())
         .count() as u32;
     if missing == 0 {
-        return 0;
+        return;
     }
-    let Value::Array(materials) = gltf.entry("materials").or_insert_with(|| Value::Array(vec![])) else { return 0 };
+    let Value::Array(materials) = gltf.entry("materials").or_insert_with(|| Value::Array(vec![])) else { return };
     let index = materials.len();
     materials.push(serde_json::json!({ "name": "glTF default", "pbrMetallicRoughness": { "metallicFactor": 1.0, "roughnessFactor": 1.0 } }));
     if let Some(Value::Array(meshes)) = gltf.get_mut("meshes") {
@@ -286,7 +284,27 @@ fn default_material(gltf: &mut Map<String, Value>) -> u32 {
             }
         }
     }
-    missing
+    for _ in 0..missing {
+        report.add("glTF primitive without a material, given glTF's default");
+    }
+}
+
+/// The VRM extensions the importer reads; any other is reported before every VRM extension is dropped.
+const READ: [&str; 7] = ["VRM", "VRMC_vrm", "VRMC_springBone", "VRMC_springBone_extended_collider", "VRMC_materials_mtoon", "VRMC_materials_hdr_emissiveMultiplier", "VRMC_node_constraint"];
+
+fn unread_extensions(gltf: &Map<String, Value>) -> Vec<String> {
+    let mut names: Vec<String> = ["extensionsUsed", "extensionsRequired"]
+        .iter()
+        .filter_map(|k| gltf.get(*k)?.as_array())
+        .flatten()
+        .filter_map(Value::as_str)
+        .chain(gltf.get("extensions").and_then(Value::as_object).into_iter().flat_map(|e| e.keys().map(String::as_str)))
+        .filter(|n| (*n == "VRM" || n.starts_with("VRMC_")) && !READ.contains(n))
+        .map(str::to_owned)
+        .collect();
+    names.sort();
+    names.dedup();
+    names
 }
 
 /// Drops every VRM extension, whose facts the model now holds.
@@ -463,7 +481,7 @@ fn clip(name: String, curves: Vec<Curve>) -> Clip {
 
 /// Each expression as a clip that holds its full effect: blendshapes on Unity's 0 to 100 scale and material
 /// properties at their target values.
-fn expressions(doc: &mut Doc) -> Result<Vec<Clip>, Error> {
+fn expressions(doc: &mut Doc, materials: &[crate::model::Material]) -> Result<Vec<Clip>, Error> {
     let mut clips = vec![];
     match doc.version {
         Version::V1 => {
@@ -490,14 +508,14 @@ fn expressions(doc: &mut Doc) -> Result<Vec<Clip>, Error> {
                     };
                     let value = floats::<4>(b.get("targetValue")).unwrap_or([0.0; 4]);
                     let value = if srgb { materials::to_srgb(value) } else { value };
-                    curves.extend(material_curves(doc, material, property, &value, "rgba"));
+                    curves.extend(material_curves(doc, materials, material, property, &value, "rgba"));
                 }
                 for b in e.get("textureTransformBinds").and_then(Value::as_array).into_iter().flatten() {
                     let material = b.get("material").and_then(Value::as_u64).ok_or_else(|| malformed(format!("expression {name} binds no material")))?;
                     let scale = floats::<2>(b.get("scale")).unwrap_or([1.0, 1.0]);
                     let offset = floats::<2>(b.get("offset")).unwrap_or([0.0, 0.0]);
                     let st = [scale[0], scale[1], offset[0], 1.0 - offset[1] - scale[1]];
-                    curves.extend(material_curves(doc, material, "_MainTex_ST", &st, "xyzw"));
+                    curves.extend(material_curves(doc, materials, material, "_MainTex_ST", &st, "xyzw"));
                 }
                 if e.get("isBinary").and_then(Value::as_bool) == Some(true) {
                     doc.report.add("vrm binary expression");
@@ -522,7 +540,11 @@ fn expressions(doc: &mut Doc) -> Result<Vec<Clip>, Error> {
                     let mesh = b.get("mesh").and_then(Value::as_u64).ok_or_else(|| malformed(format!("blendshape group {name} binds no mesh")))?;
                     let index = b.get("index").and_then(Value::as_u64).ok_or_else(|| malformed(format!("blendshape group {name} binds no morph target")))?;
                     let weight = number(b.get("weight"), 0.0);
-                    for node in doc.mesh_nodes(mesh) {
+                    let nodes = doc.mesh_nodes(mesh);
+                    if nodes.is_empty() {
+                        doc.report.add("vrm expression bound to a mesh no node draws");
+                    }
+                    for node in nodes {
                         curves.push(Curve { binding: Binding::BlendShape { node, name: doc.target_name(node, index)? }, curve: constant(weight) });
                     }
                 }
@@ -534,11 +556,18 @@ fn expressions(doc: &mut Doc) -> Result<Vec<Clip>, Error> {
                     };
                     let property = v.get("propertyName").and_then(Value::as_str).unwrap_or_default().to_owned();
                     let value: Vec<f32> = v.get("targetValue").and_then(Value::as_array).map(|a| a.iter().map(|x| x.as_f64().unwrap_or(0.0) as f32).collect()).unwrap_or_default();
-                    let (base, axes) = match property.strip_suffix("_ST") {
-                        Some(_) => (property.clone(), "xyzw"),
-                        None => (property.clone(), "rgba"),
+                    let (property, axes, value) = match (property.strip_suffix("_ST_S"), property.strip_suffix("_ST_T")) {
+                        (Some(base), _) => (format!("{base}_ST"), "xy", value.get(..2).unwrap_or_default().to_vec()),
+                        (_, Some(base)) => (format!("{base}_ST"), "zw", value.get(2..4).unwrap_or_default().to_vec()),
+                        _ => {
+                            let axes = match materials.get(material).and_then(|m| m.declared.get(&property)) {
+                                Some(crate::model::MaterialProperty::Color(_)) => "rgba",
+                                _ => "xyzw",
+                            };
+                            (property, axes, value)
+                        }
                     };
-                    curves.extend(material_curves(doc, material as u64, &base, &value, axes));
+                    curves.extend(material_curves(doc, materials, material as u64, &property, &value, axes));
                 }
                 if g.get("isBinary").and_then(Value::as_bool) == Some(true) {
                     doc.report.add("vrm binary expression");
@@ -547,16 +576,30 @@ fn expressions(doc: &mut Doc) -> Result<Vec<Clip>, Error> {
             }
         }
     }
+    let mut seen = std::collections::BTreeSet::new();
+    let before = clips.len();
+    clips.retain(|c| seen.insert(c.name.clone()));
+    for _ in clips.len()..before {
+        doc.report.add("vrm expression whose name another already has, left out");
+    }
     Ok(clips)
 }
 
-/// One curve per component of `property` on every renderer drawing `material`.
-fn material_curves(doc: &Doc, material: u64, property: &str, value: &[f32], axes: &str) -> Vec<Curve> {
+/// One curve per component of `property` on every renderer drawing `material`. A renderer's property curve
+/// reaches the first of its materials that declares the property, so a renderer where that is another material
+/// is reported instead.
+fn material_curves(doc: &mut Doc, materials: &[crate::model::Material], material: u64, property: &str, value: &[f32], axes: &str) -> Vec<Curve> {
     let mut out = vec![];
-    for (i, n) in doc.array("nodes").iter().enumerate() {
+    let nodes: Vec<Value> = doc.array("nodes").to_vec();
+    for (i, n) in nodes.iter().enumerate() {
         let Some(mesh) = n.get("mesh").and_then(Value::as_u64).and_then(|m| doc.array("meshes").get(m as usize)) else { continue };
-        let uses = mesh.get("primitives").and_then(Value::as_array).into_iter().flatten().any(|p| p.get("material").and_then(Value::as_u64) == Some(material));
-        if !uses {
+        let slots: Vec<u64> = mesh.get("primitives").and_then(Value::as_array).into_iter().flatten().filter_map(|p| p.get("material").and_then(Value::as_u64)).collect();
+        if !slots.contains(&material) {
+            continue;
+        }
+        let first = slots.iter().find(|&&m| materials.get(m as usize).is_some_and(|r| r.declared.contains_key(property)));
+        if first != Some(&material) {
+            doc.report.add("vrm expression material bind that would reach another material on its renderer");
             continue;
         }
         for (c, v) in axes.chars().zip(value) {
@@ -595,12 +638,12 @@ fn descriptor(doc: &mut Doc, humanoid: &Humanoid, clips: &[Clip]) -> Result<Desc
     const VOWELS: [&str; 5] = ["aa", "ee", "ih", "oh", "ou"];
     let vowels: Vec<Option<(NodeIndex, String)>> = VOWELS.iter().map(|v| single_shape(clips, v)).collect();
     let any_vowel = VOWELS.iter().any(|v| clips.iter().any(|c| c.name == *v && !c.curves.is_empty()));
-    let one_mesh = vowels.iter().flatten().map(|(n, _)| *n).collect::<std::collections::BTreeSet<_>>();
-    let lip_sync = if vowels.iter().all(Option::is_some) && one_mesh.len() == 1 {
+    let viseme_nodes = vowels.iter().flatten().map(|(n, _)| *n).collect::<std::collections::BTreeSet<_>>();
+    let lip_sync = if vowels.iter().all(Option::is_some) && viseme_nodes.len() == 1 {
         let shape = |i: usize| vowels[i].as_ref().unwrap().1.clone();
         let e = String::new;
         LipSync::VisemeBlendShape {
-            mesh: *one_mesh.first().unwrap(),
+            mesh: *viseme_nodes.first().unwrap(),
             visemes: Visemes { sil: e(), pp: e(), ff: e(), th: e(), dd: e(), kk: e(), ch: e(), ss: e(), nn: e(), rr: e(), aa: shape(0), e: shape(1), ih: shape(2), oh: shape(3), ou: shape(4) },
         }
     } else if any_vowel {
