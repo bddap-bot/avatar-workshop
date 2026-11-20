@@ -317,3 +317,69 @@ fn malformed_files_are_refused() {
         }
     }
 }
+
+#[test]
+fn bones_slots_and_target_names_follow_the_file() {
+    for name in ["crimsom-1.0", "twist-1.0"] {
+        let avatar = import(name);
+        let (src, _) = source(name);
+        let human = &src["extensions"]["VRMC_vrm"]["humanoid"]["humanBones"];
+        for (side, s) in [(HumanBodyBone::LeftThumbProximal, "leftThumbMetacarpal"), (HumanBodyBone::LeftThumbIntermediate, "leftThumbProximal"), (HumanBodyBone::LeftThumbDistal, "leftThumbDistal"), (HumanBodyBone::RightThumbProximal, "rightThumbMetacarpal"), (HumanBodyBone::RightThumbIntermediate, "rightThumbProximal"), (HumanBodyBone::RightThumbDistal, "rightThumbDistal")] {
+            let Some(node) = human[s]["node"].as_u64() else { continue };
+            assert_eq!(avatar.model.humanoid.bones[&side].node.0 as u64, node, "{name} {s}");
+        }
+    }
+    for name in FIXTURES {
+        let avatar = import(name);
+        let (src, _) = source(name);
+        for r in &avatar.model.renderers {
+            let mesh = src["nodes"][r.node.0 as usize]["mesh"].as_u64().unwrap() as usize;
+            let slots: Vec<u64> = src["meshes"][mesh]["primitives"].as_array().unwrap().iter().map(|p| p["material"].as_u64().unwrap()).collect();
+            assert_eq!(r.materials.iter().map(|m| m.0 as u64).collect::<Vec<_>>(), slots, "{name} renderer {}", r.node.0);
+        }
+        for (m, mesh) in src["meshes"].as_array().unwrap().iter().enumerate() {
+            let given = mesh["extras"].get("targetNames").or(mesh.pointer("/primitives/0/extras/targetNames"));
+            if let Some(given) = given {
+                assert_eq!(&avatar.gltf["meshes"][m]["extras"]["targetNames"], given, "{name} mesh {m}");
+            }
+        }
+    }
+}
+
+#[test]
+fn texture_transforms_flip_to_unity_v() {
+    let (mut src, bin) = source("twist-1.0");
+    let mut bin = bin;
+    bin.resize(bin.len().next_multiple_of(4), 0);
+    let texture = src["materials"][0]["pbrMetallicRoughness"]["baseColorTexture"]["index"].clone();
+    src["materials"].as_array_mut().unwrap()[0]["pbrMetallicRoughness"]["baseColorTexture"] =
+        serde_json::json!({ "index": texture, "extensions": { "KHR_texture_transform": { "offset": [0.25, 0.125], "scale": [0.5, 0.25] } } });
+    let avatar = importer::import(&glb_of(&src, &bin)).unwrap();
+    let MaterialProperty::Texture(t) = &avatar.model.materials[0].properties["_MainTex"] else { panic!() };
+    assert_eq!((t.tiling, t.offset), ([0.5, 0.25], [0.25, 0.625]));
+}
+
+/// A bone without stretch that a collider pushes keeps its length: every simulated bone's local offset stays
+/// its rest length through twist's colliding hair.
+#[test]
+fn collided_bones_keep_their_length() {
+    use avatar_core::physbones::{Frame, PhysBones, STEP};
+    let avatar = import("twist-1.0");
+    let recording = vrm_harness::parse(&std::fs::read_to_string(fixture("twist-1.0.springs.tsv")).unwrap());
+    let nodes = Nodes::read(&avatar).unwrap();
+    let head = vrm_harness::head(&avatar).unwrap();
+    let mut pb = PhysBones::new(&avatar).unwrap();
+    let mut worst = 0.0f32;
+    for (f, root) in recording.roots.iter().enumerate() {
+        let mut locals = nodes.rest.clone();
+        locals[head].rotation = recording.heads[f];
+        let frame = Frame { root: *root, nodes: nodes.world(&locals), locals: locals.clone(), active: vec![true; locals.len()], enabled: vec![true; avatar.model.physbones.len()] };
+        pb.advance(if f == 0 { 0.0 } else { STEP }, &frame);
+        for p in 0..avatar.model.physbones.len() {
+            for (n, t) in pb.bones(p).collect::<Vec<_>>().into_iter().zip(pb.local(p)).skip(1) {
+                worst = worst.max((t.translation.length() - nodes.rest[n].translation.length()).abs());
+            }
+        }
+    }
+    assert!(worst < 1e-5, "a simulated bone's length moved {worst} m from its rest");
+}
