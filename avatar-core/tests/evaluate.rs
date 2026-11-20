@@ -13,7 +13,7 @@ fn fixture() -> avatar_core::Avatar {
 }
 
 fn input(dt: f32) -> Input<'static> {
-    Input { dt, root: Transform::IDENTITY, poses: &[], held: &[], senders: &[], local: true }
+    Input { dt, root: Transform::IDENTITY, poses: &[], held: &[], senders: &[] }
 }
 
 #[test]
@@ -49,7 +49,7 @@ fn a_grab_reaches_the_animator_after_its_frame() {
     assert_eq!(ev.animator().get(&key), Some(0.0));
     let tip = ev.physbones().bones(c).last().unwrap();
     let at = ev.output().space[tip].translation;
-    assert!(ev.physbones_mut().grab(c, tip, at, Toucher::Wearer));
+    assert!(ev.grab(c, tip, at, Toucher::Wearer));
     ev.evaluate(&input(1.0 / 60.0));
     assert_eq!(ev.animator().get(&key), Some(1.0));
 }

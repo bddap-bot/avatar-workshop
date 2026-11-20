@@ -42,7 +42,7 @@ fn output(out: &Output, frame: usize, file: &mut String, last: &mut BTreeMap<Str
     for (n, a) in out.active.iter().enumerate() {
         log(file, last, frame, format!("active:{n}"), (*a as u8).to_string());
     }
-    for (r, e) in out.enabled.iter().enumerate() {
+    for (r, e) in out.renderers.iter().enumerate() {
         log(file, last, frame, format!("enabled:{r}"), (*e as u8).to_string());
     }
     for (n, s, v) in &out.blendshapes {
@@ -84,22 +84,21 @@ pub fn run(avatar: &Avatar, dir: &Path, frames: Option<usize>) -> Run {
     for f in first..end {
         for (n, v) in script.get(&f).into_iter().flatten() {
             if builtin.contains(n.as_str()) {
-                ev.animator_mut().set_builtin(n, *v);
+                ev.set_builtin(n, *v);
             } else {
-                ev.animator_mut().set(n, *v);
+                ev.set(n, *v);
             }
         }
         if let Some(head) = tracked[0] {
             let h = ev.output().space[head];
-            ev.animator_mut().set_head(Transform { scale: glam::Vec3::ONE, ..h });
+            ev.set_head(Transform { scale: glam::Vec3::ONE, ..h });
         }
         if let Some(t) = track.get(&f) {
             root = t[0];
             poses = tracked.iter().zip(&t[1..]).filter_map(|(n, p)| n.map(|n| (n, *p))).collect();
-            poses.sort_by_key(|(n, _)| super::depth(&nodes.parent, *n));
         }
         let dt = if f == first { 0.0 } else { 1.0 / 60.0 };
-        ev.evaluate(&Input { dt, root, poses: &poses, held: &[], senders: &[], local: true });
+        ev.evaluate(&Input { dt, root, poses: &poses, held: &[], senders: &[] });
         for (tip, p) in tips(avatar, &nodes, &names, &ev, ev.output()) {
             writeln!(run.tips, "{f}\t{tip}\t{:?}\t{:?}\t{:?}", p.x, p.y, p.z).unwrap();
         }

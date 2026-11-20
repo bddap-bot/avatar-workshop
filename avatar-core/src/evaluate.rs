@@ -2,14 +2,13 @@
 //! moves, PhysBones, the constraints that do, then contacts. Receiver and PhysBone parameters reach the next frame's
 //! animator. A runtime drives an [`Evaluator`] and applies its [`Output`]; it composes none of these itself.
 
-use glam::Quat;
+use glam::{Quat, Vec3};
 
-use crate::animator::motion::Target;
+use crate::animator::motion::{axis_index, unit, Target};
 use crate::animator::Animator;
 use crate::constraints::{Constraints, Scene};
 use crate::contacts::{Contacts, Sender};
-use crate::model::Axis;
-use crate::physbones::{Error, Frame, Nodes, PhysBones, Transform};
+use crate::physbones::{Error, Frame, Nodes, PhysBones, Toucher, Transform};
 use crate::Avatar;
 
 /// What the host gives each frame.
@@ -19,15 +18,13 @@ pub struct Input<'a> {
     /// The avatar root in the world. Its scale is not read: the root node's local scale is the avatar's.
     pub root: Transform,
     /// Poses the host sets after animation and before dynamics, in the avatar's root space: tracked or IK-solved
-    /// bones, parents before children.
+    /// bones.
     pub poses: &'a [(usize, Transform)],
     /// Poses that replace what PhysBones leave and hold through the constraints solved after them, in the avatar's
-    /// root space, parents before children: a pose the host already has from the avatar's own dynamics.
+    /// root space: a replay of recorded dynamics. A runtime passes none.
     pub held: &'a [(usize, Transform)],
     /// Contact senders outside the avatar: other avatars' and the hands'.
     pub senders: &'a [Sender],
-    /// Whether the avatar is the local player's.
-    pub local: bool,
 }
 
 /// What animation leaves, given by a host that does not run the core's animator on this avatar.
@@ -37,7 +34,9 @@ pub struct Animated<'a> {
     /// Every node's own active flag.
     pub active: &'a [bool],
     /// Every PhysBone's enabled flag.
-    pub enabled: &'a [bool],
+    pub physbones: &'a [bool],
+    /// The constraint and contact fields animation sets.
+    pub fields: &'a [(Field, f32)],
 }
 
 /// One frame's result. Blendshapes, material properties and slots are those the animator binds.
@@ -50,7 +49,7 @@ pub struct Output {
     /// Every node's own active flag.
     pub active: Vec<bool>,
     /// Each renderer's enabled flag, in the model's renderer order.
-    pub enabled: Vec<bool>,
+    pub renderers: Vec<bool>,
     /// (renderer node, blendshape, weight from 0 to 100).
     pub blendshapes: Vec<(u32, String, f32)>,
     /// (renderer node, property with its component, value).
@@ -66,7 +65,9 @@ struct TransformTargets {
     scale: [Option<usize>; 3],
 }
 
-enum Field {
+/// A constraint or contact field an animation curve binds, by component index and the name the curve binds it with.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Field {
     Constraint(usize, String),
     Sender(usize, String),
     Receiver(usize, String),
@@ -86,18 +87,12 @@ pub struct Evaluator {
     blendshapes: Vec<(usize, u32, String)>,
     materials: Vec<(usize, u32, String)>,
     slots: Vec<(usize, u32, u32)>,
-    /// The parameter each PhysBone and receiver drives.
-    physbone_parameters: Vec<Option<String>>,
+    physbone_parameters: Vec<Option<[String; 5]>>,
     authored_active: Vec<bool>,
     authored_enabled: Vec<bool>,
     authored_renderers: Vec<bool>,
     renderer_nodes: Vec<u32>,
-    enabled: Vec<bool>,
     output: Output,
-}
-
-fn axis(a: Axis) -> usize {
-    crate::animator::motion::axis_index(a)
 }
 
 impl Evaluator {
@@ -119,12 +114,15 @@ impl Evaluator {
             blendshapes: vec![],
             materials: vec![],
             slots: vec![],
-            physbone_parameters: m.physbones.iter().map(|p| p.parameter.clone()).collect(),
+            physbone_parameters: m
+                .physbones
+                .iter()
+                .map(|p| p.parameter.as_ref().map(|n| ["IsGrabbed", "IsPosed", "Angle", "Stretch", "Squish"].map(|s| format!("{n}_{s}"))))
+                .collect(),
             authored_active: (0..count).map(|n| m.nodes.get(n).is_none_or(|x| x.active)).collect(),
             authored_enabled: m.physbones.iter().map(|p| p.enabled).collect(),
             authored_renderers: m.renderers.iter().map(|r| r.enabled).collect(),
             renderer_nodes: m.renderers.iter().map(|r| r.node.0).collect(),
-            enabled: m.physbones.iter().map(|p| p.enabled).collect(),
             output: Output {
                 locals: nodes.rest.clone(),
                 space: vec![Transform::IDENTITY; count],
@@ -140,16 +138,16 @@ impl Evaluator {
                 _ => None,
             };
             match t {
-                Target::Translation(_, a) => slot.into_iter().for_each(|t| t.translation[axis(*a)] = Some(i)),
-                Target::Rotation(_, a) => slot.into_iter().for_each(|t| t.rotation[axis(*a)] = Some(i)),
-                Target::Scale(_, a) => slot.into_iter().for_each(|t| t.scale[axis(*a)] = Some(i)),
+                Target::Translation(_, a) => slot.into_iter().for_each(|t| t.translation[axis_index(*a)] = Some(i)),
+                Target::Rotation(_, a) => slot.into_iter().for_each(|t| t.rotation[axis_index(*a)] = Some(i)),
+                Target::Scale(_, a) => slot.into_iter().for_each(|t| t.scale[axis_index(*a)] = Some(i)),
                 Target::NodeActive(n) if (*n as usize) < count => e.node_active.push((i, *n as usize)),
                 Target::RendererEnabled(n) => {
                     if let Some(r) = e.renderer_nodes.iter().position(|x| x == n) {
                         e.renderer_enabled.push((i, r));
                     }
                 }
-                Target::PhysBone(p, f) if f == "m_Enabled" && (*p as usize) < e.enabled.len() => e.physbone_enabled.push((i, *p as usize)),
+                Target::PhysBone(p, f) if f == "m_Enabled" && (*p as usize) < e.authored_enabled.len() => e.physbone_enabled.push((i, *p as usize)),
                 Target::Constraint(c, f) => e.fields.push((i, Field::Constraint(*c as usize, f.clone()))),
                 Target::ContactSender(c, f) => e.fields.push((i, Field::Sender(*c as usize, f.clone()))),
                 Target::ContactReceiver(c, f) => e.fields.push((i, Field::Receiver(*c as usize, f.clone()))),
@@ -161,7 +159,7 @@ impl Evaluator {
         }
         e.transforms = transforms.into_iter().enumerate().filter_map(|(n, t)| t.map(|t| (n, t))).collect();
         e.output.active.clone_from(&e.authored_active);
-        e.output.enabled.clone_from(&e.authored_renderers);
+        e.output.renderers.clone_from(&e.authored_renderers);
         e.output.space = space(&e.nodes.parent, &e.output.locals, &[]);
         e.write_bound();
         Ok(e)
@@ -171,37 +169,57 @@ impl Evaluator {
         &self.animator
     }
 
-    /// For the host's parameters: [`Animator::set`], [`Animator::set_builtin`], [`Animator::set_head`],
+    /// Sets an expression parameter; [`Animator::set`].
+    pub fn set(&mut self, name: &str, value: f32) {
+        self.animator.set(name, value)
+    }
+
+    /// Sets a built-in parameter from the host's input; [`Animator::set_builtin`]. `IsLocal` also decides which
+    /// receivers run.
+    pub fn set_builtin(&mut self, name: &str, value: f32) -> bool {
+        self.animator.set_builtin(name, value)
+    }
+
     /// [`Animator::set_eyes`].
-    pub fn animator_mut(&mut self) -> &mut Animator {
-        &mut self.animator
+    pub fn set_eyes(&mut self, blink: f32, look_y: f32) {
+        self.animator.set_eyes(blink, look_y)
+    }
+
+    /// [`Animator::set_head`].
+    pub fn set_head(&mut self, head: Transform) {
+        self.animator.set_head(head)
+    }
+
+    /// [`Animator::bind_default`].
+    pub fn bind_default(&mut self, target: &Target, value: f32) {
+        self.animator.bind_default(target, value)
+    }
+
+    /// [`PhysBones::grab`].
+    pub fn grab(&mut self, physbone: usize, node: usize, at: Vec3, who: Toucher) -> bool {
+        self.physbones.grab(physbone, node, at, who)
+    }
+
+    /// [`PhysBones::hold`].
+    pub fn hold(&mut self, physbone: usize, at: Vec3) {
+        self.physbones.hold(physbone, at)
+    }
+
+    /// [`PhysBones::release`].
+    pub fn release(&mut self, physbone: usize, pose: bool, who: Toucher) {
+        self.physbones.release(physbone, pose, who)
     }
 
     pub fn physbones(&self) -> &PhysBones {
         &self.physbones
     }
 
-    /// For the host's grabs: [`PhysBones::grab`], [`PhysBones::hold`], [`PhysBones::release`].
-    pub fn physbones_mut(&mut self) -> &mut PhysBones {
-        &mut self.physbones
-    }
-
     pub fn constraints(&self) -> &Constraints {
         &self.constraints
     }
 
-    /// For a host that gives [`Animated`] and so sets animated constraint fields itself.
-    pub fn constraints_mut(&mut self) -> &mut Constraints {
-        &mut self.constraints
-    }
-
     pub fn contacts(&self) -> &Contacts {
         &self.contacts
-    }
-
-    /// For a host that gives [`Animated`] and so sets animated contact fields itself.
-    pub fn contacts_mut(&mut self) -> &mut Contacts {
-        &mut self.contacts
     }
 
     pub fn output(&self) -> &Output {
@@ -232,55 +250,46 @@ impl Evaluator {
                         q[a] = values[*i];
                     }
                 }
-                let q = Quat::from_array(q);
-                r.rotation = if q.length_squared() > 0.0 { q.normalize() } else { Quat::IDENTITY };
+                r.rotation = unit(Quat::from_array(q));
             }
         }
         let mut active = self.authored_active.clone();
         for (i, n) in &self.node_active {
             active[*n] = values[*i] != 0.0;
         }
-        self.enabled.clone_from(&self.authored_enabled);
+        let mut physbones = self.authored_enabled.clone();
         for (i, p) in &self.physbone_enabled {
-            self.enabled[*p] = values[*i] != 0.0;
+            physbones[*p] = values[*i] != 0.0;
         }
         for (i, f) in &self.fields {
-            let v = values[*i];
-            match f {
-                Field::Constraint(c, f) => self.constraints.set(*c, f, v),
-                Field::Sender(c, f) => self.contacts.set_sender(*c, f, v),
-                Field::Receiver(c, f) => self.contacts.set_receiver(*c, f, v),
-            }
+            set_field(&mut self.constraints, &mut self.contacts, f, values[*i]);
         }
-        let enabled = std::mem::take(&mut self.enabled);
-        self.dynamics(input, locals, active, &enabled);
-        self.enabled = enabled;
+        self.dynamics(input, locals, active, &physbones);
         let values = self.animator.values();
         for (i, r) in &self.renderer_enabled {
-            self.output.enabled[*r] = values[*i] != 0.0;
+            self.output.renderers[*r] = values[*i] != 0.0;
         }
         self.write_bound();
         &self.output
     }
 
-    /// Evaluates a frame from what the host's animation left; the core's animator does not run, and constraint and
-    /// contact fields keep what the host set.
+    /// Evaluates a frame from what the host's animation left instead of the core's animator, which does not run:
+    /// the renderers and the animator-bound output stay as authored.
     pub fn evaluate_animated(&mut self, input: &Input, animated: &Animated) -> &Output {
-        self.dynamics(input, animated.locals.to_vec(), animated.active.to_vec(), animated.enabled);
+        let count = self.nodes.parent.len();
+        assert!(animated.locals.len() == count && animated.active.len() == count, "animation leaves {} locals and {} active flags for {count} nodes", animated.locals.len(), animated.active.len());
+        assert_eq!(animated.physbones.len(), self.authored_enabled.len(), "a PhysBone flag for each PhysBone");
+        for (f, v) in animated.fields {
+            set_field(&mut self.constraints, &mut self.contacts, f, *v);
+        }
+        self.dynamics(input, animated.locals.to_vec(), animated.active.to_vec(), animated.physbones);
         &self.output
     }
 
     fn dynamics(&mut self, input: &Input, mut locals: Vec<Transform>, active: Vec<bool>, enabled: &[bool]) {
         let parent = &self.nodes.parent;
-        let mut posed = vec![None; locals.len()];
-        for (n, t) in input.poses {
-            locals[*n] = match parent[*n] {
-                Some(p) => world(parent, &locals, &posed, p).relative(t),
-                None => *t,
-            };
-            posed[*n] = Some(*t);
-        }
-        let rigid = Transform { scale: glam::Vec3::ONE, ..input.root };
+        let posed = place(parent, &mut locals, input.poses);
+        let rigid = Transform { scale: Vec3::ONE, ..input.root };
         let before = locals.clone();
         self.constraints.solve_before_physbones(&mut Scene { root: rigid, locals: &mut locals, active: &active });
         let moved: Vec<bool> = before.iter().zip(&locals).map(|(a, b)| a != b).collect();
@@ -295,24 +304,17 @@ impl Evaluator {
                 locals[n] = l;
             }
         }
-        let held = |locals: &mut Vec<Transform>| {
-            for (n, t) in input.held {
-                locals[*n] = match parent[*n] {
-                    Some(p) => world(parent, locals, &[], p).relative(t),
-                    None => *t,
-                };
-            }
-        };
-        held(&mut locals);
+        place(parent, &mut locals, input.held);
         self.constraints.solve_after_physbones(&mut Scene { root: rigid, locals: &mut locals, active: &active });
-        held(&mut locals);
+        place(parent, &mut locals, input.held);
         let world: Vec<Transform> = worlds(parent, &rigid, &locals);
-        self.contacts.advance(input.dt, &world, &active, input.senders, input.local);
-        for (c, name) in self.physbone_parameters.iter().enumerate() {
-            let Some(name) = name else { continue };
+        let local = self.animator.builtin("IsLocal").is_none_or(|v| v != 0.0);
+        self.contacts.advance(input.dt, &world, &active, input.senders, local);
+        for (c, names) in self.physbone_parameters.iter().enumerate() {
+            let Some(names) = names else { continue };
             let p = self.physbones.parameters(c);
-            for (suffix, v) in [("IsGrabbed", p.is_grabbed as u8 as f32), ("IsPosed", p.is_posed as u8 as f32), ("Angle", p.angle), ("Stretch", p.stretch), ("Squish", p.squish)] {
-                self.animator.set(&format!("{name}_{suffix}"), v);
+            for (name, v) in names.iter().zip([p.is_grabbed as u8 as f32, p.is_posed as u8 as f32, p.angle, p.stretch, p.squish]) {
+                self.animator.set(name, v);
             }
         }
         let mut received: Vec<(&str, f32)> = vec![];
@@ -339,6 +341,30 @@ impl Evaluator {
     }
 }
 
+fn set_field(constraints: &mut Constraints, contacts: &mut Contacts, f: &Field, v: f32) {
+    match f {
+        Field::Constraint(c, f) => constraints.set(*c, f, v),
+        Field::Sender(c, f) => contacts.set_sender(*c, f, v),
+        Field::Receiver(c, f) => contacts.set_receiver(*c, f, v),
+    }
+}
+
+/// Places each node at its root-space pose by setting its local, whatever the order of `poses`, and returns the
+/// poses by node.
+fn place(parent: &[Option<usize>], locals: &mut [Transform], poses: &[(usize, Transform)]) -> Vec<Option<Transform>> {
+    let mut posed = vec![None; locals.len()];
+    for (n, t) in poses {
+        posed[*n] = Some(*t);
+    }
+    for (n, t) in poses {
+        locals[*n] = match parent[*n] {
+            Some(p) => world(parent, locals, &posed, p).relative(t),
+            None => *t,
+        };
+    }
+    posed
+}
+
 /// A node's pose in the avatar's root space: a pose the host gave as given, the rest from the locals.
 fn world(parent: &[Option<usize>], locals: &[Transform], posed: &[Option<Transform>], node: usize) -> Transform {
     if let Some(Some(t)) = posed.get(node) {
@@ -346,7 +372,7 @@ fn world(parent: &[Option<usize>], locals: &[Transform], posed: &[Option<Transfo
     }
     match parent[node] {
         Some(p) => world(parent, locals, posed, p).mul(&locals[node]),
-        None => Transform { translation: glam::Vec3::ZERO, rotation: Quat::IDENTITY, scale: locals[node].scale },
+        None => Transform { translation: Vec3::ZERO, rotation: Quat::IDENTITY, scale: locals[node].scale },
     }
 }
 
@@ -380,7 +406,7 @@ fn fill(parent: &[Option<usize>], locals: &[Transform], posed: &[Option<Transfor
     let t = match (posed.get(n).copied().flatten(), parent[n]) {
         (Some(t), _) => t,
         (None, Some(p)) => fill(parent, locals, posed, p, out).mul(&locals[n]),
-        (None, None) => Transform { translation: glam::Vec3::ZERO, rotation: Quat::IDENTITY, scale: locals[n].scale },
+        (None, None) => Transform { translation: Vec3::ZERO, rotation: Quat::IDENTITY, scale: locals[n].scale },
     };
     out[n] = Some(t);
     t

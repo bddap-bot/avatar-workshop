@@ -737,6 +737,11 @@ impl Animator {
         self.look_y = look_y;
     }
 
+    /// A built-in parameter as the host last set it, or its default.
+    pub fn builtin(&self, name: &str) -> Option<f32> {
+        self.builtins.get(name).copied()
+    }
+
     /// Sets a built-in parameter from the host's input; false for a name that is not one of [`BUILT_INS`].
     pub fn set_builtin(&mut self, name: &str, value: f32) -> bool {
         let Some(v) = self.builtins.get_mut(name) else { return false };

@@ -455,7 +455,7 @@ impl Run {
         // The emulator binds the animator during the blink window of its first frame, so the eyelid's bound default
         // is the shut shape.
         if let Some(t) = blink_shape.as_ref().filter(|_| emulator_blink(created)) {
-            ev.animator_mut().bind_default(t, 100.0);
+            ev.bind_default(t, 100.0);
         }
         let keys: Vec<(String, Key)> = values.keys().filter_map(|k| self.key(k).map(|t| (k.clone(), t))).collect();
         let materials: Vec<String> = self.avatar.gltf["materials"]
@@ -494,9 +494,9 @@ impl Run {
         for f in 0..end {
             for (n, v) in inputs.get(&f).into_iter().flatten() {
                 if builtin.contains(n.as_str()) {
-                    ev.animator_mut().set_builtin(raw.get(n).map_or(n.as_str(), String::as_str), *v);
+                    ev.set_builtin(raw.get(n).map_or(n.as_str(), String::as_str), *v);
                 } else {
-                    ev.animator_mut().set(raw.get(n).map_or(n.as_str(), String::as_str), *v);
+                    ev.set(raw.get(n).map_or(n.as_str(), String::as_str), *v);
                 }
             }
             for (n, logs) in &dynamic {
@@ -507,19 +507,19 @@ impl Run {
                     .iter()
                     .map(|l| at(l, f).unwrap_or_else(|| panic!("the recording holds no animator value of {n} at frame {f}")).parse().unwrap())
                     .collect();
-                ev.animator_mut().set(n, held_value(n, f, &values));
+                ev.set(n, held_value(n, f, &values));
             }
             if let Some(h) = f.checked_sub(1).and_then(|g| heads.get(&g)) {
-                ev.animator_mut().set_head(*h);
+                ev.set_head(*h);
             }
-            ev.animator_mut().set_eyes(emulator_blink(f) as u8 as f32, 0.0);
+            ev.set_eyes(emulator_blink(f) as u8 as f32, 0.0);
             let mut dt = 0.0;
             if let Some(&t) = times.get(&f) {
                 assert!(t >= clock, "the graph's time went back at frame {f}");
                 dt = (t - clock) as f32;
                 clock = t;
             }
-            ev.evaluate(&Input { dt, root: Transform::IDENTITY, poses: &[], held: &[], senders: &[], local: true });
+            ev.evaluate(&Input { dt, root: Transform::IDENTITY, poses: &[], held: &[], senders: &[] });
             let anim = ev.animator();
             if let Ok(k) = std::env::var("AW_CLOCK") {
                 for s in anim.states().iter().filter(|s| format!("{}:{}", order[s.playable], s.layer) == k) {

@@ -94,19 +94,18 @@ numbering each differing key and menu control; `--names` prints their names.
 
 `avatar_core::evaluate::Evaluator` is the one entry point a runtime drives: it owns a model's animator,
 constraints, PhysBones and contacts and evaluates a frame in VRChat's order. `Evaluator::new(&avatar)` builds
-them; each frame the host sets parameters through `animator_mut()` (`set_builtin`, `set`, `set_eyes`,
-`set_head`), grabs through `physbones_mut()` (`grab`, `hold`, `release`), and calls `evaluate(&Input)` with the
-seconds since the last frame, the avatar root in the world, the root-space poses of the bones it moves (tracked
-or IK-solved), the senders outside the avatar and whether the avatar is the local player's. The frame runs the
-animator (not on a frame with no time passed), applies its node transforms, active flags, PhysBone enabled flags
-and constraint and contact fields over the rest pose, places the host's poses, solves the constraints before
-PhysBones, advances PhysBones (a stopped chain leaves its bones to animation), solves the constraints after them,
-advances contacts, and sets each receiver's and PhysBone's parameters on the animator for the next frame, where a
-host's own `set` before then wins. `output()` is the frame: every node's local pose and root-space pose, active
-flags, each renderer's enabled flag, and the blendshape weights, material properties and slots the animator
-binds. A host with poses from the avatar's own dynamics passes them as `Input::held`, and one that animates the
-avatar itself calls `evaluate_animated` with what its animation left. The PhysBones, dynamics and animator
-replays above all run on it.
+them; each frame the host sets parameters (`set_builtin`, `set`, `set_eyes`, `set_head`; the `IsLocal` built-in
+also decides which receivers run), drives grabs (`grab`, `hold`, `release`), and calls `evaluate(&Input)` with
+the seconds since the last frame, the avatar root in the world, the root-space poses of the bones it moves
+(tracked or IK-solved, in any order) and the senders outside the avatar. The frame runs the animator (not on a
+frame with no time passed), applies its node transforms, active flags, PhysBone enabled flags and constraint and
+contact fields over the rest pose, places the host's poses, solves the constraints before PhysBones, advances
+PhysBones (a stopped chain leaves its bones to animation), solves the constraints after them, advances contacts,
+and sets each receiver's and PhysBone's parameters on the animator for the next frame, where a host's own `set`
+before then wins. `output()` is the frame: every node's local pose and root-space pose, active flags, each
+renderer's enabled flag, and the blendshape weights, material properties and slots the animator binds. The
+reference replays drive it with what the recording's animation left (`evaluate_animated`) and, for the dynamics
+replay, with the SDK's PhysBone output in place of the core's (`Input::held`); a runtime uses neither.
 
 `cargo run --release --example run -- RECORDING AVATAR.glb OUT [--frames N]` writes the core's reference run
 of a model under a recording's scripted input: each frame the parameters `inputs.tsv` sets and the root, head and

@@ -151,8 +151,7 @@ pub fn score(dir: &Path, replay: &Replay) -> Report {
         let root = Transform { scale: Vec3::ONE, ..*root };
         outside.iter().zip(&outside_at).map(|(s, at)| Sender { at: root.mul(at), ..s.clone() }).collect()
     };
-    let mut every: Vec<usize> = (0..replay.nodes.parent.len()).collect();
-    every.sort_by_key(|n| super::depth(&replay.nodes.parent, *n));
+    let every: Vec<usize> = (0..replay.nodes.parent.len()).collect();
     replay.drive(60.0, &every, &held, &mut senders, &mut |x, ev| {
         let f = x.round() as usize;
         let contacts = ev.contacts();

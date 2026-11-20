@@ -14,7 +14,7 @@ use std::ops::Range;
 use std::path::Path;
 
 use avatar_core::contacts::Sender;
-use avatar_core::evaluate::{Animated, Evaluator, Input, Output};
+use avatar_core::evaluate::{Animated, Evaluator, Field, Input, Output};
 use avatar_core::physbones::{Frame, Nodes, Toucher, Transform};
 use avatar_core::Avatar;
 use glam::{Quat, Vec3};
@@ -98,13 +98,6 @@ pub struct Grab {
     pub at: Option<Vec3>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Component {
-    Constraint,
-    Sender,
-    Receiver,
-}
-
 pub struct Replay {
     pub avatar: Avatar,
     pub nodes: Nodes,
@@ -117,9 +110,8 @@ pub struct Replay {
     /// The nodes whose root-space pose the recording holds, and the root node, which it holds at the origin
     /// unscaled: its poses are metres from the root whatever its scale.
     pub posed: Vec<usize>,
-    /// Each constraint and contact field a curve drives, by frame: (component, index, field, value), signed as the
-    /// model holds it; the changes before the first frame replayed are on it.
-    pub fields: BTreeMap<usize, Vec<(Component, usize, String, f32)>>,
+    /// Each constraint and contact field a curve drives, by frame when it changes, signed as the model holds it.
+    pub fields: BTreeMap<usize, Vec<(Field, f32)>>,
     pub grabs: BTreeMap<usize, Grab>,
 }
 
@@ -249,8 +241,17 @@ impl Replay {
         each: &mut dyn FnMut(f64, &Evaluator),
     ) {
         let mut ev = Evaluator::new(&self.avatar).unwrap();
+        let mut fields: Vec<(Field, f32)> = vec![];
+        let change = |fields: &mut Vec<(Field, f32)>, changes: &[(Field, f32)]| {
+            for (f, v) in changes {
+                match fields.iter_mut().find(|(g, _)| g == f) {
+                    Some((_, w)) => *w = *v,
+                    None => fields.push((f.clone(), *v)),
+                }
+            }
+        };
         for (_, changes) in self.fields.range(..self.first) {
-            apply(&mut ev, changes);
+            change(&mut fields, changes);
         }
         let span = (self.frames.len() - 1) as f64 / 60.0;
         let (mut starts, mut firsts) = (BTreeMap::new(), BTreeMap::new());
@@ -275,41 +276,38 @@ impl Replay {
                 (false, false) => self.frames[i].clone(),
             };
             if whole {
-                apply(&mut ev, self.fields.get(&at).map_or(&[][..], Vec::as_slice));
+                change(&mut fields, self.fields.get(&at).map_or(&[][..], Vec::as_slice));
                 holding.extend(held.get(&at).into_iter().flatten().copied());
                 outside = senders(at, &frame.root);
             }
             if let Some(g) = self.grabs.get(&at).filter(|_| whole) {
-                let pb = ev.physbones_mut();
-                let chain = (0..physbones.len()).find(|&c| pb.bones(c).any(|n| n == g.node)).unwrap();
+                let chain = (0..physbones.len()).find(|&c| ev.physbones().bones(c).any(|n| n == g.node)).unwrap();
                 let world = g.at.map(|a| frame.root.point(a));
                 match g.event.as_str() {
                     "grab" | "miss" => {
-                        let held = pb.grab(chain, g.node, world.unwrap(), Toucher::Wearer);
+                        let held = ev.grab(chain, g.node, world.unwrap(), Toucher::Wearer);
                         assert_eq!(held, g.event == "grab", "frame {}: the reference's grab was a {}", self.first as f64 + x, g.event);
                         starts.insert(chain, world.unwrap());
                         firsts.remove(&chain);
                     }
                     "hold" => {
                         let first = *firsts.entry(chain).or_insert(world.unwrap());
-                        pb.hold(chain, world.unwrap() - first + starts[&chain]);
+                        ev.hold(chain, world.unwrap() - first + starts[&chain]);
                     }
-                    "release" => pb.release(chain, false, Toucher::Wearer),
-                    _ => pb.release(chain, true, Toucher::Wearer),
+                    "release" => ev.release(chain, false, Toucher::Wearer),
+                    _ => ev.release(chain, true, Toucher::Wearer),
                 }
             }
             let poses: Vec<(usize, Transform)> = posed.iter().map(|&n| (n, frame.nodes[n])).collect();
-            let mut pinned: Vec<(usize, Transform)> = holding.iter().map(|(n, t)| (*n, *t)).collect();
-            pinned.sort_by_key(|(n, _)| depth(&self.nodes.parent, *n));
+            let pinned: Vec<(usize, Transform)> = holding.iter().map(|(n, t)| (*n, *t)).collect();
             let input = Input {
                 dt: if k == 0 { 0.0 } else { (1.0 / rate) as f32 },
                 root: frame.root,
                 poses: &poses,
                 held: &pinned,
                 senders: &outside,
-                local: true,
             };
-            ev.evaluate_animated(&input, &Animated { locals: &frame.locals, active: &frame.active, enabled: &frame.enabled });
+            ev.evaluate_animated(&input, &Animated { locals: &frame.locals, active: &frame.active, physbones: &frame.enabled, fields: &fields });
             each(self.first as f64 + x, &ev);
         }
     }
@@ -317,9 +315,7 @@ impl Replay {
     /// The PhysBone tips and parameters at `rate` Hz.
     pub fn run(&self, rate: f64) -> Trace {
         let mut trace = Trace { frames: vec![], tips: vec![], parameters: vec![] };
-        let mut posed = self.posed.clone();
-        posed.sort_by_key(|n| depth(&self.nodes.parent, *n));
-        self.drive(rate, &posed, &BTreeMap::new(), &mut |_, _| vec![], &mut |f, ev| {
+        self.drive(rate, &self.posed, &BTreeMap::new(), &mut |_, _| vec![], &mut |f, ev| {
             trace.frames.push(f);
             trace.tips.push(self.tips(ev, ev.output()));
             trace.parameters.push(physbone_parameters(&self.avatar, ev));
@@ -367,27 +363,8 @@ pub fn physbone_parameters(avatar: &Avatar, ev: &Evaluator) -> BTreeMap<String, 
     parameters
 }
 
-fn apply(ev: &mut Evaluator, changes: &[(Component, usize, String, f32)]) {
-    for (component, i, field, v) in changes {
-        match component {
-            Component::Constraint => ev.constraints_mut().set(*i, field, *v),
-            Component::Sender => ev.contacts_mut().set_sender(*i, field, *v),
-            Component::Receiver => ev.contacts_mut().set_receiver(*i, field, *v),
-        }
-    }
-}
-
-pub fn depth(parent: &[Option<usize>], mut node: usize) -> usize {
-    let mut d = 0;
-    while let Some(p) = parent[node] {
-        d += 1;
-        node = p;
-    }
-    d
-}
-
 /// Each constraint and contact field a curve drives, by frame before `end`.
-fn fields(dir: &Path, replay: &Replay, end: usize) -> BTreeMap<usize, Vec<(Component, usize, String, f32)>> {
+fn fields(dir: &Path, replay: &Replay, end: usize) -> BTreeMap<usize, Vec<(Field, f32)>> {
     let m = &replay.avatar.model;
     let index: BTreeMap<&str, usize> = replay.names.iter().enumerate().filter_map(|(i, n)| n.as_deref().map(|n| (n, i))).collect();
     let mut out = BTreeMap::<usize, Vec<_>>::new();
@@ -398,10 +375,10 @@ fn fields(dir: &Path, replay: &Replay, end: usize) -> BTreeMap<usize, Vec<(Compo
             break;
         }
         let Some((kind, rest)) = r[1].split_once(':') else { continue };
-        let (component, nodes): (Component, Vec<u32>) = match kind {
-            "constraint" => (Component::Constraint, m.constraints.iter().map(|c| c.node.0).collect()),
-            "sender" => (Component::Sender, m.contacts.senders.iter().map(|c| c.node.0).collect()),
-            "receiver" => (Component::Receiver, m.contacts.receivers.iter().map(|c| c.node.0).collect()),
+        let nodes: Vec<u32> = match kind {
+            "constraint" => m.constraints.iter().map(|c| c.node.0).collect(),
+            "sender" => m.contacts.senders.iter().map(|c| c.node.0).collect(),
+            "receiver" => m.contacts.receivers.iter().map(|c| c.node.0).collect(),
             _ => continue,
         };
         let Some((rest, field)) = rest.rsplit_once(':') else { continue };
@@ -410,7 +387,12 @@ fn fields(dir: &Path, replay: &Replay, end: usize) -> BTreeMap<usize, Vec<(Compo
         let k: usize = k.parse().unwrap();
         let Some(index) = nodes.iter().enumerate().filter(|(_, n)| **n as usize == node).nth(k).map(|(i, _)| i) else { continue };
         let v: f32 = r[2].parse().unwrap();
-        out.entry(f).or_default().push((component, index, field.to_string(), v));
+        let field = match kind {
+            "constraint" => Field::Constraint(index, field.to_string()),
+            "sender" => Field::Sender(index, field.to_string()),
+            _ => Field::Receiver(index, field.to_string()),
+        };
+        out.entry(f).or_default().push((field, v));
     }
     out
 }
