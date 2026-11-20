@@ -1,0 +1,10 @@
+{
+  "name": "avatar-workshop-vrm-reference",
+  "private": true,
+  "type": "module",
+  "license": "MIT OR Apache-2.0",
+  "dependencies": {
+    "@pixiv/three-vrm-springbone": "3.5.5",
+    "three": "0.181.0"
+  }
+}

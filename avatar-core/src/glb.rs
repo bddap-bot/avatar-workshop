@@ -86,6 +86,16 @@ fn chunk(bytes: &[u8], at: usize) -> Result<(&[u8], &[u8], usize), Error> {
 }
 
 pub fn read(bytes: &[u8]) -> Result<Avatar, Error> {
+    let (mut gltf, bin) = parts(bytes)?;
+    let model = take_extension(&mut gltf)?;
+    let model = serde_json::from_value(model).map_err(Error::Model)?;
+    validate(&gltf, &model).map_err(Error::Invalid)?;
+    carried(&model)?;
+    Ok(Avatar { gltf, bin, model })
+}
+
+/// A glTF binary's JSON document and binary chunk, bounded as [`read`] bounds them.
+pub fn parts(bytes: &[u8]) -> Result<(Map<String, Value>, Vec<u8>), Error> {
     if bytes.get(0..4) != Some(MAGIC) {
         return Err(Error::Header("bad magic"));
     }
@@ -115,14 +125,10 @@ pub fn read(bytes: &[u8]) -> Result<Avatar, Error> {
         second = false;
         next = end;
     }
-    let Value::Object(mut gltf) = serde_json::from_slice(json).map_err(Error::Json)? else {
+    let Value::Object(gltf) = serde_json::from_slice(json).map_err(Error::Json)? else {
         return Err(Error::NotAnObject);
     };
-    let model = take_extension(&mut gltf)?;
-    let model = serde_json::from_value(model).map_err(Error::Model)?;
-    validate(&gltf, &model).map_err(Error::Invalid)?;
-    carried(&model)?;
-    Ok(Avatar { gltf, bin, model })
+    Ok((gltf, bin))
 }
 
 fn take_extension(gltf: &mut Map<String, Value>) -> Result<Value, Error> {

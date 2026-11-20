@@ -227,7 +227,11 @@ pub struct Nodes {
 
 impl Nodes {
     pub fn read(avatar: &Avatar) -> Result<Nodes, Error> {
-        let nodes = avatar.gltf.get("nodes").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
+        Nodes::of(&avatar.gltf)
+    }
+
+    pub fn of(gltf: &serde_json::Map<String, Value>) -> Result<Nodes, Error> {
+        let nodes = gltf.get("nodes").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
         let count = nodes.len();
         let mut children = vec![vec![]; count];
         let mut parent = vec![None; count];
@@ -716,6 +720,9 @@ impl Chain {
         bone.position = origin + direction * length;
         for (collider, place) in places {
             bone.position = collide(bone.position, q.radius * place.scale.x.abs(), collider, place);
+            let pushed = bone.position - origin;
+            let kept = if free { pushed.length().clamp(rest_length * low, rest_length * high) } else { rest_length };
+            bone.position = origin + pushed.normalize_or(direction) * kept;
         }
     }
 
@@ -825,8 +832,9 @@ fn limit(direction: Vec3, local_rest: Vec3, frame: Quat, limit: LimitAt) -> Vec3
     rotation * limited
 }
 
-/// Pushes a bone's end at `position` out of the collider, or keeps it inside an inside-bounds one. Bones collide
-/// as spheres of their radius at their ends, and one of radius 0 passes through spheres and capsules: both as
+/// Pushes a bone's end at `position` out of the collider, or keeps it inside an inside-bounds one; the caller then
+/// puts it back at a length its stretch allows, as VRM's spring bones do, which the SDK's collider traces match no
+/// worse overall. Bones collide as spheres of their radius at their ends, and one of radius 0 passes through spheres and capsules: both as
 /// the reference traces show, whatever the collider's bones-as-spheres setting.
 fn collide(position: Vec3, radius: f32, collider: &ColliderAt, place: &Transform) -> Vec3 {
     let center = place.point(collider.position);

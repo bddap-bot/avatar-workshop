@@ -6,6 +6,7 @@ pub mod glb;
 pub mod model;
 pub mod physbones;
 pub mod validate;
+pub mod vrm;
 
 pub use glb::{read, write, Avatar, Error, MAX_JSON_BYTES};
 pub use model::AwAvatar;
