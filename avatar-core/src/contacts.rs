@@ -15,7 +15,7 @@ pub struct Sender {
     pub position: Vec3,
     pub rotation: Quat,
     pub tags: Vec<String>,
-    /// The wearer's own (a hand the host tracks for the wearer) or another player's.
+    /// The wearer's own or another player's; the wearer's body parts are already the avatar's standard senders.
     pub owner: Toucher,
 }
 
@@ -89,8 +89,7 @@ pub struct Contacts {
     centers: std::collections::BTreeMap<Key, Vec3>,
 }
 
-/// The senders VRChat places on the descriptor's enabled colliders, tagged by part and, for the mirrored ones,
-/// by side. A finger's sits on its bone's parent, moved by the bone's own rest position.
+/// The standard senders on the descriptor's enabled colliders, as Av3Emulator places them for VRChat.
 pub fn standard_senders(colliders: &DescriptorColliders, nodes: &Nodes) -> Vec<model::ContactSender> {
     let c = colliders;
     let all: [(&DescriptorCollider, &str, &str, bool); 14] = [

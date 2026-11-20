@@ -166,8 +166,10 @@ fn moved(dir: &Path, replay: &Replay) -> BTreeMap<usize, Vec<(usize, Transform)>
 /// Places each node at its pose in the avatar's root space, parents first.
 fn pin(scene: &mut Scene, parent: &[Option<usize>], poses: &[(usize, Transform)]) {
     for (n, t) in poses {
-        let p = parent[*n].unwrap();
-        scene.locals[*n] = relative(&world_of(Transform::IDENTITY, scene.locals, parent, p), t);
+        scene.locals[*n] = match parent[*n] {
+            Some(p) => relative(&world_of(Transform::IDENTITY, scene.locals, parent, p), t),
+            None => *t,
+        };
     }
 }
 

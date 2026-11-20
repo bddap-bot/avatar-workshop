@@ -205,13 +205,20 @@ standard senders. What the recordings showed:
   from it.
 - A proximity receiver reads zero on the frame a sender enters; on-enter fires for one frame when the sender's
   speed since the previous frame reaches the minimum velocity.
-- The avatar's own senders include a standard one on each enabled descriptor collider: a capsule with the
-  collider's dimensions and offsets on its bone, tagged by part and, for hands, feet and fingers, by side (`Hand`
-  and `HandL`); a finger's sits on its bone's parent, moved by the bone's rest position.
+- The avatar's own senders include a standard one on each enabled descriptor collider, as Av3Emulator places
+  them: a capsule with the collider's dimensions and offsets on its bone, tagged by part and, for hands, feet and
+  fingers, by side (`Hand` and `HandL`, `FingerIndex` and `FingerIndexL`); a finger's sits on its bone's parent,
+  moved by the bone's rest position.
 
-Not measured: where VRChat runs a PhysBone that sits under a bone a constraint after PhysBones turns (one chain
-each on corpus 2 and 5). The replay takes that chain's transforms from the recording; the core's order runs every
-PhysBone before those constraints.
+Not measured:
+
+- Where VRChat runs a PhysBone that sits under a bone a constraint after PhysBones turns (one chain each on corpus
+  2 and 5). The replay takes that chain's transforms from the recording, so the targets' bar holds whichever order
+  VRChat uses; the core's order runs every PhysBone before those constraints, and how far a host's chain then lies
+  from the SDK's is not measured.
+- Whether VRChat's finger senders also carry `Finger` and `FingerL` or `FingerR`, which VRChat's tag list defines as
+  any finger. Av3Emulator's do not, and every receiver of the avatar's own fingers in the corpus also listens for a
+  tag the emulator places, so no recording tells the two apart.
 
 ## What goes
 
