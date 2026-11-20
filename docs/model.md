@@ -178,11 +178,11 @@ No recording shows these, so the core claims nothing for them:
 
 ### Constraint and contact coverage
 
-The core's constraints and contacts replay the fixture, the dynamics probe and every corpus avatar's recording.
-Each target a constraint moves without reading a PhysBone lies within 1e-4 m and 0.1° of the SDK's on every frame
-(largest differences 5e-6 m and 0.056°), as does the scale of each scale constraint that does read one; every
-receiver parameter equals the reference on every frame but one parameter each on corpus 5 and 6.
-`avatar-core/tests/dynamics.rs` checks every probe setting and the fixture. What the recordings showed:
+The core's constraints and contacts replay the fixture, the dynamics probe and every corpus avatar's recording,
+with what they read where PhysBones put it taken from `moved.tsv`. Every constrained target lies within 1e-4 m
+and 0.1° of the SDK's on every frame (largest differences 1e-5 m and 0.056°), and every receiver parameter equals
+the reference on every frame. `avatar-core/tests/dynamics.rs` checks every probe setting, the fixture and the
+standard senders. What the recordings showed:
 
 - Order: constraints whose sources, world-up object or target's parent sit at or under a node a PhysBone moves, or
   under such a constraint's target, run after PhysBones; the rest before them; within each, a constraint after
@@ -205,16 +205,13 @@ receiver parameter equals the reference on every frame but one parameter each on
   from it.
 - A proximity receiver reads zero on the frame a sender enters; on-enter fires for one frame when the sender's
   speed since the previous frame reaches the minimum velocity.
+- The avatar's own senders include a standard one on each enabled descriptor collider: a capsule with the
+  collider's dimensions and offsets on its bone, tagged by part and, for hands, feet and fingers, by side (`Hand`
+  and `HandL`); a finger's sits on its bone's parent, moved by the bone's rest position.
 
-Not measured, as the recordings lack the input:
-
-- Constraints that read where a PhysBone put a bone (one on the probe, 4 on corpus 2, 3 on corpus 5) and receivers
-  whose shapes or senders ride PhysBones (41 parameters on corpus 2, 61 on corpus 5, all equal to the reference when
-  replayed on the poses before the PhysBones): no recording holds a PhysBone's output pose.
-- Receivers listening for the avatar's own hands (one parameter each on corpus 5 and 6, 210 frames each): VRChat
-  places standard senders on the descriptor's colliders. The model holds the colliders and recordings hold each
-  standard sender's root transform pose (`standard-sender:` drivers in `poses.tsv`) and its shape, offsets and tags
-  (`meta.json`'s `standard_senders`), but the core does not place them yet.
+Not measured: where VRChat runs a PhysBone that sits under a bone a constraint after PhysBones turns (one chain
+each on corpus 2 and 5). The replay takes that chain's transforms from the recording; the core's order runs every
+PhysBone before those constraints.
 
 ## What goes
 

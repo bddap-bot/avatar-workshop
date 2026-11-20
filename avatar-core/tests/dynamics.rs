@@ -6,7 +6,9 @@ mod reference;
 
 use std::path::{Path, PathBuf};
 
+use avatar_core::model::ContactShape;
 use avatar_core::physbones::Transform;
+use glam::{Quat, Vec3};
 use reference::dynamics::{score, Report};
 
 fn path(p: &str) -> PathBuf {
@@ -24,14 +26,10 @@ fn replay(recording: &str, model: &str) -> Report {
 const POSITION: f32 = 1e-4;
 const ROTATION: f32 = 0.1;
 
-fn assert_targets(report: &Report, unmeasured: &[&str]) {
+fn assert_targets(report: &Report) {
     let mut failed = vec![];
     for (target, e) in &report.targets {
-        if unmeasured.contains(&target.as_str()) {
-            assert!(e.unmeasured > 0 && e.frames == 0, "{target} reads no PhysBone");
-            continue;
-        }
-        assert!(e.frames > 0 && e.unmeasured == 0, "{target}: {} frames scored, {} unmeasured", e.frames, e.unmeasured);
+        assert!(e.frames > 0, "{target}: no frame scored");
         if e.position.0 > POSITION || e.rotation.0 > ROTATION {
             failed.push(format!("{target}: {:.6} m at frame {}, {:.4}° at frame {}", e.position.0, e.position.1, e.rotation.0, e.rotation.1));
         }
@@ -51,13 +49,13 @@ fn assert_receivers(report: &Report) {
 
 /// Each of the six kinds with one and two weighted sources, each axis mask, at-rest and offset values, aim's five
 /// world-up types and its axes, look-at's roll and up object, freeze-to-world with and without rebaked offsets,
-/// local solving, sources summing past one, and constraints chained on one another; the one that follows a
-/// PhysBone's tip reads a pose the recording does not hold.
+/// local solving, sources summing past one, constraints chained on one another, and one following a PhysBone's
+/// tip where the SDK's PhysBones put it.
 #[test]
 fn each_constraint_setting_against_the_probe() {
     let report = replay("fixtures/reference/dynamics", "fixtures/unity-dynamics.glb");
     assert_eq!(report.targets.len(), 65);
-    assert_targets(&report, &["Constraints/Parent PhysBone source"]);
+    assert_targets(&report);
 }
 
 /// Every receiver type and shape, allow self and others, local only, collision tags and minimum velocity, against
@@ -73,7 +71,7 @@ fn each_receiver_setting_against_the_probe() {
 fn fixture_constraints_and_receivers() {
     let report = replay("fixtures/reference/fixture-dynamics", "fixtures/unity-synthetic-dynamics.glb");
     assert_eq!(report.targets.len(), 8);
-    assert_targets(&report, &[]);
+    assert_targets(&report);
     assert_receivers(&report);
 }
 
@@ -138,4 +136,69 @@ fn a_receiver_drives_its_parameter_from_the_frame_after_it_starts() {
     active[receiver] = true;
     assert_eq!(step(&active), None, "written on the frame it started");
     assert_eq!(step(&active), Some(1.0));
+}
+
+/// The core places VRChat's standard senders where the recording found them: on each enabled descriptor
+/// collider's bone, a finger's on its parent, with the collider's shape, offsets and the part and side tags.
+#[test]
+fn standard_senders_as_the_reference_placed_them() {
+    let avatar = avatar_core::read(&std::fs::read(path("fixtures/unity-synthetic-dynamics.glb")).unwrap()).unwrap();
+    let nodes = avatar_core::physbones::Nodes::read(&avatar).unwrap();
+    let names = reference::paths(&avatar, &nodes);
+    let meta: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path("fixtures/reference/fixture-dynamics/meta.json")).unwrap()).unwrap();
+    let mut want: Vec<(String, Vec<String>, f32, f32, Vec3, Quat)> = meta["standard_senders"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| {
+            let f = |k: &str| -> Vec<f32> { s[k].as_array().unwrap().iter().map(|x| x.as_f64().unwrap() as f32).collect() };
+            let t = reference::unity(&[f("position"), f("rotation")].concat());
+            let tags = s["tags"].as_array().unwrap().iter().map(|t| t.as_str().unwrap().to_string()).collect();
+            (s["transform"].as_str().unwrap().to_string(), tags, s["radius"].as_f64().unwrap() as f32, s["height"].as_f64().unwrap() as f32, t.translation, t.rotation)
+        })
+        .collect();
+    let mut got: Vec<(String, Vec<String>, f32, f32, Vec3, Quat)> = avatar_core::contacts::standard_senders(&avatar.model.descriptor.colliders, &nodes)
+        .into_iter()
+        .map(|s| {
+            let ContactShape::Capsule { radius, height } = s.shape else { panic!("a standard sender is a capsule") };
+            (names[s.node.0 as usize].clone().unwrap(), s.collision_tags, radius, height, Vec3::from(s.position), Quat::from_array(s.rotation))
+        })
+        .collect();
+    want.sort_by(|a, b| a.1.cmp(&b.1));
+    got.sort_by(|a, b| a.1.cmp(&b.1));
+    assert_eq!(got.len(), 5);
+    assert_eq!(got.len(), want.len());
+    for (g, w) in got.iter().zip(&want) {
+        assert_eq!((&g.0, &g.1, g.2, g.3), (&w.0, &w.1, w.2, w.3));
+        assert!((g.4 - w.4).length() < 1e-6 && g.5.angle_between(w.5) < 1e-5, "{:?}: {:?} against {:?}", g.1, (g.4, g.5), (w.4, w.5));
+    }
+}
+
+/// A receiver listening for the wearer's own hand hears the standard sender on it, and only while it allows self.
+#[test]
+fn a_receiver_hears_the_wearers_own_hand() {
+    let mut avatar = avatar_core::read(&std::fs::read(path("fixtures/unity-synthetic-dynamics.glb")).unwrap()).unwrap();
+    let nodes = avatar_core::physbones::Nodes::read(&avatar).unwrap();
+    let hand = avatar.model.descriptor.colliders.hand_left.bone.unwrap();
+    let receiver = avatar_core::model::ContactReceiver {
+        node: hand,
+        enabled: true,
+        shape: ContactShape::Sphere { radius: 0.05 },
+        position: [0.0; 3],
+        rotation: [0.0, 0.0, 0.0, 1.0],
+        collision_tags: vec!["HandL".to_string()],
+        allow_self: true,
+        allow_others: false,
+        local_only: false,
+        receiver_type: avatar_core::model::ReceiverType::Constant {},
+        parameter: "Touched".to_string(),
+    };
+    avatar.model.contacts.receivers = vec![receiver.clone(), avatar_core::model::ContactReceiver { allow_self: false, ..receiver }];
+    avatar.model.contacts.senders.clear();
+    let mut contacts = avatar_core::contacts::Contacts::new(&avatar).unwrap();
+    let pose = world(&nodes, &nodes.rest);
+    let active = vec![true; nodes.parent.len()];
+    contacts.advance(0.0, &pose, &active, &[], true);
+    contacts.advance(1.0 / 60.0, &pose, &active, &[], true);
+    assert_eq!(contacts.values(), &[Some(1.0), Some(0.0)]);
 }

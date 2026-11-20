@@ -19,31 +19,22 @@ fn main() {
     let avatar = avatar_core::read(&std::fs::read(&args[2]).unwrap()).unwrap();
     let replay = reference::Replay::load(dir, avatar, 0..usize::MAX);
     let report = reference::dynamics::score(dir, &replay);
-    let (mut p, mut q, mut unmeasured) = (0.0f32, 0.0f32, 0);
+    let (mut p, mut q) = (0.0f32, 0.0f32);
     for (k, (path, e)) in report.targets.iter().enumerate() {
         let label = if names { path.clone() } else { format!("target {k}") };
-        if e.unmeasured > 0 {
-            unmeasured += 1;
-            println!("unmeasured (reads PhysBones)\t{label}");
-            continue;
-        }
         p = p.max(e.position.0);
         q = q.max(e.rotation.0);
         println!("{:.6} m @{}\t{:.4}° @{}\t{label}", e.position.0, e.position.1, e.rotation.0, e.rotation.1);
     }
-    let (mut wrong, mut unmeasured_receivers, mut unmeasured_wrong) = (0, 0, 0);
+    let mut wrong = 0;
     for (k, (name, r)) in report.receivers.iter().enumerate() {
         let label = if names { name.clone() } else { format!("receiver {k}") };
         wrong += (r.wrong > 0) as usize;
-        if r.unmeasured {
-            unmeasured_receivers += 1;
-            unmeasured_wrong += (r.wrong > 0) as usize;
-        }
         let first = r.first_wrong.map_or(String::new(), |(f, v, w)| format!(" first @{f}: {v} (want {w})"));
-        println!("{}{} of {} frames wrong, worst {:.6}{first}\t{label}", if r.unmeasured { "unmeasured: " } else { "" }, r.wrong, r.frames, r.worst);
+        println!("{} of {} frames wrong, worst {:.6}{first}\t{label}", r.wrong, r.frames, r.worst);
     }
     println!(
-        "targets {} ({unmeasured} unmeasured)\tworst {p:.6} m\t{q:.4}°\treceiver parameters {} wrong {wrong} (on PhysBone-moved poses {unmeasured_receivers} wrong {unmeasured_wrong})",
+        "targets {}\tworst {p:.6} m\t{q:.4}°\treceiver parameters {} wrong {wrong}",
         report.targets.len(),
         report.receivers.len()
     );

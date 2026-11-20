@@ -60,10 +60,12 @@ SDK's dynamics do. A host gives the constraints each node's local pose and activ
 (`after_physbones` tells which constraints read a bone a PhysBone moves, directly or through another constraint),
 and sets fields a curve drives with `set`. Each frame it then calls `Contacts::advance` with every node's world pose and active flag and the
 senders outside the avatar (`Sender`: another player's part or a hand it tracks, the wearer's or another's, each
-with an id that names it across frames), and
+with an id that names it across frames); the avatar's own senders include VRChat's standard ones on the
+descriptor's colliders (`contacts::standard_senders`). It
 reads each receiver's parameter from `values()`: none while a receiver is not running, which leaves the parameter to
 the animator. `cargo test --test dynamics` replays the dynamics probe and the fixture from
-`avatar-core/fixtures/reference/` (trimmed to what the replay reads), requiring every constrained target within
+`avatar-core/fixtures/reference/` (trimmed to what the replay reads), placing what PhysBones move where
+`moved.tsv` holds it, requiring every constrained target within
 1e-4 m and 0.1° of `constrained.tsv` and every receiver parameter equal to `params.tsv` on every frame.
 `cargo run --release --example dynamics -- RECORDING AVATAR.glb` scores any recording, numbering each target and
 receiver parameter; `--names` prints their names.

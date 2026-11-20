@@ -1,6 +1,6 @@
 use glam::{Quat, Vec3};
 
-use crate::model::{self, ContactShape, ReceiverType};
+use crate::model::{self, ContactShape, DescriptorCollider, DescriptorColliderState, DescriptorColliders, ReceiverType};
 use crate::physbones::{Error, Nodes, Toucher, Transform};
 use crate::Avatar;
 
@@ -89,13 +89,61 @@ pub struct Contacts {
     centers: std::collections::BTreeMap<Key, Vec3>,
 }
 
+/// The senders VRChat places on the descriptor's enabled colliders, tagged by part and, for the mirrored ones,
+/// by side. A finger's sits on its bone's parent, moved by the bone's own rest position.
+pub fn standard_senders(colliders: &DescriptorColliders, nodes: &Nodes) -> Vec<model::ContactSender> {
+    let c = colliders;
+    let all: [(&DescriptorCollider, &str, &str, bool); 14] = [
+        (&c.head, "Head", "", false),
+        (&c.torso, "Torso", "", false),
+        (&c.hand_left, "Hand", "L", false),
+        (&c.hand_right, "Hand", "R", false),
+        (&c.foot_left, "Foot", "L", false),
+        (&c.foot_right, "Foot", "R", false),
+        (&c.finger_index_left, "FingerIndex", "L", true),
+        (&c.finger_middle_left, "FingerMiddle", "L", true),
+        (&c.finger_ring_left, "FingerRing", "L", true),
+        (&c.finger_little_left, "FingerLittle", "L", true),
+        (&c.finger_index_right, "FingerIndex", "R", true),
+        (&c.finger_middle_right, "FingerMiddle", "R", true),
+        (&c.finger_ring_right, "FingerRing", "R", true),
+        (&c.finger_little_right, "FingerLittle", "R", true),
+    ];
+    let mut out = vec![];
+    for (collider, part, side, finger) in all {
+        let Some(bone) = collider.bone.filter(|_| collider.state != DescriptorColliderState::Disabled) else { continue };
+        let bone = bone.0 as usize;
+        let (node, offset) = match (finger, nodes.parent[bone]) {
+            (true, Some(parent)) => (parent, nodes.rest[bone].translation),
+            (true, None) => continue,
+            (false, _) => (bone, Vec3::ZERO),
+        };
+        let mut collision_tags = vec![part.to_string()];
+        if !side.is_empty() {
+            collision_tags.push(format!("{part}{side}"));
+        }
+        out.push(model::ContactSender {
+            node: model::NodeIndex(node as u32),
+            enabled: true,
+            shape: ContactShape::Capsule { radius: collider.radius, height: collider.height },
+            position: (Vec3::from(collider.position) + offset).to_array(),
+            rotation: collider.rotation,
+            collision_tags,
+        });
+    }
+    out
+}
+
 impl Contacts {
+    /// The avatar's own senders are its model's, then the standard ones on its descriptor's colliders.
     pub fn new(avatar: &Avatar) -> Result<Contacts, Error> {
         let nodes = Nodes::read(avatar)?;
         let m = &avatar.model.contacts;
         let count = m.receivers.len();
+        let mut senders = m.senders.clone();
+        senders.extend(standard_senders(&avatar.model.descriptor.colliders, &nodes));
         Ok(Contacts {
-            senders: m.senders.clone(),
+            senders,
             receivers: m.receivers.clone(),
             parent: nodes.parent,
             inside: vec![vec![]; count],
