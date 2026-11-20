@@ -138,15 +138,21 @@ fn a_receiver_drives_its_parameter_from_the_frame_after_it_starts() {
     assert_eq!(step(&active), Some(1.0));
 }
 
-/// The core places VRChat's standard senders other than the fingers' where the recording found them: on each
-/// enabled descriptor collider's bone, with the collider's shape, offsets and the part and side tags. The fingers',
-/// which the client places apart from the emulator, have their own tests.
+/// The core places VRChat's standard senders on custom colliders other than the fingers' where the recording found
+/// them: on each collider's bone, with the collider's shape, offsets and the part and side tags. The fingers' and the
+/// automatic ones', which the client places apart from the emulator, have their own tests.
 #[test]
 fn standard_senders_as_the_reference_placed_them() {
     let avatar = avatar_core::read(&std::fs::read(path("fixtures/unity-synthetic-dynamics.glb")).unwrap()).unwrap();
     let nodes = avatar_core::physbones::Nodes::read(&avatar).unwrap();
     let names = reference::paths(&avatar, &nodes);
     let meta: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path("fixtures/reference/fixture-dynamics/meta.json")).unwrap()).unwrap();
+    let c = &avatar.model.descriptor.colliders;
+    let custom: Vec<&str> = [("Head", &c.head), ("Torso", &c.torso), ("HandL", &c.hand_left), ("HandR", &c.hand_right), ("FootL", &c.foot_left), ("FootR", &c.foot_right)]
+        .into_iter()
+        .filter(|(_, c)| c.state == avatar_core::model::DescriptorColliderState::Custom)
+        .map(|(t, _)| t)
+        .collect();
     let mut want: Vec<(String, Vec<String>, f32, f32, Vec3, Quat)> = meta["standard_senders"]
         .as_array()
         .unwrap()
@@ -158,9 +164,9 @@ fn standard_senders_as_the_reference_placed_them() {
             tags.sort();
             (s["transform"].as_str().unwrap().to_string(), tags, s["radius"].as_f64().unwrap() as f32, s["height"].as_f64().unwrap() as f32, t.translation, t.rotation)
         })
-        .filter(|s| !s.1.iter().any(|t| t.starts_with("Finger")))
+        .filter(|s| s.1.iter().any(|t| custom.contains(&t.as_str())))
         .collect();
-    let mut got: Vec<(String, Vec<String>, f32, f32, Vec3, Quat)> = avatar_core::contacts::standard_senders(&avatar.model.descriptor.colliders, &nodes)
+    let mut got: Vec<(String, Vec<String>, f32, f32, Vec3, Quat)> = avatar_core::contacts::standard_senders(&avatar.model.descriptor, &avatar.model.humanoid, &nodes)
         .into_iter()
         .map(|s| {
             let ContactShape::Capsule { radius, height } = s.shape else { panic!("a standard sender is a capsule") };
@@ -168,11 +174,11 @@ fn standard_senders_as_the_reference_placed_them() {
             tags.sort();
             (names[s.node.0 as usize].clone().unwrap(), tags, radius, height, Vec3::from(s.position), Quat::from_array(s.rotation))
         })
-        .filter(|s| !s.1.iter().any(|t| t.starts_with("Finger")))
+        .filter(|s| s.1.iter().any(|t| custom.contains(&t.as_str())))
         .collect();
     want.sort_by(|a, b| a.1.cmp(&b.1));
     got.sort_by(|a, b| a.1.cmp(&b.1));
-    assert_eq!(got.len(), 4);
+    assert_eq!(got.len(), 3);
     assert_eq!(got.len(), want.len());
     for (g, w) in got.iter().zip(&want) {
         assert_eq!((&g.0, &g.1, g.2, g.3), (&w.0, &w.1, w.2, w.3));
@@ -199,7 +205,7 @@ fn standard_finger_senders_carry_the_clients_tags() {
     ] {
         *f = enabled.clone();
     }
-    let mut got: Vec<Vec<String>> = avatar_core::contacts::standard_senders(&avatar.model.descriptor.colliders, &nodes)
+    let mut got: Vec<Vec<String>> = avatar_core::contacts::standard_senders(&avatar.model.descriptor, &avatar.model.humanoid, &nodes)
         .into_iter()
         .map(|s| s.collision_tags)
         .filter(|tags| tags.iter().any(|t| t.starts_with("Finger")))
@@ -256,13 +262,14 @@ fn standard_finger_senders_lie_where_the_client_put_them() {
         Finger { name: "Ring", side: "R", parent: None, bone: ([0.06, 0.0, -0.05], id, 1.0), radius: 0.01, height: 0.1, position: [0.0; 3], rotation: x90, client: ([0.0, 0.0, 0.0], [0.076823, 0.0, -0.064018], 0.01) },
     ];
     let unity = |p: [f32; 3], r: [f32; 4], s: f32| reference::unity(&[p.to_vec(), r.to_vec(), vec![s; 3]].concat());
-    let mut nodes = avatar_core::physbones::Nodes { children: vec![vec![]], parent: vec![None], rest: vec![Transform::IDENTITY] };
+    let mut nodes = avatar_core::physbones::Nodes { children: vec![vec![]], parent: vec![None], rest: vec![Transform::IDENTITY], names: vec![String::new()] };
     let mut add = |parent: usize, t: Transform| {
         let i = nodes.rest.len();
         nodes.rest.push(t);
         nodes.parent.push(Some(parent));
         nodes.children.push(vec![]);
         nodes.children[parent].push(i);
+        nodes.names.push(String::new());
         i
     };
     let avatar = avatar_core::read(&std::fs::read(path("fixtures/unity-synthetic-dynamics.glb")).unwrap()).unwrap();
@@ -301,7 +308,8 @@ fn standard_finger_senders_lie_where_the_client_put_them() {
     for i in 1..nodes.rest.len() {
         world.push(world[nodes.parent[i].unwrap()].mul(&nodes.rest[i]));
     }
-    let senders = avatar_core::contacts::standard_senders(&colliders, &nodes);
+    let descriptor = avatar_core::model::Descriptor { colliders, ..avatar.model.descriptor.clone() };
+    let senders = avatar_core::contacts::standard_senders(&descriptor, &avatar.model.humanoid, &nodes);
     assert_eq!(senders.len(), fingers.len());
     for f in &fingers {
         let tag = format!("Finger{}{}", f.name, f.side);
@@ -316,6 +324,171 @@ fn standard_finger_senders_lie_where_the_client_put_them() {
         let far = ends.iter().map(|e| (*e - b).length()).fold(f32::MAX, f32::min);
         let r = radius * at.scale.x;
         assert!(near < CLIENT_FIT && far < CLIENT_FIT && (r - f.client.2).abs() < CLIENT_FIT, "{tag}: ends {ends:?} radius {r} against the client's {a} {b} {}", f.client.2);
+    }
+}
+
+/// On a humanoid avatar each automatic collider's standard sender lies where the VRChat client put it on the fixture
+/// with humanoid finger chains, whatever the descriptor stores: the collider the SDK computes from the skeleton at rest,
+/// placed as the client places a finger's or a body part's. The client's capsule ends and radii, each in the frame of
+/// the bone that end moves with and in Unity's axes, are fitted from proximity receivers to within `CLIENT_FIT`
+/// (`docs/model.md`). The palms' centres, heights and radii and the head's radius match; the palms' axis and the head's
+/// height do not (not modelled).
+/// A finger the humanoid lacks an intermediate bone for, a custom collider with no bone and a disabled one place none.
+#[test]
+fn automatic_senders_lie_where_the_client_put_them() {
+    const CLIENT_FIT: f32 = 1e-5;
+    let bones: [(&str, &str, [f32; 3], [f32; 4], f32, &str); 43] = [
+        ("Armature", "", [0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, ""),
+        ("Hips", "Armature", [0.0, 0.95, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "Hips"),
+        ("Spine", "Hips", [0.0, 0.1, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "Spine"),
+        ("Chest", "Spine", [0.0, 0.15, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "Chest"),
+        ("Neck", "Chest", [0.0, 0.2, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "Neck"),
+        ("Head", "Neck", [0.0, 0.1, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "Head"),
+        ("LeftShoulder", "Chest", [-0.05, 0.15, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "LeftShoulder"),
+        ("LeftUpperArm", "LeftShoulder", [-0.1, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "LeftUpperArm"),
+        ("LeftLowerArm", "LeftUpperArm", [-0.26, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "LeftLowerArm"),
+        ("LeftHand", "LeftLowerArm", [-0.24, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "LeftHand"),
+        ("LeftIndexProximal", "LeftHand", [-0.08, 0.0, 0.03], [0.0, 0.0, 0.0, 1.0], 1.0, "LeftIndexProximal"),
+        ("LeftIndexIntermediate", "LeftIndexProximal", [-0.03, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "LeftIndexIntermediate"),
+        ("LeftIndexDistal", "LeftIndexIntermediate", [-0.025, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "LeftIndexDistal"),
+        ("LeftMiddleProximal", "LeftHand", [-0.085, 0.0, 0.01], [0.0, 0.0, 0.0, 1.0], 1.0, "LeftMiddleProximal"),
+        ("LeftMiddleIntermediate", "LeftMiddleProximal", [-0.035, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "LeftMiddleIntermediate"),
+        ("LeftMiddleDistal", "LeftMiddleIntermediate", [-0.03, 0.006, 0.0], [0.0, 0.0, 0.0, 1.0], 1.5, "LeftMiddleDistal"),
+        ("LeftRingProximal", "LeftHand", [-0.08, 0.0, -0.01], [0.0, 0.0, 0.0, 1.0], 1.0, "LeftRingProximal"),
+        ("LeftRingIntermediate", "LeftRingProximal", [-0.032, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "LeftRingIntermediate"),
+        ("LeftRingDistal", "LeftRingIntermediate", [-0.026, 0.0, 0.0], [0.0, 0.2588191, 0.0, 0.9659259], 1.0, "LeftRingDistal"),
+        ("LeftLittleProximal", "LeftHand", [-0.075, 0.0, -0.03], [0.0, 0.0, 0.0, 1.0], 1.0, "LeftLittleProximal"),
+        ("LeftLittleIntermediate", "LeftLittleProximal", [-0.025, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "LeftLittleIntermediate"),
+        ("RightShoulder", "Chest", [0.05, 0.15, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "RightShoulder"),
+        ("RightUpperArm", "RightShoulder", [0.1, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "RightUpperArm"),
+        ("RightLowerArm", "RightUpperArm", [0.26, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "RightLowerArm"),
+        ("RightHand", "RightLowerArm", [0.24, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "RightHand"),
+        ("RightIndexProximal", "RightHand", [0.08, 0.0, 0.03], [0.0, 0.0, -0.1736482, 0.9848078], 1.0, "RightIndexProximal"),
+        ("RightIndexIntermediate", "RightIndexProximal", [0.03, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "RightIndexIntermediate"),
+        ("RightIndexDistal", "RightIndexIntermediate", [0.028, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "RightIndexDistal"),
+        ("RightMiddleProximal", "RightHand", [0.085, 0.0, 0.01], [0.0, 0.0, 0.0, 1.0], 1.0, "RightMiddleProximal"),
+        ("RightMiddleIntermediate", "RightMiddleProximal", [0.035, 0.0, 0.0], [0.0, 0.0, 0.1305262, 0.9914449], 1.0, "RightMiddleIntermediate"),
+        ("RightMiddleDistal", "RightMiddleIntermediate", [0.03, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "RightMiddleDistal"),
+        ("RightRingProximal", "RightHand", [0.08, 0.0, -0.01], [0.0, 0.0, 0.0, 1.0], 1.0, "RightRingProximal"),
+        ("RightRingIntermediate", "RightRingProximal", [0.032, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "RightRingIntermediate"),
+        ("RightRingDistal", "RightRingIntermediate", [0.026, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "RightRingDistal"),
+        ("RightLittleProximal", "RightHand", [0.075, 0.0, -0.03], [0.0, 0.0, 0.0, 1.0], 1.0, "RightLittleProximal"),
+        ("LeftUpperLeg", "Hips", [-0.1, -0.05, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "LeftUpperLeg"),
+        ("LeftLowerLeg", "LeftUpperLeg", [0.0, -0.42, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "LeftLowerLeg"),
+        ("LeftFoot", "LeftLowerLeg", [0.0, -0.42, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "LeftFoot"),
+        ("LeftToes", "LeftFoot", [0.0, -0.04, 0.12], [0.0, 0.0, 0.0, 1.0], 1.0, "LeftToes"),
+        ("RightUpperLeg", "Hips", [0.1, -0.05, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "RightUpperLeg"),
+        ("RightLowerLeg", "RightUpperLeg", [0.0, -0.42, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "RightLowerLeg"),
+        ("RightFoot", "RightLowerLeg", [0.0, -0.42, 0.0], [0.0, 0.0, 0.0, 1.0], 1.0, "RightFoot"),
+        ("RightToes", "RightFoot", [0.0, -0.04, 0.12], [0.0, 0.0, 0.0, 1.0], 1.0, "RightToes"),
+    ];
+    let fingers = [
+        ("FingerIndexL", [-2e-07, 4e-07, -1e-07], [-0.025, -2e-07, -3e-07], 0.01, 0.0100001),
+        ("FingerIndexR", [-7e-07, -1e-07, -2e-07], [0.028, 4e-07, -2e-07], 0.0111996, 0.0112002),
+        ("FingerMiddleL", [7e-07, 0.0, 0.0], [-0.0100004, 0.002, -2e-07], 0.0122372, 0.0081581),
+        ("FingerMiddleR", [-3e-07, 0.0, 0.0], [0.0300004, 3e-07, 0.0], 0.0119995, 0.0119997),
+        ("FingerRingL", [-3e-07, -1e-07, -0.0], [-0.0260002, -0.0, 2e-07], 0.0104002, 0.0104002),
+        ("FingerLittleL", [-0.0, 3e-07, 2e-07], [-0.0249997, -2e-07, -1e-07], 0.0099998, 0.0099998),
+    ];
+    let bodies = [
+        ("Torso", [0.0, -0.0999996, 4e-07], [0.0, 0.05, 3e-07], 0.1500002),
+        ("FootL", [-1e-07, -1e-07, -0.0], [-2e-07, 4e-07, -0.0], 0.0839999),
+        ("HandL", [-0.068, 0.0040672, 0.0195814], [-0.0680001, -0.0040678, -0.0195826], 0.0199999),
+        ("HandR", [0.0679998, 0.0040673, 0.019582], [0.0680002, -0.0040673, -0.0195811], 0.02),
+        ("Head", [2e-07, 0.1056022, -2e-07], [1e-07, 0.1056023, -3e-07], 0.0990002),
+    ];
+
+    let unity = |p: [f32; 3], r: [f32; 4], s: f32| reference::unity(&[p.to_vec(), r.to_vec(), vec![s; 3]].concat());
+    let point = |p: [f32; 3]| Vec3::new(-p[0], p[1], p[2]);
+    let mut nodes = avatar_core::physbones::Nodes { children: vec![], parent: vec![], rest: vec![], names: vec![] };
+    let index = |name: &str| bones.iter().position(|b| b.0 == name).unwrap();
+    for (i, b) in bones.iter().enumerate() {
+        let parent = (!b.1.is_empty()).then(|| index(b.1));
+        nodes.children.push(vec![]);
+        nodes.parent.push(parent);
+        nodes.rest.push(unity(b.2, b.3, b.4));
+        nodes.names.push(b.0.to_string());
+        if let Some(p) = parent {
+            nodes.children[p].push(i);
+        }
+    }
+    let avatar = avatar_core::read(&std::fs::read(path("fixtures/unity-synthetic-dynamics.glb")).unwrap()).unwrap();
+    let mut humanoid = avatar.model.humanoid.clone();
+    humanoid.bones = bones
+        .iter()
+        .enumerate()
+        .filter(|(_, b)| !b.5.is_empty())
+        .map(|(i, b)| {
+            let bone: avatar_core::model::HumanBodyBone = serde_json::from_value(serde_json::Value::from(b.5)).unwrap();
+            (bone, avatar_core::model::HumanBone { node: avatar_core::model::NodeIndex(i as u32), limit: None })
+        })
+        .collect();
+    use avatar_core::model::{DescriptorCollider, DescriptorColliderState as State, NodeIndex};
+    let stale = |state: State, bone: Option<usize>| DescriptorCollider {
+        state,
+        bone: bone.map(|b| NodeIndex(b as u32)),
+        radius: 0.005,
+        height: 0.01,
+        position: [0.0, 0.3, 0.0],
+        rotation: [0.0, 0.0, 0.0, 1.0],
+    };
+    let hips = Some(index("Hips"));
+    let mut descriptor = avatar.model.descriptor.clone();
+    descriptor.view_position = [0.0, 1.62, 0.08];
+    let c = &mut descriptor.colliders;
+    for slot in [&mut c.head, &mut c.torso, &mut c.hand_left, &mut c.hand_right, &mut c.foot_left, &mut c.finger_index_left, &mut c.finger_middle_left, &mut c.finger_ring_left, &mut c.finger_index_right, &mut c.finger_little_right] {
+        *slot = stale(State::Automatic, hips);
+    }
+    c.finger_little_left = stale(State::Automatic, None);
+    c.finger_middle_right = stale(State::Automatic, None);
+    c.foot_right = stale(State::Disabled, Some(index("RightToes")));
+    c.finger_ring_right = DescriptorCollider { radius: 0.008, height: 0.07, ..stale(State::Custom, None) };
+    let senders = avatar_core::contacts::standard_senders(&descriptor, &humanoid, &nodes);
+    assert_eq!(senders.len(), 11);
+    let sender = |tag: &str| senders.iter().find(|s| s.collision_tags.iter().any(|t| t == tag));
+    for tag in ["FingerLittleR", "FingerRingR", "FootR"] {
+        assert!(sender(tag).is_none(), "{tag} placed a sender the client did not");
+    }
+    let local = |s: &avatar_core::model::ContactSender| {
+        let ContactShape::Capsule { radius, height } = s.shape else { panic!("a standard sender is a capsule") };
+        let half = Quat::from_array(s.rotation) * Vec3::Y * (height * 0.5 - radius).max(0.0);
+        let center = Vec3::from(s.position);
+        ([center - half, center + half], radius)
+    };
+    let near = |ends: &[Vec3; 2], p: Vec3| ends.iter().map(|e| (*e - p).length()).fold(f32::MAX, f32::min);
+    for (tag, a, b, ra, rb) in fingers {
+        let s = sender(tag).unwrap_or_else(|| panic!("{tag} placed no sender"));
+        let (ends, radius) = local(s);
+        let [first, second] = ends;
+        let (start, end) = if first.length() < second.length() { (first, second) } else { (second, first) };
+        let bone = nodes.children[s.node.0 as usize].iter().copied().find(|&c| humanoid.bones.values().any(|h| h.node.0 as usize == c)).unwrap();
+        let t = &nodes.rest[bone];
+        let end_in_bone = (t.rotation.inverse() * (end - t.translation)) / t.scale;
+        let rb_got = radius / t.scale.max_element();
+        assert!(
+            (start - point(a)).length() < CLIENT_FIT && (end_in_bone - point(b)).length() < CLIENT_FIT && (radius - ra).abs() < CLIENT_FIT && (rb_got - rb).abs() < CLIENT_FIT,
+            "{tag}: ends {start} {end_in_bone} radius {radius} against the client's {a:?} {b:?} {ra}"
+        );
+    }
+    for (tag, a, b, r) in bodies {
+        let s = sender(tag).unwrap_or_else(|| panic!("{tag} placed no sender"));
+        let on = match tag {
+            "Torso" => "Chest",
+            "FootL" => "LeftToes",
+            "HandL" => "LeftHand",
+            "HandR" => "RightHand",
+            _ => "Head",
+        };
+        assert_eq!(nodes.names[s.node.0 as usize], on, "{tag}'s bone");
+        let (ends, radius) = local(s);
+        let (a, b) = (point(a), point(b));
+        let centre = (ends[0] + ends[1]) * 0.5;
+        let shape = match tag {
+            "Head" => (centre.x - a.x).abs() < CLIENT_FIT && (centre.z - a.z).abs() < CLIENT_FIT,
+            "HandL" | "HandR" => (centre - (a + b) * 0.5).length() < CLIENT_FIT && ((ends[0] - ends[1]).length() - (a - b).length()).abs() < CLIENT_FIT,
+            _ => near(&ends, a) < CLIENT_FIT && near(&ends, b) < CLIENT_FIT,
+        };
+        assert!(shape && (radius - r).abs() < CLIENT_FIT, "{tag}: ends {ends:?} radius {radius} against the client's {a} {b} {r}");
     }
 }
 

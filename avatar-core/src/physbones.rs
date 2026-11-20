@@ -223,6 +223,7 @@ pub struct Nodes {
     pub children: Vec<Vec<usize>>,
     pub parent: Vec<Option<usize>>,
     pub rest: Vec<Transform>,
+    pub names: Vec<String>,
 }
 
 impl Nodes {
@@ -288,7 +289,8 @@ impl Nodes {
                 }
             }
         }
-        Ok(Nodes { children, parent, rest })
+        let names = nodes.iter().map(|n| n.get("name").and_then(Value::as_str).unwrap_or_default().to_string()).collect();
+        Ok(Nodes { children, parent, rest, names })
     }
 }
 

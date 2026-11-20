@@ -1,6 +1,6 @@
 use glam::{Quat, Vec3};
 
-use crate::model::{self, ContactShape, DescriptorCollider, DescriptorColliderState, DescriptorColliders, ReceiverType};
+use crate::model::{self, ContactShape, Descriptor, DescriptorCollider, DescriptorColliderState, HumanBodyBone, Humanoid, ReceiverType};
 use crate::physbones::{Error, Nodes, Toucher, Transform};
 use crate::Avatar;
 
@@ -90,32 +90,44 @@ pub struct Contacts {
 }
 
 /// The standard senders on the descriptor's enabled colliders, placed and tagged as the VRChat client places and tags
-/// them; a finger's also carries `Finger` and `Finger` with its side.
-pub fn standard_senders(colliders: &DescriptorColliders, nodes: &Nodes) -> Vec<model::ContactSender> {
-    let c = colliders;
-    let all: [(&DescriptorCollider, &str, &str, bool); 14] = [
-        (&c.head, "Head", "", false),
-        (&c.torso, "Torso", "", false),
-        (&c.hand_left, "Hand", "L", false),
-        (&c.hand_right, "Hand", "R", false),
-        (&c.foot_left, "Foot", "L", false),
-        (&c.foot_right, "Foot", "R", false),
-        (&c.finger_index_left, "FingerIndex", "L", true),
-        (&c.finger_middle_left, "FingerMiddle", "L", true),
-        (&c.finger_ring_left, "FingerRing", "L", true),
-        (&c.finger_little_left, "FingerLittle", "L", true),
-        (&c.finger_index_right, "FingerIndex", "R", true),
-        (&c.finger_middle_right, "FingerMiddle", "R", true),
-        (&c.finger_ring_right, "FingerRing", "R", true),
-        (&c.finger_little_right, "FingerLittle", "R", true),
+/// them; a finger's also carries `Finger` and `Finger` with its side. On a humanoid avatar an automatic collider is
+/// the one the client computes from the skeleton at rest, whatever the descriptor stores.
+pub fn standard_senders(descriptor: &Descriptor, humanoid: &Humanoid, nodes: &Nodes) -> Vec<model::ContactSender> {
+    use HumanBodyBone as H;
+    let c = &descriptor.colliders;
+    let all: [(&DescriptorCollider, Part, &str, &str); 14] = [
+        (&c.head, Part::Head, "Head", ""),
+        (&c.torso, Part::Torso, "Torso", ""),
+        (&c.hand_left, Part::Hand(Side::Left), "Hand", "L"),
+        (&c.hand_right, Part::Hand(Side::Right), "Hand", "R"),
+        (&c.foot_left, Part::Foot(Side::Left), "Foot", "L"),
+        (&c.foot_right, Part::Foot(Side::Right), "Foot", "R"),
+        (&c.finger_index_left, Part::Finger([H::LeftIndexProximal, H::LeftIndexIntermediate, H::LeftIndexDistal]), "FingerIndex", "L"),
+        (&c.finger_middle_left, Part::Finger([H::LeftMiddleProximal, H::LeftMiddleIntermediate, H::LeftMiddleDistal]), "FingerMiddle", "L"),
+        (&c.finger_ring_left, Part::Finger([H::LeftRingProximal, H::LeftRingIntermediate, H::LeftRingDistal]), "FingerRing", "L"),
+        (&c.finger_little_left, Part::Finger([H::LeftLittleProximal, H::LeftLittleIntermediate, H::LeftLittleDistal]), "FingerLittle", "L"),
+        (&c.finger_index_right, Part::Finger([H::RightIndexProximal, H::RightIndexIntermediate, H::RightIndexDistal]), "FingerIndex", "R"),
+        (&c.finger_middle_right, Part::Finger([H::RightMiddleProximal, H::RightMiddleIntermediate, H::RightMiddleDistal]), "FingerMiddle", "R"),
+        (&c.finger_ring_right, Part::Finger([H::RightRingProximal, H::RightRingIntermediate, H::RightRingDistal]), "FingerRing", "R"),
+        (&c.finger_little_right, Part::Finger([H::RightLittleProximal, H::RightLittleIntermediate, H::RightLittleDistal]), "FingerLittle", "R"),
     ];
+    let skeleton = Skeleton { humanoid, nodes, world: std::cell::OnceCell::new() };
     let mut out = vec![];
-    for (collider, part, side, finger) in all {
-        let Some(bone) = collider.bone.filter(|_| collider.state != DescriptorColliderState::Disabled) else { continue };
+    for (stored, part, tag, side) in all {
+        if stored.state == DescriptorColliderState::Disabled {
+            continue;
+        }
+        let human = !humanoid.bones.is_empty();
+        let collider = match stored.state {
+            DescriptorColliderState::Automatic if human => skeleton.automatic(part, descriptor.view_position),
+            _ => stored.clone(),
+        };
+        let Some(bone) = collider.bone else { continue };
         let bone = bone.0 as usize;
+        let finger = matches!(part, Part::Finger(..));
         let (node, shape, position, rotation) = match (finger, nodes.parent[bone]) {
             (true, Some(parent)) => {
-                let (shape, position, rotation) = finger_capsule(collider, &nodes.rest[bone]);
+                let (shape, position, rotation) = finger_capsule(&collider, &nodes.rest[bone]);
                 (parent, shape, position, rotation)
             }
             (true, None) => continue,
@@ -126,9 +138,9 @@ pub fn standard_senders(colliders: &DescriptorColliders, nodes: &Nodes) -> Vec<m
                 collider.rotation,
             ),
         };
-        let mut collision_tags = vec![part.to_string()];
+        let mut collision_tags = vec![tag.to_string()];
         if !side.is_empty() {
-            collision_tags.push(format!("{part}{side}"));
+            collision_tags.push(format!("{tag}{side}"));
         }
         if finger {
             collision_tags.extend(["Finger".to_string(), format!("Finger{side}")]);
@@ -143,6 +155,146 @@ pub fn standard_senders(colliders: &DescriptorColliders, nodes: &Nodes) -> Vec<m
         });
     }
     out
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Side {
+    Left,
+    Right,
+}
+
+#[derive(Clone, Copy)]
+enum Part {
+    Head,
+    Torso,
+    Hand(Side),
+    Foot(Side),
+    /// Proximal, intermediate and distal.
+    Finger([HumanBodyBone; 3]),
+}
+
+struct Skeleton<'a> {
+    humanoid: &'a Humanoid,
+    nodes: &'a Nodes,
+    world: std::cell::OnceCell<Vec<Transform>>,
+}
+
+impl Skeleton<'_> {
+    fn bone(&self, b: HumanBodyBone) -> Option<usize> {
+        self.humanoid.bones.get(&b).map(|h| h.node.0 as usize)
+    }
+
+    fn root(&self, mut node: usize) -> usize {
+        while let Some(p) = self.nodes.parent[node] {
+            node = p;
+        }
+        node
+    }
+
+    fn at(&self, node: usize) -> Transform {
+        self.world.get_or_init(|| self.nodes.world(&self.nodes.rest))[node]
+    }
+
+    fn pos(&self, b: HumanBodyBone) -> Option<Vec3> {
+        self.bone(b).map(|n| self.at(n).translation)
+    }
+
+    /// The collider the client computes for an automatic one, as the SDK's descriptor does from the skeleton at rest;
+    /// none with a bone when the humanoid lacks the bones it needs.
+    fn automatic(&self, part: Part, view: model::Vec3) -> DescriptorCollider {
+        use HumanBodyBone as H;
+        let none = DescriptorCollider {
+            state: DescriptorColliderState::Automatic,
+            bone: None,
+            radius: 0.0,
+            height: 0.0,
+            position: [0.0; 3],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+        };
+        let on = |node: usize, radius: f32, height: f32, position: Vec3, rotation: Quat| DescriptorCollider {
+            bone: Some(model::NodeIndex(node as u32)),
+            radius,
+            height,
+            position: position.to_array(),
+            rotation: rotation.to_array(),
+            ..none.clone()
+        };
+        let scale = |node: usize| self.at(node).scale.abs().max_element();
+        let local = |node: usize, p: Vec3| {
+            let t = self.at(node);
+            (t.rotation.inverse() * (p - t.translation)) / t.scale
+        };
+        let along = |node: usize, d: Vec3| match (self.at(node).rotation.inverse() * d).try_normalize() {
+            Some(d) => Quat::from_rotation_arc(Vec3::Y, d),
+            None => Quat::IDENTITY,
+        };
+        let shoulders = || Some(self.pos(H::LeftUpperArm)?.distance(self.pos(H::RightUpperArm)?));
+        match part {
+            Part::Head => {
+                let Some(head) = self.bone(H::Head) else { return none };
+                let at = self.at(head).translation;
+                let eyes: Vec<f32> = [H::LeftEye, H::RightEye].into_iter().filter_map(|e| self.pos(e)).map(|p| p.y).collect();
+                let root = self.at(self.root(head));
+                let y = match eyes.len() {
+                    0 => view[1] * root.scale.abs().max_element() + root.translation.y,
+                    n => eyes.iter().sum::<f32>() / n as f32,
+                };
+                let radius = ((y - at.y).abs() * 0.8).max(shoulders().unwrap_or(0.0) * 0.33) / scale(head);
+                on(head, radius, 0.0, local(head, Vec3::new(at.x, y, at.z)), Quat::IDENTITY)
+            }
+            Part::Torso => {
+                let (Some(hips), Some(chest), Some(neck)) = (self.pos(H::Hips), self.bone(H::Chest).or(self.bone(H::Spine)), self.pos(H::Neck)) else {
+                    return none;
+                };
+                let height = hips.distance(neck) / scale(chest);
+                let radius = match shoulders() {
+                    Some(w) => height.min(w / scale(chest)) * 0.5,
+                    None => height * 0.3,
+                };
+                on(chest, radius, height, local(chest, (hips + neck) * 0.5), along(chest, neck - hips))
+            }
+            Part::Hand(side) => {
+                let (hand, fingers, lower) = match side {
+                    Side::Left => (H::LeftHand, [H::LeftIndexProximal, H::LeftMiddleProximal, H::LeftRingProximal, H::LeftLittleProximal], H::LeftLowerArm),
+                    Side::Right => (H::RightHand, [H::RightIndexProximal, H::RightMiddleProximal, H::RightRingProximal, H::RightLittleProximal], H::RightLowerArm),
+                };
+                let Some(node) = self.bone(hand) else { return none };
+                let at = self.at(node).translation;
+                let roots: Vec<Vec3> = fingers.into_iter().filter_map(|f| self.pos(f)).collect();
+                if roots.is_empty() {
+                    let Some(lower) = self.pos(lower) else { return none };
+                    let length = at.distance(lower);
+                    return on(node, length * 0.2 / scale(node), 0.0, local(node, at + (at - lower).normalize_or_zero() * length * 0.2), Quat::IDENTITY);
+                }
+                let mid = roots.iter().sum::<Vec3>() / roots.len() as f32;
+                let length = at.distance(mid);
+                let across = (mid - at).normalize_or_zero().cross(Vec3::Y).normalize_or_zero();
+                on(node, length * 0.25 / scale(node), length / scale(node), local(node, mid) * 0.85, along(node, across))
+            }
+            Part::Foot(side) => {
+                let (upper, lower, foot, toes) = match side {
+                    Side::Left => (H::LeftUpperLeg, H::LeftLowerLeg, H::LeftFoot, H::LeftToes),
+                    Side::Right => (H::RightUpperLeg, H::RightLowerLeg, H::RightFoot, H::RightToes),
+                };
+                let (Some(upper), Some(lower), Some(foot)) = (self.pos(upper), self.pos(lower), self.bone(foot)) else { return none };
+                let child = |name: &str| {
+                    self.nodes.children[foot].iter().copied().find(|&c| self.nodes.names.get(c).is_some_and(|n| n.to_lowercase().contains(name)))
+                };
+                let node = self.bone(toes).or_else(|| child("toe")).or_else(|| child("_end")).unwrap_or(foot);
+                let leg = upper.distance(lower) + lower.distance(self.at(foot).translation);
+                on(node, leg * 0.1 / scale(node), 0.0, Vec3::ZERO, Quat::IDENTITY)
+            }
+            Part::Finger([proximal, intermediate, distal]) => {
+                let (Some(p), Some(i)) = (self.bone(proximal), self.bone(intermediate)) else { return none };
+                let (from, to) = match self.bone(distal) {
+                    Some(d) => (i, d),
+                    None => (p, i),
+                };
+                let length = self.at(from).translation.distance(self.at(to).translation);
+                on(to, length * 0.4 / scale(to), length * 2.0 / scale(to), Vec3::ZERO, Quat::IDENTITY)
+            }
+        }
+    }
 }
 
 /// A finger's capsule in its bone's parent's space, from the parent's origin through the bone, run on in the bone's own
@@ -163,7 +315,7 @@ impl Contacts {
         let m = &avatar.model.contacts;
         let count = m.receivers.len();
         let mut senders = m.senders.clone();
-        senders.extend(standard_senders(&avatar.model.descriptor.colliders, &nodes));
+        senders.extend(standard_senders(&avatar.model.descriptor, &avatar.model.humanoid, &nodes));
         Ok(Contacts {
             senders,
             receivers: m.receivers.clone(),

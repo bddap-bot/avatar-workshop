@@ -75,7 +75,7 @@ by its mesh's `extras.targetNames` entry.
 |---|---|
 | `source` | importer name and version, source format, licence text and author as found in the source (absent when the source has none; never invented) |
 | `humanoid` | Unity HumanBodyBones name → node; the source's rest pose as given (no assumed T-pose); muscle limits from the human description; the body and the four IK goals as Unity's humanoid stream holds them with every muscle at rest |
-| `descriptor` | view position, lip-sync mode and the 15 viseme blendshapes, eyelid mode and shapes, eye bones and their rotation limits; the 14 body colliders (head, torso, hands, feet, four fingers a side) as stored: state (automatic, custom or disabled), bone, radius, height, position and rotation offsets. A standard contact sender sits on each enabled one with a bone, tagged by part and side: a capsule at its offsets on its bone, and a finger's from its bone's parent to its bone, or past it to its height, as the VRChat client places them |
+| `descriptor` | view position, lip-sync mode and the 15 viseme blendshapes, eyelid mode and shapes, eye bones and their rotation limits; the 14 body colliders (head, torso, hands, feet, four fingers a side) as stored: state (automatic, custom or disabled), bone, radius, height, position and rotation offsets. A standard contact sender sits on each enabled one with a bone, tagged by part and side: a capsule at its offsets on its bone, and a finger's from its bone's parent to its bone, or past it to its height, as the VRChat client places them. On a humanoid avatar an automatic one's stored values go unused: its collider is computed from the skeleton |
 | `renderers` | per mesh node: initially enabled, material slots |
 | `nodes` | per node: active as the uploaded avatar holds it; the evaluation core's animator applies the default states |
 | `materials` | per material: shader family (`poiyomi`, `liltoon`, `vrchat-mobile`, `mtoon`, `standard`, `unknown`), version, its saved properties as a typed map (floats, colours, vectors, texture references with tiling/offset, keywords) and each property its shader declares at the value the material resolves for it; render queue, cull, blend and depth state |
@@ -211,7 +211,8 @@ standard senders. What the recordings showed:
 - The avatar's own senders include a standard one on each enabled descriptor collider, tagged by part and, for
   hands, feet and fingers, by side (`Hand` and `HandL`, `FingerIndex` and `FingerIndexL`). The head's, torso's,
   hands' and feet's are capsules with the collider's dimensions and offsets on its bone, as Av3Emulator places
-  them; a finger's is placed as the VRChat client places it, below.
+  them; a finger's is placed as the VRChat client places it, below. On a humanoid avatar an automatic collider's
+  stored bone and values go unused, as below.
 - In the VRChat client each finger's standard sender also carries `Finger` and `Finger` with its side (`FingerL`),
   which Av3Emulator leaves out, and no other finger's or side's tag. Measured on variants of the fixture as local
   test avatars with one finger collider enabled per hand, all eight fingers over four builds: receivers allowing
@@ -235,6 +236,30 @@ standard senders. What the recordings showed:
   nothing sends and one for a disabled hand's stayed silent, and one for the fixture's own sender fired. The
   same build's receivers around the head's, left hand's and left foot's custom colliders read their stored
   capsules to 0.0005 mm.
+- In the VRChat client an automatic collider on a humanoid avatar is the one the SDK's descriptor computes from the
+  humanoid skeleton, whatever the descriptor stores, and is then placed as a custom one of its part (the head's
+  height and the palms' axis aside, below). A finger's sits
+  on its distal bone (its intermediate when the humanoid has no distal), with radius 0.4 and height 2 times the
+  distance from the finger's humanoid bone before it, over the bone's scale; one whose humanoid lacks the proximal or intermediate
+  places no sender. The torso's sits on the chest (the spine without one), its height the distance from hips to
+  neck, its radius half the lesser of that and the distance between the upper arms, centred between hips and neck
+  and along them. A foot's is a sphere on the toes, radius a tenth of the leg's length from upper leg through
+  lower leg to foot. A palm's sits on the hand, centred at 0.85 of the way to the mean of the finger proximals,
+  height that distance and radius a quarter of it, across the hand. The head's is a sphere on the head, at the
+  view position's height (the eyes' mean height when the humanoid has eye bones) straight above it, radius the larger
+  of 0.8 times that height and 0.33 times the distance between the upper arms. The core computes these from the skeleton at rest. Measured on the fixture as a local
+  test avatar with three-bone humanoid chains under each hand (one with a turned and one with a scaled distal bone,
+  a two-bone little finger on the left, a right little finger with only a proximal), every collider automatic with
+  stored values nothing like the rule's except a custom right ring finger with no bone and a disabled right foot.
+  Proximity receivers listening for each part's own tag and allowing self sat on the bone each end of its capsule
+  moves with, so posing the fingers could not move what they read, and were read through the client's OSC output;
+  four more per finger on the bone before it, around the capsule's middle, read up to 9.6 mm off the skeleton at
+  rest, as fingers posed while read would.
+  Each finger's two capsule ends and radius, the torso's and the left foot's capsule, and the palms' centres and
+  radii read the rule's to 0.0008 mm; fits left residuals under 0.0004 mm and readings varied by at most 0.0023 mm
+  over the 47 seconds they were read, so these hold to 0.01 mm. The right little finger, the custom finger with no
+  bone and the disabled foot were heard by none of their receivers, one listening for a tag nothing sends stayed
+  silent, and one for the fixture's own sender fired.
 
 Not measured:
 
@@ -242,9 +267,14 @@ Not measured:
   2 and 5). The replay takes that chain's transforms from the recording, so the targets' bar holds whichever order
   VRChat uses; the core's order runs every PhysBone before those constraints, and how far a host's chain then lies
   from the SDK's is not measured.
-- An automatic collider's sender in the client. A finger set to automatic on a bone of its own, outside the
-  humanoid's fingers, was heard by none of its receivers, and the automatic torso's receivers did not read the
-  stored capsule; the core places both from the stored values.
+- Why an automatic palm's axis and head's height differ from the rule on the skeleton at rest. The same build read
+  both palms' axes turned about 11.7 degrees about the hand's long axis, and the head's centre 14.4 mm lower than
+  the view position puts it, their radii and the palms' centres matching; the client seems to compute them on a
+  posed skeleton, and the core uses the one at rest.
+- An automatic collider on an avatar with no humanoid definition, a palm with no finger proximals, a head with eye
+  bones, a foot whose humanoid has no toes, a torso with no upper arms or chest, a head whose height rather than the
+  upper arms sets its radius, and an automatic collider on a scaled bone other than a finger's or under a scaled
+  ancestor.
 - A finger's sender on a bone with uneven scale, under a scaled ancestor, past the descriptor's size limit, or on
   a bone moved after the avatar loads.
 
