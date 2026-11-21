@@ -142,7 +142,7 @@ host; another target is `cargo build --release --target <triple>` in `avatar-god
   `model()` the `AW_avatar` extension as JSON. Both are safe off the main thread.
 - `AvatarScene.pack(model)` (`addons/avatar_workshop/avatar_scene.gd`) builds the model's scene once with Godot's
   glTF importer and packs it with what binds an evaluator to it, or returns `{error}`; `AvatarScene.instance(packed)`
-  instantiates it with its own evaluator, `{root, evaluator}`, for each avatar wearing the model. Both are safe off the
+  instantiates it with its own evaluator, `{root, evaluator}`, for each avatar wearing the model. `pack` takes the `GLTFState` a host's glTF document extensions read, and returns the glTF images by index (menu icons name them). Both are safe off the
   main thread; the root is outside the tree.
 - `AvatarEvaluator` drives `Evaluator`: `set_parameter`, `set_builtin`, `set_eyes`, `set_head`, `pose(node,
   root_space)` for the bones the host moves, `evaluate(dt, root, hands)` with other avatars' `hands(player)`,
@@ -225,87 +225,6 @@ patches three-vrm so that each joint measures its length to its child's position
 bone keeps its length as the VRM spring bone does; unpatched, three-vrm measures to the child's position from
 before the joint's parent moved that step.
 
-## Expression mixer
-
-Preload `res://addons/avatar_workshop/expression_mixer.gd` and call
-`mix(weights, bindings)`. Both arrays have one entry per expression channel.
-Each channel's bindings contain `[target, shape_index, influence]` triples;
-`target` is a caller-owned identifier (including a mesh instance).
-The result maps `[target, shape_index]` to the accumulated weight, clamped to
-0–1 after all contributions. Zero-weight channels still emit zero for their
-bound targets so callers can reset the previous frame. Inputs remain unchanged.
-The caller validates channel lengths and binding triples when loading assets.
-The mixer does not access nodes; the caller applies returned weights.
-
-## Spring chains
-
-`spring_definition.gd` reads a glTF JSON dictionary with VRM 1.0
-`VRMC_springBone` or VRM 0.x `secondaryAnimation`. `read(document)` returns
-`springs` and `colliders`: node indices, joint stiffness, drag, gravity and hit
-radius, sphere or capsule geometry, collider groups and optional centers.
-Legacy offsets and gravity are converted from Unity coordinates. Branches
-retain every joint, with each joint driven once.
-
-`spring_runtime.gd.new(definition, nodes)` binds indices to caller-owned
-`Node3D` objects or `skeleton_bone.gd.new(skeleton, bone_index)` handles.
-Their local transforms define the rest pose. Call `advance(delta)` after
-posing the body. `set_rest(node, transform)` moves the pose a joint swings about, as an
-animator that turns a PhysBone's bone does in VRChat; it returns false when no chain swings `node`. A chain whose index is in `idle` holds the pose it stopped in, through a reset too, and sets off from where its bones lie when it leaves; `state()` and `apply_state()` carry the points of the other chains, `point_count()` of them. Adjacent skeleton chains with unit transforms (allowing bind-matrix roundoff) use
-one Godot 4.6 `SpringBoneSimulator3D` per skeleton, sharing colliders. Chains connected
-through driven ancestors, shared joints, centers or colliders stay together. A component
-with skipped bones, materially scaled transforms or a collider dependency unsupported
-by the native solver retains the 60 Hz constraint solver; independent supported
-components remain native. Branches run in definition order. This capability selection
-is identical on every device.
-Sphere and capsule colliders follow their bound nodes.
-
-`targets[chain_index] = world_position` holds a tip within its reach; erase
-the entry to release it. Held tips yield to collisions and length constraints.
-A grip, a hand within reach or a scaled ancestor hands only its dependent component to the constraint solver
-with the captured momentum. Independent components keep running in the same native
-modifier. The component returns to native simulation once settled, without snapping to rest. Pauses longer than
-250 ms reset momentum. `tip(chain_index)` returns the last visible endpoint;
-native poses are captured when the skeleton modifier finishes. `touches(chain_index, slack)` says
-whether a captured point of the chain lies within `slack` metres of one of its declared colliders,
-whichever solver placed it.
-
-Each spring also says whose hands touch it, as `collide` and `grab` bits of
-`WEARER` and `OTHERS`, read from the spring's (or VRM 0.x bone group's) glTF
-`extras`: `"collide"` and `"grab"` each list `"wearer"` and `"others"`, as a
-VRChat PhysBone's allowCollision and allowGrabbing filters do; a spring without
-them is everyone's to touch. Set `hands` before `advance` to world-space
-capsules `{"key", "from", "to", "radius", "who"}` (a sphere where the ends
-meet, `who` WEARER or OTHERS, `key` the same hand's name every frame): each
-pushes the chains whose `collide` bits share its own, so a poke moves hair, ears
-or a tail, and a point it pushes holds to its surface, carried as the hand moves
-but never pulled as it draws away, so a strand caught in a hand drags with it
-until the hand leaves it or the chain's length draws it off; a held chain follows
-its holder instead. `grabs(chain_index, who)` says whether a hand
-of `who` may hold that chain; the caller checks it before setting a target.
-
-The caller owns input arbitration and networking. `state()` returns world-space
-tail positions; `apply_state(points)` poses a replica without running another
-simulation. It rejects wrong counts and nonfinite positions. Validate network
-ownership and spatial bounds in the caller. Do not advance a replica while
-applying snapshots. Moving nodes into a scene, loading files, decoding meshes,
-and deciding a rendering budget are also caller responsibilities.
-
-A chain whose joints carry extras "physbone" (and "limit"), as Avatar Workshop's Unity
-converter writes them from a VRChat PhysBone, steps by VRChat's own PhysBone step
-(`physbone.gd`) instead: whole 60 Hz steps with a part step for the time left over,
-versions 1.0 and 1.1, simplified and advanced integration, gravity falloff, immobile,
-squish and stretch, tapered bone radii against sphere, capsule, inside and plane colliders
-(`VRMC_springBone_extended_collider`), and angle, hinge and polar limits. Steady motion of
-its anchor carries it and only a change in that motion swings it, where VRChat lets velocity
-swing it too. Hands push it as capsules. It runs in script, never on the native solver,
-parents' chains before their children's.
-
-The solver adapts the Verlet update and length/collision projection approach
-from [godot-vrm](https://github.com/V-Sekai/godot-vrm), under the retained
-[MIT notice](addons/avatar_workshop/LICENSE-godot-vrm). Held and unsupported chains use this solver without an editor plugin or
-native extension. Collider geometry is prepared once per chain and conservative
-bounds reject impossible contacts before exact constraint projection.
-
 ## MToon
 
 `mtoon.gd` turns a VRM material into Godot's: `material(gltf_material,
@@ -327,18 +246,10 @@ light reaches the lit colour. Malformed values fall back to MToon's defaults.
 
 ## Tests
 
-Run `godot4 --headless --path . --script tests/expressions.gd` and
-`godot4 --headless --path . --script tests/springs.gd`.
-`godot4 --headless --path . --script tests/spring_motion.gd` checks a reference
-trace with moving and scaled skeletons, colliding dependent chains, held tips
-and a pause reset. `godot4 --headless --path . --script tests/native_springs.gd`
-checks native motion, grip/release handoff and replicated poses.
-`godot4 --headless --path . --script tests/physbone.gd` checks the PhysBone step on synthetic
-chains: never native, limits, immobile, steady motion, squish without stretch, and release.
-`godot4 --headless --path . --script tests/mtoon.gd` checks the 0.x conversion,
-render modes, optional features, linear colours and malformed input.
-The seven checks cover shared targets, separate meshes, neutral reset, empty
-input, clamping and reusable binding data. No asset downloads are needed.
+`godot4 --headless --path . --script tests/core.gd` checks the Godot extension (above) and
+`godot4 --headless --path . --script tests/mtoon.gd` the MToon conversion, render modes, optional features, linear
+colours and malformed input. `godot4 --headless --path . --script tests/skin_bindings.gd` checks skin bindings
+(below). No asset downloads are needed.
 
 ## Reference harness
 
@@ -769,8 +680,7 @@ swept step's to `compare-steps.tsv` in `RUNTIME`.
 
 Original code is available under either [MIT](LICENSE-MIT) or
 [Apache-2.0](LICENSE-APACHE), at your option. Third-party code, if added later,
-retains its original license notices. The spring solver includes the godot-vrm
-MIT notice linked above. The MToon shader follows three-vrm's MToon 1.0 shader and
+retains its original license notices. The MToon shader follows three-vrm's MToon 1.0 shader and
 its v0 conversion, under the retained [MIT notice](addons/avatar_workshop/LICENSE-three-vrm).
 
 ## Skin bindings

@@ -2,11 +2,10 @@
 ## `AvatarEvaluator` for each avatar that wears it.
 
 
-## `{scene, model, ...binding}` safe to share between instances, or `{error}` naming why the model has no scene. Safe
-## to call off the main thread.
-static func pack(model: AvatarModel) -> Dictionary:
+## `{scene, model, json, images, ...binding}` safe to share between instances, or `{error}` naming why the model has
+## no scene. `state` carries what the host's glTF document extensions read. Safe to call off the main thread.
+static func pack(model: AvatarModel, state := GLTFState.new()) -> Dictionary:
 	var doc := GLTFDocument.new()
-	var state := GLTFState.new()
 	var err := doc.append_from_buffer(model.glb(), "", state)
 	if err != OK:
 		return {"error": "glTF: %s" % error_string(err)}
@@ -36,7 +35,7 @@ static func pack(model: AvatarModel) -> Dictionary:
 	root.free()
 	if err != OK:
 		return {"error": "pack: %s" % error_string(err)}
-	return {"scene": scene, "model": model, "json": json, "skeletons": skeletons, "bones": bones, "nodes": nodes, "renderers": renderers, "materials": state.get_materials()}
+	return {"scene": scene, "model": model, "json": json, "skeletons": skeletons, "bones": bones, "nodes": nodes, "renderers": renderers, "materials": state.get_materials(), "images": state.get_images()}
 
 
 ## A new instance of a packed scene with its own evaluator bound to it: `{root, evaluator}`, or `{error}`. Safe off the
