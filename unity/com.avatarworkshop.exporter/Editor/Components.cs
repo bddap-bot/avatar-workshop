@@ -56,17 +56,29 @@ namespace AvatarWorkshop.Exporter
                 if (colliderPose != null && colliderPose.TryGetValue(bone, out var posed)) record.Add("colliderPose", posed);
                 bones.Add(bone.ToString(), record);
             }
-            var byName = new Dictionary<string, Transform>();
-            foreach (var t in nodes) if (!byName.ContainsKey(t.name)) byName[t.name] = t;
-            int unmatched = 0;
+            // A skeleton entry names its transform; a humanoid bone's is the one the Animator binds, any other's the
+            // only node of that name, and a name two entries share is no humanoid bone's.
+            var mapped = desc.human.Where(b => !string.IsNullOrEmpty(b.boneName))
+                .Select(b => (b.boneName, t: animator.GetBoneTransform((HumanBodyBones)Array.IndexOf(HumanTrait.BoneName, b.humanName))))
+                .Where(x => x.t != null).GroupBy(x => x.boneName).ToDictionary(g => g.Key, g => g.First().t);
+            var named = nodes.GroupBy(t => t.name).ToDictionary(g => g.Key, g => g.Count() == 1 ? g.First() : null);
+            var twice = new HashSet<string>(desc.skeleton.GroupBy(b => b.name).Where(g => g.Count() > 1 && mapped.ContainsKey(g.Key)).Select(g => g.Key));
+            int unmatched = 0, ambiguous = 0, claimed = 0;
+            var placed = new HashSet<Transform>();
             for (int i = 0; i < desc.skeleton.Length; i++)
             {
                 var s = desc.skeleton[i];
-                Transform t = i == 0 && !byName.ContainsKey(s.name) ? root : byName.TryGetValue(s.name, out var found) ? found : null;
-                if (t == null) { unmatched++; continue; }
+                Transform t = i == 0 && (s.name == root.name || !named.ContainsKey(s.name)) ? root
+                    : twice.Contains(s.name) ? null
+                    : mapped.TryGetValue(s.name, out var bone) ? bone
+                    : named.TryGetValue(s.name, out var only) ? only : null;
+                if (t == null) { if (named.ContainsKey(s.name) || twice.Contains(s.name)) ambiguous++; else unmatched++; continue; }
+                if (!placed.Add(t)) { claimed++; continue; }
                 skeleton.Add(new Obj { { "node", nodeIndex[t] }, { "position", Space.P(s.position) }, { "rotation", Space.Q(s.rotation) }, { "scale", Space.S(s.scale) } });
             }
             Drop("humanoid skeleton bone with no node", unmatched);
+            Drop("humanoid skeleton bone whose name several nodes or entries share", ambiguous);
+            Drop("humanoid skeleton bone naming a node an earlier one placed", claimed);
             h.Add("bones", bones);
             h.Add("skeleton", skeleton);
             h.Add("armStretch", desc.armStretch);

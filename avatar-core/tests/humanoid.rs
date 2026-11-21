@@ -11,17 +11,19 @@ use avatar_core::model::HumanBodyBone;
 use avatar_core::physbones::Nodes;
 use glam::{Quat, Vec3};
 
-#[test]
-fn bones_follow_unity_s_human_pose() {
+/// The worst rotation and, on the hips, position by sample kind and whether the bone is the hips, and the worst
+/// position of any other bone, posing `glb` as Unity posed it in `samples`.
+fn worst(glb: &str, samples: &str) -> (BTreeMap<(String, bool), (f32, f32)>, f32, usize) {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-synthetic.glb")).unwrap()).unwrap();
+    let avatar = avatar_core::read(&std::fs::read(root.join(glb)).unwrap()).unwrap();
     let nodes = Nodes::read(&avatar).unwrap();
     let human = Human::new(&avatar.model.humanoid).unwrap();
-    let dir = root.join("fixtures/reference/human-samples");
-    let unity: Vec<String> = std::fs::read_to_string(dir.join("muscles.tsv")).unwrap().lines().map(str::to_string).collect();
+    let dir = root.join(samples);
+    let unity: Vec<String> = std::fs::read_to_string(root.join("fixtures/reference/human-samples/muscles.tsv")).unwrap().lines().map(str::to_string).collect();
     let ours = muscle_names();
     let index: Vec<usize> = unity.iter().map(|n| ours.iter().position(|o| o == n).unwrap_or_else(|| panic!("{n} is no muscle of the core's"))).collect();
     let mut worst: BTreeMap<(String, bool), (f32, f32)> = BTreeMap::new();
+    let mut placed = 0.0f32;
     let mut samples = 0;
     for line in reference::text(&dir.join("humansamples.tsv")).lines().skip(1) {
         let f: Vec<&str> = line.split('\t').collect();
@@ -42,13 +44,23 @@ fn bones_follow_unity_s_human_pose() {
             let hips = bone == HumanBodyBone::Hips;
             let e = worst.entry((f[1].to_string(), hips)).or_default();
             e.0 = e.0.max(got.rotation.angle_between(want.rotation).to_degrees());
+            let d = (got.translation - want.translation).length();
             if hips {
-                e.1 = e.1.max((got.translation - want.translation).length());
+                e.1 = e.1.max(d);
+            } else {
+                placed = placed.max(d);
             }
         }
         samples += 1;
     }
+    (worst, placed, samples)
+}
+
+#[test]
+fn bones_follow_unity_s_human_pose() {
+    let (worst, placed, samples) = worst("fixtures/unity-synthetic.glb", "fixtures/reference/human-samples");
     assert_eq!(samples, 95 * 16 + 400);
+    assert!(placed < 1e-6, "a bone but the hips {placed} m from Unity's");
     for ((kind, hips), (angle, distance)) in &worst {
         println!("{kind} {}: {angle:.5}°, {distance:.2e} m", if *hips { "hips" } else { "other bones" });
         // The body frame turns about its up axis by up to 0.15° from Unity's when the spine bends and twists in
@@ -79,4 +91,16 @@ fn bones_stand_at_the_skeleton_s_positions() {
     human.pose(&nodes.parent, &mut rest, &muscles, body);
     assert!((moved[head].translation - at).length() < 1e-6, "{} (want {at})", moved[head].translation);
     assert!((moved[hips].translation - rest[hips].translation).length() < 1e-6);
+}
+
+/// An unmapped bone sharing the head's name comes first under the hips and the head stands away from its skeleton
+/// position: the export still gives the head its own skeleton entry, so it stands where Unity puts it.
+#[test]
+fn a_bone_named_like_a_humanoid_bone_takes_none_of_its_skeleton() {
+    let (worst, placed, samples) = worst("fixtures/unity-duplicate.glb", "fixtures/reference/human-samples/duplicate");
+    assert_eq!(samples, 95 * 8);
+    assert!(placed < 1e-6, "a bone but the hips {placed} m from Unity's");
+    for ((kind, hips), (angle, distance)) in &worst {
+        assert!(*angle < 0.1 && *distance < 1e-4, "{kind} {}: {angle}°, {distance} m", if *hips { "hips" } else { "other bones" });
+    }
 }

@@ -103,7 +103,8 @@ description's skeleton, an absent UpperChest's muscles added to the Chest, part
 of the upper arm's, forearm's and leg bones' twist passed to the child bone, and the hips placed so that the
 skeleton's centre of mass and body frame are the stream's `RootT` and `RootQ`. The frame evaluation poses the bones
 with it after the animator. `cargo test --test humanoid` checks it against Unity's own `HumanPoseHandler` on the
-fixture: `reference/Editor/HumanSamples.cs` writes `fixtures/reference/human-samples/` (run it with
+fixture: `reference/Editor/HumanSamples.cs` writes `fixtures/reference/human-samples/`, and in its `duplicate/` the
+fixture with an unmapped bone named like the head, exported as `fixtures/unity-duplicate.glb` (run it with
 `-executeMethod AvatarWorkshop.Reference.HumanSamples.Run` and `AW_OUT` in a project with the VRChat SDK).
 
 ## Frame evaluation
