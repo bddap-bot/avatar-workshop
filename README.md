@@ -145,7 +145,7 @@ host; another target is `cargo build --release --target <triple>` in `avatar-god
   `model()` the `AW_avatar` extension as JSON. Both are safe off the main thread.
 - `AvatarScene.pack(model)` (`addons/avatar_workshop/avatar_scene.gd`) builds the model's scene once with Godot's
   glTF importer and packs it with what binds an evaluator to it, or returns `{error}`; `AvatarScene.instance(packed)`
-  instantiates it with its own evaluator, `{root, evaluator}`, for each avatar wearing the model. `pack` takes the `GLTFState` a host's glTF document extensions read, and returns the glTF images by index (menu icons name them). Both are safe off the
+  instantiates it with its own evaluator, `{root, evaluator}`, for each avatar wearing the model. `pack` takes the `GLTFState` a host's glTF document extensions read, and returns the glTF textures by index, as menu icons name them. Both are safe off the
   main thread; the root is outside the tree.
 - `AvatarEvaluator` drives `Evaluator`: `set_parameter`, `set_builtin`, `set_eyes`, `set_head`, `pose(node,
   root_space)` for the bones the host moves, `evaluate(dt, root, hands)` with other avatars' `hands(player)`,

@@ -40,6 +40,9 @@ func _init() -> void:
 		check(not packed.has("error"), "%s packs: %s" % [file, packed.get("error")])
 		if packed.has("error"):
 			continue
+		var glb: PackedByteArray = model.glb()
+		var gltf: Dictionary = JSON.parse_string(glb.slice(20, 20 + glb.decode_u32(12)).get_string_from_utf8())
+		check((packed.textures as Array).size() == (gltf.get("textures", []) as Array).size() and (packed.textures as Array).all(func(t: Variant) -> bool: return t is Texture2D), "%s: each glTF texture by its index" % file)
 		var opened := AvatarScene.instance(packed)
 		var twin := AvatarScene.instance(packed)
 		if opened.has("error") or twin.has("error"):

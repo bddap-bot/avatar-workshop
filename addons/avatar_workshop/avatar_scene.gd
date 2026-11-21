@@ -2,7 +2,7 @@
 ## `AvatarEvaluator` for each avatar that wears it.
 
 
-## `{scene, model, json, images, ...binding}` safe to share between instances, or `{error}` naming why the model has
+## `{scene, model, json, textures, ...binding}` safe to share between instances, or `{error}` naming why the model has
 ## no scene. `state` carries what the host's glTF document extensions read; the scene nodes it names are freed on
 ## return. Safe to call off the main thread.
 static func pack(model: AvatarModel, state := GLTFState.new()) -> Dictionary:
@@ -34,12 +34,16 @@ static func pack(model: AvatarModel, state := GLTFState.new()) -> Dictionary:
 		renderers.append(at if not at.is_empty() and root.get_node(at) is MeshInstance3D else NodePath())
 	for n in root.find_children("*", "", true, false):
 		n.owner = root
+	var images := state.get_images()
+	var textures: Array[Texture2D] = []
+	for t: GLTFTexture in state.get_textures():
+		textures.append(images[t.src_image] if t.src_image >= 0 and t.src_image < images.size() else null)
 	var scene := PackedScene.new()
 	err = scene.pack(root)
 	root.free()
 	if err != OK:
 		return {"error": "pack: %s" % error_string(err)}
-	return {"scene": scene, "model": model, "json": json, "skeletons": skeletons, "bones": bones, "nodes": nodes, "renderers": renderers, "materials": state.get_materials(), "images": state.get_images()}
+	return {"scene": scene, "model": model, "json": json, "skeletons": skeletons, "bones": bones, "nodes": nodes, "renderers": renderers, "materials": state.get_materials(), "textures": textures}
 
 
 ## A new instance of a packed scene with its own evaluator bound to it and its own materials: `{root, evaluator}`, or
