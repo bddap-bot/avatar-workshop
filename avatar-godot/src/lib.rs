@@ -82,20 +82,24 @@ struct Scene {
     renderer_of: HashMap<u32, usize>,
 }
 
-/// Scale as column lengths, the sign of a mirror on the first, so a bone shrunk to almost nothing (a hidden hand)
-/// still crosses the boundary; a column of no length keeps its rotation's axis.
+/// Scale as column lengths, the sign of a mirror on the first; the rotation from the two longest independent columns,
+/// so a bone shrunk to almost nothing (a hidden hand), sheared or flattened along one axis still crosses the boundary.
 fn from_godot(t: Transform3D) -> Transform {
     let col = |v: Vector3| Vec3::new(v.x, v.y, v.z);
     let (a, b, c) = (col(t.basis.col_a()), col(t.basis.col_b()), col(t.basis.col_c()));
     let mirror = if a.cross(b).dot(c) < 0.0 { -1.0 } else { 1.0 };
-    let s = Vec3::new(a.length() * mirror, b.length(), c.length());
-    let unit = |v: Vec3, l: f32| if l.abs() > f32::MIN_POSITIVE { v / l } else { Vec3::ZERO };
-    let (x, y) = (unit(a, s.x), unit(b, s.y));
-    let z = x.cross(y);
-    let rotation = if x.length_squared() > 0.5 && y.length_squared() > 0.5 { Quat::from_mat3(&glam::Mat3::from_cols(x, z.cross(x), z)).normalize() } else { Quat::IDENTITY };
-    Transform { translation: Vec3::new(t.origin.x, t.origin.y, t.origin.z), rotation, scale: s }
+    let scale = Vec3::new(a.length() * mirror, b.length(), c.length());
+    let (x, y, z) = ((a * mirror).normalize_or_zero(), b.normalize_or_zero(), c.normalize_or_zero());
+    let frame = |u: Vec3, v: Vec3| {
+        let w = u.cross(v).normalize_or_zero();
+        (w != Vec3::ZERO).then(|| (u, w.cross(u), w))
+    };
+    let axes = frame(x, y).or_else(|| frame(y, z).map(|(y, z, x)| (x, y, z))).or_else(|| frame(z, x).map(|(z, x, y)| (x, y, z)));
+    let rotation = axes.map_or(Quat::IDENTITY, |(x, y, z)| Quat::from_mat3(&glam::Mat3::from_cols(x, y, z)).normalize());
+    Transform { translation: Vec3::new(t.origin.x, t.origin.y, t.origin.z), rotation, scale }
 }
 
+/// A pose from its parts as given: the quaternion is not normalised.
 fn parts(position: Vector3, rotation: Quaternion, scale: Vector3) -> Transform {
     Transform { translation: Vec3::new(position.x, position.y, position.z), rotation: Quat::from_xyzw(rotation.x, rotation.y, rotation.z, rotation.w), scale: Vec3::new(scale.x, scale.y, scale.z) }
 }

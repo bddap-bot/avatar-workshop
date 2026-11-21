@@ -138,7 +138,7 @@ Two runs write the same bytes; `cargo test --test evaluate` checks that on the f
 [`avatar-godot`](avatar-godot) is the evaluation core as a Godot 4.6 extension (gdext), which
 `addons/avatar_workshop/avatar_core.gdextension` loads from `addons/avatar_workshop/bin/<platform>-<arch>/`
 for Linux x86_64 and arm64, Windows x86_64 and Android arm64. `avatar-godot/install.sh` builds it for the
-host; another target is `cargo build --release --target <triple>` in `avatar-godot/` with that target's linker.
+host; another target is `cargo build --release --target <triple>` in `avatar-godot/` with that target's linker, into the workspace's `target/<triple>/release/`.
 
 - `AvatarModel.read(bytes)` returns the model a `.glb` with `AW_avatar` holds, or a VRM's through the
   importer, or the reason it refuses as a string. `glb()` is the glTF binary the model's indices name and

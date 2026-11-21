@@ -215,7 +215,7 @@ impl Human {
             if b.extra.iter().any(Option::is_some) {
                 angle += Vec3::from_array(b.extra.map(value)) * UPPER_CHEST_DEGREES.to_radians();
             }
-            let t = (0.5 * angle * b.sign).map(f32::tan);
+            let t = (0.5 * angle * b.sign).map(libm::tanf);
             let r = Quat::from_xyzw(t.x, t.y + t.x * t.z, t.z - t.x * t.y, 1.0).normalize();
             rolls[k] = angle.x * b.sign.x;
             locals[b.node].rotation = (b.pre * r * b.post.conjugate()).normalize();
