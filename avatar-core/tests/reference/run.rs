@@ -72,7 +72,7 @@ pub fn run(avatar: &Avatar, dir: &Path, frames: Option<usize>) -> Run {
     let nodes = Nodes::read(avatar).unwrap();
     let names = paths(avatar, &nodes);
     let bone = |b: HumanBodyBone| avatar.model.humanoid.bones.get(&b).map(|b| b.node.0 as usize);
-    let index: BTreeMap<String, usize> = names.iter().enumerate().filter_map(|(i, n)| n.as_deref().map(|n| (canonical(n), i))).collect();
+    let index: BTreeMap<&str, usize> = names.iter().enumerate().filter_map(|(i, n)| n.as_deref().map(|n| (n, i))).collect();
     let body: BTreeSet<usize> = avatar.model.humanoid.bones.iter().filter(|(b, _)| **b <= HumanBodyBone::RightToes).map(|(_, b)| b.node.0 as usize).collect();
     let roots: BTreeMap<usize, Transform> = rows(&dir.join("track.tsv"))[1..].iter().map(|r| (r[0].parse().unwrap(), unity(&floats(&r[1])))).collect();
     let mut stood = BTreeMap::<usize, Vec<(usize, Transform)>>::new();
@@ -87,6 +87,8 @@ pub fn run(avatar: &Avatar, dir: &Path, frames: Option<usize>) -> Run {
     }
     let script = inputs(dir);
     let first = *script.keys().next().expect("the script has no frames");
+    let unstood: Vec<_> = body.iter().filter(|n| !stood.get(&first).is_some_and(|s| s.iter().any(|(m, _)| m == *n))).map(|&n| &names[n]).collect();
+    assert!(unstood.is_empty(), "poses.tsv stands no body bone {unstood:?} on the script's first frame");
     let last = *script.keys().next_back().unwrap();
     let end = frames.map_or(last + 1, |n| (first + n).min(last + 1));
     let builtin: BTreeSet<&str> = BUILT_INS.iter().map(|b| b.0).collect();

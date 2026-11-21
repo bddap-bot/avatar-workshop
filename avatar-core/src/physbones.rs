@@ -537,6 +537,11 @@ impl PhysBones {
         self.chains[physbone].running
     }
 
+    /// Whether an earlier component has `physbone`'s root, so `physbone` poses nothing and reports nothing.
+    pub fn shadowed(&self, physbone: usize) -> bool {
+        self.chains[physbone].shadowed
+    }
+
     pub fn parameters(&self, physbone: usize) -> Parameters {
         self.chains[physbone].parameters
     }
@@ -616,7 +621,7 @@ impl PhysBones {
     /// component snaps to hands.
     pub fn grab(&mut self, physbone: usize, node: usize, at: Vec3, who: Toucher) -> bool {
         let pb = &self.model[physbone];
-        if !allowed(&pb.grabbing, who) {
+        if self.chains[physbone].shadowed || !allowed(&pb.grabbing, who) {
             return false;
         }
         let chain = &mut self.chains[physbone];

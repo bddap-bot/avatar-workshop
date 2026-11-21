@@ -357,8 +357,7 @@ fn hands_push_each_chain_their_filter_admits() {
 }
 
 /// The core's reference run, fed only the recording's script and its body pose, meets the 5% bar on the fixture's
-/// recording, and its tips start the motion where the recording's do: the median tip within 1% of its chain's length
-/// (measured: 0.04%; the tail, version 1.0 gravity with falloff, sits 22% off).
+/// recording, and its tips start the motion where the recording's do: the median tip within 1% of its chain's length.
 #[test]
 fn the_scripted_run_meets_the_bar_on_the_fixture() {
     let dir = path("fixtures/reference/fixture-animator");
@@ -368,14 +367,14 @@ fn the_scripted_run_meets_the_bar_on_the_fixture() {
     let mut tips = BTreeMap::<usize, BTreeMap<String, glam::Vec3>>::new();
     for line in run.tips.lines() {
         let r: Vec<&str> = line.split('\t').collect();
-        tips.entry(r[0].parse().unwrap()).or_default().insert(reference::canonical(r[1]), glam::Vec3::new(r[2].parse().unwrap(), r[3].parse().unwrap(), r[4].parse().unwrap()));
+        tips.entry(r[0].parse().unwrap()).or_default().insert(r[1].to_string(), glam::Vec3::new(r[2].parse().unwrap(), r[3].parse().unwrap(), r[4].parse().unwrap()));
     }
     let trace = reference::Trace { frames: tips.keys().map(|&f| f as f64).collect(), parameters: vec![BTreeMap::new(); tips.len()], tips: tips.into_values().collect() };
     let motion = errors(&dir, &trace, window.clone());
     for (e, tip) in &motion {
         eprintln!("{e:.4} {tip}");
     }
-    assert_eq!(motion.len(), 13);
+    assert_eq!(motion.len(), reference::rows(&dir.join("chains.tsv")).len() - 1);
     assert!(median(&motion) <= 0.05, "median {}", median(&motion));
     let start = errors(&dir, &trace, window.start..window.start + 1);
     for (e, tip) in &start {
@@ -385,7 +384,7 @@ fn the_scripted_run_meets_the_bar_on_the_fixture() {
 }
 
 /// Two components on one root: VRChat poses the bones by the first alone, as the second, which would hold them still,
-/// does not run.
+/// does not run, nor report its parameters over the first's, nor take a grab.
 #[test]
 fn a_second_component_on_a_root_poses_nothing() {
     let dir = path("fixtures/reference/fixture-animator");
@@ -393,14 +392,20 @@ fn a_second_component_on_a_root_poses_nothing() {
     let tail = avatar.model.physbones.iter().position(|p| p.parameter.as_deref() == Some("Tail")).unwrap();
     let mut doubled = avatar.clone();
     let mut still = doubled.model.physbones[tail].clone();
-    still.parameter = None;
     still.gravity.value = 0.0;
     still.pull.value = 1.0;
     still.limit = avatar_core::model::Limit::None {};
     doubled.model.physbones.push(still);
-    let frames = Some(reference::window(&dir).start);
+    let frames = Some(reference::window(&dir).end);
     let (one, two) = (reference::run::run(&avatar, &dir, frames), reference::run::run(&doubled, &dir, frames));
-    let tail_tips = |run: &reference::run::Run| run.tips.lines().filter(|l| l.contains("Tail.0|")).map(str::to_string).collect::<Vec<_>>();
-    assert!(!tail_tips(&one).is_empty());
-    assert_eq!(tail_tips(&one), tail_tips(&two));
+    let root = format!("{}|", reference::paths(&avatar, &avatar_core::physbones::Nodes::read(&avatar).unwrap())[avatar.model.physbones[tail].root.0 as usize].as_deref().unwrap());
+    let of = |log: &str, key: &str| log.lines().filter(|l| l.contains(key)).map(str::to_string).collect::<Vec<_>>();
+    assert!(of(&one.tips, &root).len() > 100);
+    assert_eq!(of(&one.tips, &root), of(&two.tips, &root));
+    assert!(of(&one.parameters, "Tail_Angle").len() > 10);
+    assert_eq!(of(&one.parameters, "Tail_"), of(&two.parameters, "Tail_"));
+    let mut pb = avatar_core::physbones::PhysBones::new(&doubled).unwrap();
+    let shadowed = doubled.model.physbones.len() - 1;
+    let node = pb.bones(tail).last().unwrap();
+    assert!(!pb.grab(shadowed, node, glam::Vec3::ZERO, avatar_core::physbones::Toucher::Wearer));
 }

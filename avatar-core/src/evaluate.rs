@@ -380,7 +380,7 @@ impl Evaluator {
         let local = self.animator.builtin("IsLocal").is_none_or(|v| v != 0.0);
         self.contacts.advance(input.dt, &world, &active, input.senders, local);
         for (c, names) in self.physbone_parameters.iter().enumerate() {
-            let Some(names) = names else { continue };
+            let Some(names) = names.as_ref().filter(|_| !self.physbones.shadowed(c)) else { continue };
             let p = self.physbones.parameters(c);
             for (name, v) in names.iter().zip([p.is_grabbed as u8 as f32, p.is_posed as u8 as f32, p.angle, p.stretch, p.squish]) {
                 self.animator.set(name, v);
