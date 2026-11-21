@@ -7,10 +7,10 @@ let
     url = "https://github.com/NixOS/nixpkgs/archive/d6c71932130818840fc8fe9509cf50be8c64634f.tar.gz";
     sha256 = "1klgyhj98j3gfsql5sn9rapyx62qk5g8adk5zh9mnc4d0fj61gdr";
   }) { overlays = [ rust-overlay ]; };
-  rust = pkgs.rust-bin.stable."1.91.1".default.override {
-    targets = [ "aarch64-linux-android" "aarch64-unknown-linux-musl" "wasm32-unknown-unknown" ];
+  rust = pkgs.rust-bin.stable."1.99.1".default.override {
+    targets = [ "aarch64-linux-android" "aarch64-unknown-linux-gnu" "aarch64-unknown-linux-musl" "x86_64-pc-windows-gnullvm" "wasm32-unknown-unknown" ];
   };
 in
 pkgs.mkShell {
-  packages = [ rust pkgs.gcc ];
+  packages = [ rust pkgs.gcc pkgs.godot_4_6 ];
 }
