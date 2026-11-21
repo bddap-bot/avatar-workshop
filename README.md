@@ -145,7 +145,7 @@ host; another target is `cargo build --release --target <triple>` in `avatar-god
 - `AvatarEvaluator` drives `Evaluator`: `set_parameter`, `set_builtin`, `set_eyes`, `set_head`, `pose(node,
   root_space)` for the bones the host moves, `evaluate(dt, root, hands)` with other avatars' `hands(player)`,
   `grab`, `hold`, `release`, then `apply()` writes node poses, renderer visibility (each renderer alone, its node and every ancestor active), blendshapes and
-  material slots onto the bound scene. `bind` gives each renderer its own slots. `shown`, `space`, `local`,
+  material slots onto the bound scene; call it each frame once the scene is in the tree, since Godot resets a renderer's visibility as it enters. `bind` gives each renderer its own slots. `shown`, `space`, `local`,
   `parameters`, `saved`, `states`, `physbone_bones` and `materials` (the animated material properties, which a
   host's material renderer applies) read the last frame. A node or PhysBone index out of range is refused
   with an error.

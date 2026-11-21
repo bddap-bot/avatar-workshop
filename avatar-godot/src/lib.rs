@@ -237,7 +237,7 @@ impl AvatarEvaluator {
         let mut server = RenderingServer::singleton();
         for (r, m) in s.renderers.iter().enumerate() {
             if let Some(m) = m {
-                server.instance_set_visible(m.get_instance(), e.shown(r));
+                server.instance_set_visible(m.get_instance(), e.shown(r) && m.is_visible_in_tree());
             }
         }
         for (node, shape, w) in &out.blendshapes {
