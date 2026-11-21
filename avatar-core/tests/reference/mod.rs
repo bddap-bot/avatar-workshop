@@ -424,7 +424,7 @@ pub fn tips(avatar: &Avatar, nodes: &Nodes, names: &[Option<String>], ev: &Evalu
 pub fn physbone_parameters(avatar: &Avatar, ev: &Evaluator) -> BTreeMap<String, f32> {
     let mut parameters = BTreeMap::new();
     for (c, model) in avatar.model.physbones.iter().enumerate() {
-        let Some(name) = &model.parameter else { continue };
+        let Some(name) = model.parameter.as_ref().filter(|_| !ev.physbones().shadowed(c)) else { continue };
         let p = ev.physbones().parameters(c);
         for (suffix, value) in [("IsGrabbed", p.is_grabbed as u8 as f32), ("IsPosed", p.is_posed as u8 as f32), ("Angle", p.angle), ("Stretch", p.stretch), ("Squish", p.squish)] {
             parameters.insert(format!("{name}_{suffix}"), value);

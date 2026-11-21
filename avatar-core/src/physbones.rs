@@ -189,7 +189,8 @@ struct Bone {
 struct Chain {
     /// The component's node and its ancestors.
     lineage: Vec<usize>,
-    /// Another component earlier in the model has the same root: VRChat poses those bones by the first alone.
+    /// Another component earlier in the model has the same root: VRChat poses those bones by the first alone, so this
+    /// one has none.
     shadowed: bool,
     running: bool,
     reset_when_disabled: bool,
@@ -465,7 +466,9 @@ impl PhysBones {
         let roots: Vec<usize> = model.physbones.iter().map(|p| p.root.0 as usize).collect();
         let mut chains: Vec<Chain> = model.physbones.iter().map(|pb| chain(pb, &roots, &nodes)).collect();
         for (i, c) in chains.iter_mut().enumerate() {
-            c.shadowed = roots[..i].contains(&roots[i]);
+            if roots[..i].contains(&roots[i]) {
+                *c = Chain { shadowed: true, bones: vec![], rest: vec![], world: vec![], settled: vec![], held: vec![], ..c.clone() };
+            }
         }
         let colliders: Vec<ColliderAt> = model
             .colliders

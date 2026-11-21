@@ -129,8 +129,8 @@ replay, with the SDK's PhysBone output in place of the core's (`Input::held`); a
 
 `cargo run --release --example run -- RECORDING AVATAR.glb OUT [--frames N]` writes the core's reference run
 of a model under a recording's scripted input: each frame the parameters `inputs.tsv` sets, the root of `track.tsv`,
-and the humanoid trunk and limbs where `poses.tsv` holds them, as a host gives the pose its IK solved (fingers, eyes
-and jaw stay the animator's), at 60 Hz. `OUT/tips.tsv` holds every PhysBone tip each frame, and `params.tsv`,
+and the humanoid trunk and limbs as `poses.tsv` holds them, every one from the first frame, as a host gives the pose
+its IK solved (fingers, eyes and jaw stay the animator's), at 60 Hz. `OUT/tips.tsv` holds every PhysBone tip each frame, and `params.tsv`,
 `states.tsv` and `output.tsv` the animator's parameters, each layer's state and the frame output as change logs. `script.tsv` is what each frame fed the core (`set`, `head`, `pose` and `frame` lines, in the order it applied them, each value the hex of its f32 bits), so another runtime can feed its own the same and compare.
 Two runs write the same bytes; `cargo test --test evaluate` checks that on the fixture's recording.
 

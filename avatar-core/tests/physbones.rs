@@ -395,6 +395,7 @@ fn a_second_component_on_a_root_poses_nothing() {
     still.gravity.value = 0.0;
     still.pull.value = 1.0;
     still.limit = avatar_core::model::Limit::None {};
+    still.endpoint_position = [0.0, 0.1, 0.0];
     doubled.model.physbones.push(still);
     let frames = Some(reference::window(&dir).end);
     let (one, two) = (reference::run::run(&avatar, &dir, frames), reference::run::run(&doubled, &dir, frames));
