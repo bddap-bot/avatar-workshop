@@ -9,7 +9,7 @@ using Object = UnityEngine.Object;
 
 namespace AvatarWorkshop.Exporter
 {
-    public static class Exporter
+    public static partial class Exporter
     {
         // AnimationUtility lists a clip's bindings in an order that differs from one editor process to the next.
         public static IEnumerable<UnityEditor.EditorCurveBinding> Ordered(IEnumerable<UnityEditor.EditorCurveBinding> bindings) =>
@@ -146,7 +146,7 @@ namespace AvatarWorkshop.Exporter
         {
             Collect(root);
             if (root.rotation != Quaternion.identity) Drop("avatar root rotated in the scene; world-up vectors stay in scene space");
-            var renderers = nodes.Select(t => t.GetComponent<Renderer>()).Where(r => r is SkinnedMeshRenderer || r is MeshRenderer).ToList();
+            var renderers = nodes.Select(t => t.GetComponent<Renderer>()).Where(r => r is SkinnedMeshRenderer || r is MeshRenderer || (r is ParticleSystemRenderer && r.GetComponent<ParticleSystem>() != null)).ToList();
             var slots = renderers.ToDictionary(r => r, r => r.sharedMaterials);
             var weights = renderers.OfType<SkinnedMeshRenderer>().ToDictionary(r => r, r =>
                 r.sharedMesh == null ? new float[0] : Enumerable.Range(0, r.sharedMesh.blendShapeCount).Select(r.GetBlendShapeWeight).ToArray());
@@ -163,14 +163,17 @@ namespace AvatarWorkshop.Exporter
             var parameters = Parameters();
             var menu = Menu();
             var layers = Layers();
+            var particleSystems = ParticleSystems();
 
             model.Add("renderers", renderers.Select(r => (object)new Obj
             {
                 { "node", nodeIndex[r.transform] }, { "enabled", r.enabled },
                 { "materials", slots[r].Select(m => (object)Material(m)).ToList() },
             }).ToList());
+            if (particleSystems.Count > 0) model.Add("particleSystems", particleSystems);
             model.Add("nodes", nodes.Select(t => (object)new Obj { { "active", t.gameObject.activeSelf } }).ToList());
             model.Add("materials", materialRecords);
+            if (cubemapRecords.Count > 0) model.Add("cubemaps", cubemapRecords);
             model.Add("physbones", physbones.Select(p => (object)p.record).ToList());
             model.Add("colliders", colliders);
             model.Add("contacts", new Obj { { "senders", contacts.Where(c => c.sender).Select(c => (object)c.record).ToList() }, { "receivers", contacts.Where(c => !c.sender).Select(c => (object)c.record).ToList() } });
@@ -472,7 +475,7 @@ namespace AvatarWorkshop.Exporter
         }
 
         bool Represented(Component c) =>
-            c is Transform || c is SkinnedMeshRenderer || c is MeshRenderer || c is MeshFilter
+            c is Transform || c is SkinnedMeshRenderer || c is MeshRenderer || c is MeshFilter || c is ParticleSystem || (c is ParticleSystemRenderer && c.GetComponent<ParticleSystem>() != null)
             || (c is Animator && c.transform == root) || c is VRCAvatarDescriptor || c is VRC.Core.PipelineManager
             || c is VRC.Dynamics.VRCPhysBoneBase || c is VRC.Dynamics.VRCPhysBoneColliderBase || c is VRC.Dynamics.ContactBase
             || c is VRC.Dynamics.VRCConstraintBase || c is UnityEngine.Animations.IConstraint;

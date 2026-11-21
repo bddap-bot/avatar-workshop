@@ -60,6 +60,8 @@ pub struct Output {
     pub materials: Vec<(u32, String, f32)>,
     /// (renderer node, slot, material index).
     pub slots: Vec<(u32, u32, u32)>,
+    /// (particle system node, serialized property, value).
+    pub particles: Vec<(u32, String, f32)>,
 }
 
 #[derive(Default)]
@@ -91,6 +93,7 @@ pub struct Evaluator {
     blendshapes: Vec<(usize, u32, String)>,
     materials: Vec<(usize, u32, String)>,
     slots: Vec<(usize, u32, u32)>,
+    particles: Vec<(usize, u32, String)>,
     physbone_parameters: Vec<Option<[String; 5]>>,
     authored_active: Vec<bool>,
     authored_enabled: Vec<bool>,
@@ -128,6 +131,7 @@ impl Evaluator {
             blendshapes: vec![],
             materials: vec![],
             slots: vec![],
+            particles: vec![],
             physbone_parameters: m
                 .physbones
                 .iter()
@@ -170,6 +174,7 @@ impl Evaluator {
                 Target::BlendShape(n, s) => e.blendshapes.push((i, *n, s.clone())),
                 Target::MaterialProperty(n, p) => e.materials.push((i, *n, p.clone())),
                 Target::Slot(n, s) => e.slots.push((i, *n, *s)),
+                Target::ParticleSystem(n, p) => e.particles.push((i, *n, p.clone())),
                 _ => {}
             }
         }
@@ -401,6 +406,7 @@ impl Evaluator {
         let values = self.animator.values();
         self.output.blendshapes = self.blendshapes.iter().map(|(i, n, s)| (*n, s.clone(), values[*i])).collect();
         self.output.materials = self.materials.iter().map(|(i, n, p)| (*n, p.clone(), values[*i])).collect();
+        self.output.particles = self.particles.iter().map(|(i, n, p)| (*n, p.clone(), values[*i])).collect();
         self.output.slots = self.slots.iter().filter(|(i, ..)| values[*i] >= 0.0).map(|(i, n, s)| (*n, *s, values[*i] as u32)).collect();
     }
 }

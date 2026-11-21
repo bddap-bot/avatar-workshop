@@ -336,6 +336,7 @@ fn default_of(avatar: &Avatar, t: &Target, rest: &[crate::physbones::Transform])
             }
         }),
         Target::Muscle(n) if human::is_goal_w(n) => 1.0,
+        Target::ParticleSystem(n, p) => m.particle_systems.iter().find(|s| s.node.0 == *n).and_then(|s| s.value(p)).unwrap_or(0.0),
         Target::Constraint(i, f) => m.constraints.get(*i as usize).map_or(0.0, |c| constraint_field(c, f)),
         Target::ContactSender(i, f) => m.contacts.senders.get(*i as usize).map_or(0.0, |c| match f.as_str() {
             "m_Enabled" => c.enabled as u8 as f32,
@@ -1663,6 +1664,7 @@ fn node_of(t: &Target) -> Option<u32> {
         | Target::RendererEnabled(n)
         | Target::BlendShape(n, _)
         | Target::MaterialProperty(n, _)
+        | Target::ParticleSystem(n, _)
         | Target::Translation(n, _)
         | Target::Rotation(n, _)
         | Target::Scale(n, _)

@@ -54,6 +54,7 @@ namespace AvatarWorkshop.Exporter
             if (s.StartsWith("vrchat/mobile/")) return "vrchat-mobile";
             if (s.Contains("mtoon")) return "mtoon";
             if (shader == "Standard" || shader == "Standard (Specular setup)") return "standard";
+            if (shader.StartsWith("Particles/") || shader.StartsWith("Legacy Shaders/Particles/") || shader.StartsWith("Mobile/Particles/")) return "particles";
             return "unknown";
         }
 
@@ -86,8 +87,7 @@ namespace AvatarWorkshop.Exporter
                 var scale = value.FindPropertyRelative("m_Scale").vector2Value;
                 var offset = value.FindPropertyRelative("m_Offset").vector2Value;
                 var tp = new Obj();
-                if (tex is Texture2D t2) tp.Add("texture", Texture(t2));
-                else if (tex != null) Drop(tex.GetType().Name + " material texture");
+                MaterialTexture(tp, tex);
                 tp.Add("tiling", new[] { scale.x, scale.y });
                 tp.Add("offset", new[] { offset.x, offset.y });
                 Add(name, new[] { ShaderPropertyType.Texture }, new Obj { { "texture", tp } });
@@ -158,8 +158,7 @@ namespace AvatarWorkshop.Exporter
                 case ShaderPropertyType.Texture:
                     var tp = new Obj();
                     var tex = m.GetTexture(n);
-                    if (tex is Texture2D t2) tp.Add("texture", Texture(t2));
-                    else if (tex != null) Drop(tex.GetType().Name + " material texture");
+                    MaterialTexture(tp, tex);
                     var scale = m.GetTextureScale(n);
                     var offset = m.GetTextureOffset(n);
                     tp.Add("tiling", new[] { scale.x, scale.y });

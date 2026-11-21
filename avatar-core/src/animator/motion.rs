@@ -25,6 +25,8 @@ pub enum Target {
     Constraint(u32, String),
     ContactSender(u32, String),
     ContactReceiver(u32, String),
+    /// A particle system's serialized property, by its node.
+    ParticleSystem(u32, String),
     /// The material index filling a renderer's slot.
     Slot(u32, u32),
 }
@@ -164,6 +166,7 @@ pub fn target_of(binding: &Binding) -> Option<Target> {
         Binding::Constraint { index, field } => Target::Constraint(index.0, field.clone()),
         Binding::ContactSender { index, field } => Target::ContactSender(index.0, field.clone()),
         Binding::ContactReceiver { index, field } => Target::ContactReceiver(index.0, field.clone()),
+        Binding::ParticleSystem { node, property } => Target::ParticleSystem(node.0, property.clone()),
     })
 }
 

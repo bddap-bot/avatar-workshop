@@ -385,7 +385,7 @@ namespace AvatarWorkshop.Exporter
             {
                 var t = Path(binding.path);
                 const string prefix = "m_Materials.Array.data[";
-                if (t != null && Drawn(binding.type) && binding.propertyName.StartsWith(prefix) && t.GetComponent(binding.type) != null
+                if (t != null && Drawn(binding.type, t) && binding.propertyName.StartsWith(prefix)
                     && int.TryParse(binding.propertyName.Substring(prefix.Length).TrimEnd(']'), out int slot))
                 {
                     if (slot >= ((Renderer)t.GetComponent(binding.type)).sharedMaterials.Length) { Drop("animated material slot past the renderer's slots"); continue; }
@@ -425,7 +425,11 @@ namespace AvatarWorkshop.Exporter
 
         static readonly string[] Axes = { "x", "y", "z", "w" };
 
-        static bool Drawn(Type t) => typeof(SkinnedMeshRenderer).IsAssignableFrom(t) || typeof(MeshRenderer).IsAssignableFrom(t);
+        static bool Drawn(Type t) => typeof(SkinnedMeshRenderer).IsAssignableFrom(t) || typeof(MeshRenderer).IsAssignableFrom(t) || typeof(ParticleSystemRenderer).IsAssignableFrom(t);
+
+        // A ParticleSystemRenderer is a renderer of the model only beside its ParticleSystem.
+        static bool Drawn(Type t, Transform node) => Drawn(t) && node.GetComponent(t) != null
+            && (!typeof(ParticleSystemRenderer).IsAssignableFrom(t) || node.GetComponent<ParticleSystem>() != null);
 
         (Obj, bool) Binding(EditorCurveBinding b)
         {
@@ -446,7 +450,7 @@ namespace AvatarWorkshop.Exporter
                     return (new Obj { { "type", "transform" }, { "node", node }, { "property", kind }, { "component", axis } }, negate);
                 }
             }
-            if (Drawn(b.type) && t.GetComponent(b.type) != null)
+            if (Drawn(b.type, t))
             {
                 if (prop == "m_Enabled") return (new Obj { { "type", "rendererEnabled" }, { "node", node } }, false);
                 if (prop.StartsWith("blendShape.") && b.type == typeof(SkinnedMeshRenderer)) return (new Obj { { "type", "blendShape" }, { "node", node }, { "name", prop.Substring("blendShape.".Length) } }, false);
@@ -458,6 +462,8 @@ namespace AvatarWorkshop.Exporter
                 return (new Obj { { "type", "muscle" }, { "name", prop } }, false);
             }
             var component = typeof(Component).IsAssignableFrom(b.type) ? t.GetComponent(b.type) : null;
+            if (component is ParticleSystem && AnimationUtility.GetFloatValue(root.gameObject, b, out _))
+                return (new Obj { { "type", "particleSystem" }, { "node", node }, { "property", prop } }, false);
             if (component is Component c)
             {
                 bool negate = Exporter.MirroredField(prop);

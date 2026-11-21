@@ -19,6 +19,12 @@
         "$ref": "#/$defs/Renderer"
       }
     },
+    "particleSystems": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ParticleSystem"
+      }
+    },
     "nodes": {
       "description": "One entry per glTF node, in node order.",
       "type": "array",
@@ -31,6 +37,12 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/Material"
+      }
+    },
+    "cubemaps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Cubemap"
       }
     },
     "physbones": {
@@ -1486,7 +1498,7 @@
           "type": "boolean"
         },
         "materials": {
-          "description": "The renderer's material slots, in slot order. A mesh shared by several renderers keeps\nits own primitive materials as the generic viewer's fallback.",
+          "description": "The renderer's material slots, in slot order. A mesh shared by several renderers keeps\nits own primitive materials as the generic viewer's fallback. A particle system's renderer\nhas Unity's slots: the particles' material, then the trails'.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/MaterialIndex"
@@ -1501,6 +1513,422 @@
       ]
     },
     "MaterialIndex": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "ParticleSystem": {
+      "description": "A ParticleSystem and the ParticleSystemRenderer beside it on its node. The renderer's enabled\nflag and materials are its entry in `renderers`.",
+      "type": "object",
+      "properties": {
+        "node": {
+          "$ref": "#/$defs/NodeIndex"
+        },
+        "system": {
+          "description": "Every serialized property of the ParticleSystem, every module included, by the names\nUnity serializes and animation curves bind them with.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Serialized"
+          }
+        },
+        "renderer": {
+          "description": "The ParticleSystemRenderer's own serialized properties, those every Renderer has left out.\nAnimation curves bind only its enabled flag, material properties and slots, through `renderers`.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Serialized"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "node",
+        "system",
+        "renderer"
+      ]
+    },
+    "Serialized": {
+      "description": "A serialized Unity value as Unity's serialization holds it.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "bool": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "bool"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "description": "Every integer and enum, as its number.",
+          "type": "object",
+          "properties": {
+            "int": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          "required": [
+            "int"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "float": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          "required": [
+            "float"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "vector2": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "required": [
+            "vector2"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "vector3": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "vector3"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "color": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              },
+              "minItems": 4,
+              "maxItems": 4
+            }
+          },
+          "required": [
+            "color"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "string": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "string"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "curve": {
+              "$ref": "#/$defs/AnimationCurve"
+            }
+          },
+          "required": [
+            "curve"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "gradient": {
+              "$ref": "#/$defs/Gradient"
+            }
+          },
+          "required": [
+            "gradient"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "description": "A reference to a GameObject, a Transform or a component, by the node holding it.",
+          "type": "object",
+          "properties": {
+            "node": {
+              "$ref": "#/$defs/NodeIndex"
+            }
+          },
+          "required": [
+            "node"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mesh": {
+              "$ref": "#/$defs/MeshIndex"
+            }
+          },
+          "required": [
+            "mesh"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "texture": {
+              "$ref": "#/$defs/TextureIndex"
+            }
+          },
+          "required": [
+            "texture"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "description": "An empty object reference.",
+          "type": "object",
+          "properties": {
+            "null": {
+              "type": "object",
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "null"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "struct": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Serialized"
+              }
+            }
+          },
+          "required": [
+            "struct"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "array": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Serialized"
+              }
+            }
+          },
+          "required": [
+            "array"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AnimationCurve": {
+      "description": "Unity's `AnimationCurve`.",
+      "type": "object",
+      "properties": {
+        "keys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Keyframe"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "keys"
+      ]
+    },
+    "Keyframe": {
+      "type": "object",
+      "properties": {
+        "time": {
+          "type": "number",
+          "format": "float"
+        },
+        "value": {
+          "type": "number",
+          "format": "float"
+        },
+        "inTangent": {
+          "description": "An infinite tangent is Unity's stepped (constant) key.",
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "enum": [
+                "Infinity",
+                "-Infinity"
+              ]
+            }
+          ]
+        },
+        "outTangent": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "enum": [
+                "Infinity",
+                "-Infinity"
+              ]
+            }
+          ]
+        },
+        "inWeight": {
+          "type": "number",
+          "format": "float"
+        },
+        "outWeight": {
+          "type": "number",
+          "format": "float"
+        },
+        "weightedMode": {
+          "$ref": "#/$defs/WeightedMode"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "time",
+        "value",
+        "inTangent",
+        "outTangent",
+        "inWeight",
+        "outWeight",
+        "weightedMode"
+      ]
+    },
+    "WeightedMode": {
+      "type": "string",
+      "enum": [
+        "none",
+        "in",
+        "out",
+        "both"
+      ]
+    },
+    "Gradient": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/GradientMode"
+        },
+        "colorKeys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GradientColorKey"
+          }
+        },
+        "alphaKeys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GradientAlphaKey"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "colorKeys",
+        "alphaKeys"
+      ]
+    },
+    "GradientMode": {
+      "type": "string",
+      "enum": [
+        "blend",
+        "fixed",
+        "perceptualBlend"
+      ]
+    },
+    "GradientColorKey": {
+      "type": "object",
+      "properties": {
+        "time": {
+          "type": "number",
+          "format": "float"
+        },
+        "color": {
+          "description": "RGB as Unity holds it.",
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "time",
+        "color"
+      ]
+    },
+    "GradientAlphaKey": {
+      "type": "object",
+      "properties": {
+        "time": {
+          "type": "number",
+          "format": "float"
+        },
+        "alpha": {
+          "type": "number",
+          "format": "float"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "time",
+        "alpha"
+      ]
+    },
+    "MeshIndex": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "TextureIndex": {
       "type": "integer",
       "format": "uint32",
       "minimum": 0
@@ -1593,14 +2021,23 @@
       ]
     },
     "ShaderFamily": {
-      "type": "string",
-      "enum": [
-        "poiyomi",
-        "liltoon",
-        "vrchat-mobile",
-        "mtoon",
-        "standard",
-        "unknown"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "poiyomi",
+            "liltoon",
+            "vrchat-mobile",
+            "mtoon",
+            "standard",
+            "unknown"
+          ]
+        },
+        {
+          "description": "Unity's built-in particle shaders.",
+          "type": "string",
+          "const": "particles"
+        }
       ]
     },
     "MaterialProperty": {
@@ -1694,6 +2131,17 @@
             }
           ]
         },
+        "cubemap": {
+          "description": "A cube texture in the property's place; a property holds a texture or a cubemap, never both.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CubemapIndex"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "tiling": {
           "type": "array",
           "items": {
@@ -1719,7 +2167,7 @@
         "offset"
       ]
     },
-    "TextureIndex": {
+    "CubemapIndex": {
       "type": "integer",
       "format": "uint32",
       "minimum": 0
@@ -1801,6 +2249,42 @@
         "notEqual",
         "greaterEqual",
         "always"
+      ]
+    },
+    "Cubemap": {
+      "description": "A cube texture: six glTF images, its faces in Unity's order (+X, -X, +Y, -Y, +Z, -Z), each its\ntexels in `Cubemap.GetPixels` order with the first row last, as Unity's PNG encoder writes a\ntexture. The faces stay in Unity's axes: a glTF direction samples them with its X negated.",
+      "type": "object",
+      "properties": {
+        "faces": {
+          "description": "Each face is a 16-bit RGBA PNG of linear values, each sample the bits of an IEEE 754 half float.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ImageIndex"
+          },
+          "minItems": 6,
+          "maxItems": 6
+        },
+        "filter": {
+          "$ref": "#/$defs/Filter"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "faces",
+        "filter"
+      ]
+    },
+    "ImageIndex": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "Filter": {
+      "type": "string",
+      "enum": [
+        "point",
+        "bilinear",
+        "trilinear"
       ]
     },
     "PhysBone": {
@@ -1992,92 +2476,6 @@
       "additionalProperties": false,
       "required": [
         "value"
-      ]
-    },
-    "AnimationCurve": {
-      "description": "Unity's `AnimationCurve`.",
-      "type": "object",
-      "properties": {
-        "keys": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Keyframe"
-          }
-        }
-      },
-      "additionalProperties": false,
-      "required": [
-        "keys"
-      ]
-    },
-    "Keyframe": {
-      "type": "object",
-      "properties": {
-        "time": {
-          "type": "number",
-          "format": "float"
-        },
-        "value": {
-          "type": "number",
-          "format": "float"
-        },
-        "inTangent": {
-          "description": "An infinite tangent is Unity's stepped (constant) key.",
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "enum": [
-                "Infinity",
-                "-Infinity"
-              ]
-            }
-          ]
-        },
-        "outTangent": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "enum": [
-                "Infinity",
-                "-Infinity"
-              ]
-            }
-          ]
-        },
-        "inWeight": {
-          "type": "number",
-          "format": "float"
-        },
-        "outWeight": {
-          "type": "number",
-          "format": "float"
-        },
-        "weightedMode": {
-          "$ref": "#/$defs/WeightedMode"
-        }
-      },
-      "additionalProperties": false,
-      "required": [
-        "time",
-        "value",
-        "inTangent",
-        "outTangent",
-        "inWeight",
-        "outWeight",
-        "weightedMode"
-      ]
-    },
-    "WeightedMode": {
-      "type": "string",
-      "enum": [
-        "none",
-        "in",
-        "out",
-        "both"
       ]
     },
     "ImmobileType": {
@@ -5117,6 +5515,28 @@
             "type",
             "index",
             "field"
+          ]
+        },
+        {
+          "description": "`property` is the serialized property path as Unity binds it, e.g. `EmissionModule.rateOverTime.scalar`.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "particleSystem"
+            },
+            "node": {
+              "$ref": "#/$defs/NodeIndex"
+            },
+            "property": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "node",
+            "property"
           ]
         }
       ]

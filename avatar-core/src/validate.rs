@@ -5,8 +5,8 @@ use serde::ser::{self, Serialize};
 use serde_json::{Map, Value};
 
 use crate::model::{
-    AwAvatar, Behaviour, ControlledLayer, Destination, LayerContent, PlayableLayerType, StateId,
-    StateMachine,
+    AwAvatar, Behaviour, Binding, ControlledLayer, Destination, LayerContent, MaterialProperty,
+    PlayableLayerType, StateId, StateMachine,
 };
 
 /// A model that parsed but does not hold together: `at` is a JSON pointer into `AW_avatar`.
@@ -93,11 +93,16 @@ pub fn validate(gltf: &Map<String, Value>, model: &AwAvatar) -> Result<(), Inval
     }
 
     let textures = gltf_array("textures").len();
+    let images = gltf_array("images").len();
+    let meshes = gltf_array("meshes").len();
     visit_indices(model, &mut |kind, index, path| {
         let (noun, count) = match kind {
             "NodeIndex" => ("node", model.nodes.len()),
             "MaterialIndex" => ("material", model.materials.len()),
             "TextureIndex" => ("glTF texture", textures),
+            "ImageIndex" => ("glTF image", images),
+            "MeshIndex" => ("glTF mesh", meshes),
+            "CubemapIndex" => ("cubemap", model.cubemaps.len()),
             "ClipIndex" => ("clip", model.clips.len()),
             "BehaviourIndex" => ("behaviour", model.behaviours.len()),
             "ColliderIndex" => ("collider", model.colliders.len()),
@@ -137,6 +142,29 @@ pub fn validate(gltf: &Map<String, Value>, model: &AwAvatar) -> Result<(), Inval
         }
     }
 
+    let mut particles = BTreeSet::new();
+    for (i, system) in model.particle_systems.iter().enumerate() {
+        if !particles.insert(system.node.0) {
+            return Err(invalid(
+                format!("/particleSystems/{i}/node"),
+                format!("node {} has a second particle system", system.node.0),
+            ));
+        }
+    }
+    for (i, material) in model.materials.iter().enumerate() {
+        for (key, map) in [("properties", &material.properties), ("declared", &material.declared)] {
+            for (name, property) in map {
+                if let MaterialProperty::Texture(t) = property {
+                    if t.texture.is_some() && t.cubemap.is_some() {
+                        return Err(invalid(
+                            format!("/materials/{i}/{key}/{name}"),
+                            "both a texture and a cubemap",
+                        ));
+                    }
+                }
+            }
+        }
+    }
     let gltf_meshes = gltf_array("meshes");
     let mut slots = BTreeMap::new();
     for (i, renderer) in model.renderers.iter().enumerate() {
@@ -144,6 +172,12 @@ pub fn validate(gltf: &Map<String, Value>, model: &AwAvatar) -> Result<(), Inval
         let node = renderer.node.0;
         if slots.insert(node, renderer.materials.len()).is_some() {
             return Err(invalid(at, format!("node {node} has a second renderer")));
+        }
+        if particles.contains(&node) {
+            if gltf_nodes.get(node as usize).is_some_and(|n| n.get("mesh").is_some()) {
+                return Err(invalid(at, format!("glTF node {node} holds a particle system and a mesh")));
+            }
+            continue;
         }
         let primitives = gltf_nodes
             .get(node as usize)
@@ -164,7 +198,31 @@ pub fn validate(gltf: &Map<String, Value>, model: &AwAvatar) -> Result<(), Inval
             ));
         }
     }
+    for (i, system) in model.particle_systems.iter().enumerate() {
+        if !slots.contains_key(&system.node.0) {
+            return Err(invalid(
+                format!("/particleSystems/{i}/node"),
+                format!("node {} has no renderer", system.node.0),
+            ));
+        }
+    }
     for (c, clip) in model.clips.iter().enumerate() {
+        for (k, curve) in clip.curves.iter().enumerate() {
+            if let Binding::ParticleSystem { node, property } = &curve.binding {
+                let Some(system) = model.particle_systems.iter().find(|s| s.node == *node) else {
+                    return Err(invalid(
+                        format!("/clips/{c}/curves/{k}/binding/node"),
+                        format!("node {} has no particle system", node.0),
+                    ));
+                };
+                if system.value(property).is_none() {
+                    return Err(invalid(
+                        format!("/clips/{c}/curves/{k}/binding/property"),
+                        format!("{property:?} names no number of the particle system"),
+                    ));
+                }
+            }
+        }
         for (s, curve) in clip.slot_curves.iter().enumerate() {
             let at = format!("/clips/{c}/slotCurves/{s}");
             let Some(&count) = slots.get(&curve.renderer.0) else {

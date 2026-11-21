@@ -63,11 +63,12 @@ namespace AvatarWorkshop.Exporter
                     { "descriptorColliders", DescriptorColliders() },
                     { "constraints", all.Where(c => c is VRCConstraintBase || c is IConstraint).Select(c => (object)new Obj { { "type", c.GetType().Name }, { "enabled", ((Behaviour)c).enabled } }).ToList() },
                 };
-                var renderers = all.OfType<Renderer>().Where(r => r is SkinnedMeshRenderer || r is MeshRenderer).ToList();
+                var renderers = all.OfType<Renderer>().Where(r => r is SkinnedMeshRenderer || r is MeshRenderer || (r is ParticleSystemRenderer && r.GetComponent<ParticleSystem>() != null)).ToList();
                 var materials = new List<Material>();
                 void Use(Material m) { if (!materials.Contains(m)) materials.Add(m); }
                 foreach (var r in renderers) foreach (var m in r.sharedMaterials) Use(m);
                 o.Add("renderers", renderers.Select(r => (object)Renderer(r)).ToList());
+                o.Add("particleSystems", all.OfType<ParticleSystem>().Select(p => (object)ParticleCensus(p)).ToList());
                 var ps = descriptor.customExpressions ? descriptor.expressionParameters : null;
                 o.Add("parameters", (ps != null && ps.parameters != null ? ps.parameters : new VRCExpressionParameters.Parameter[0]).Select(p => (object)p.name).ToList());
                 var controls = new List<object>();
@@ -103,6 +104,8 @@ namespace AvatarWorkshop.Exporter
                 Transform _ => "transform",
                 SkinnedMeshRenderer _ => "renderer",
                 MeshRenderer _ => "renderer",
+                ParticleSystemRenderer r when r.GetComponent<ParticleSystem>() != null => "renderer",
+                ParticleSystem _ => "particleSystem",
                 MeshFilter _ => "meshFilter",
                 Animator _ => "animator",
                 VRCAvatarDescriptor _ => "descriptor",
@@ -114,6 +117,15 @@ namespace AvatarWorkshop.Exporter
                 VRCConstraintBase _ => "constraint",
                 IConstraint _ => "constraint",
                 _ => "other",
+            };
+
+            // Read through the scripting API, beside the serialized properties the exporter writes.
+            Obj ParticleCensus(ParticleSystem p) => new Obj
+            {
+                { "node", index[p.transform] }, { "duration", p.main.duration }, { "maxParticles", p.main.maxParticles },
+                { "rateOverTime", p.emission.rateOverTimeMultiplier }, { "bursts", p.emission.burstCount }, { "shape", (int)p.shape.shapeType },
+                { "velocityX", p.velocityOverLifetime.xMultiplier }, { "subEmitters", p.subEmitters.subEmittersCount },
+                { "renderMode", (int)p.GetComponent<ParticleSystemRenderer>().renderMode },
             };
 
             List<object> Components(List<Component> all) => all
@@ -458,6 +470,8 @@ namespace AvatarWorkshop.Exporter
                 }
             }
 
+            static bool Emits(Component c) => c is ParticleSystemRenderer && c.GetComponent<ParticleSystem>() != null;
+
             Obj Curves(List<AnimationClip> clips, Action<Material> use)
             {
                 var counts = new SortedDictionary<string, int>(StringComparer.Ordinal);
@@ -479,9 +493,10 @@ namespace AvatarWorkshop.Exporter
                         else if (b.type == typeof(Transform) && p.StartsWith("m_LocalScale.")) Count("scale");
                         else if (b.type == typeof(Transform) && p.Contains("EulerAngles")) Count("eulerRotation");
                         else if (b.type != typeof(GameObject) && component == null) Count("missing component");
-                        else if ((component is SkinnedMeshRenderer || component is MeshRenderer) && p == "m_Enabled") Count("rendererEnabled");
+                        else if ((component is SkinnedMeshRenderer || component is MeshRenderer || Emits(component)) && p == "m_Enabled") Count("rendererEnabled");
                         else if (component is SkinnedMeshRenderer && b.type == typeof(SkinnedMeshRenderer) && p.StartsWith("blendShape.")) Count("blendShape");
-                        else if ((component is SkinnedMeshRenderer || component is MeshRenderer) && p.StartsWith("material.")) Count("materialProperty");
+                        else if ((component is SkinnedMeshRenderer || component is MeshRenderer || Emits(component)) && p.StartsWith("material.")) Count("materialProperty");
+                        else if (component is ParticleSystem && AnimationUtility.GetFloatValue(root.gameObject, b, out _)) Count("particleSystem");
                         else if (b.type == typeof(Animator) && t == root) Count(parameters.Contains(p) ? "animatorParameter" : "muscle");
                         else if (component is VRCPhysBoneBase) Count("physBone");
                         else if (component is VRCConstraintBase || component is IConstraint) Count("constraint");
@@ -492,7 +507,7 @@ namespace AvatarWorkshop.Exporter
                     foreach (var b in Exporter.Ordered(AnimationUtility.GetObjectReferenceCurveBindings(clip)))
                     {
                         var t = string.IsNullOrEmpty(b.path) ? root : root.Find(b.path);
-                        bool slot = t != null && (b.type == typeof(SkinnedMeshRenderer) || b.type == typeof(MeshRenderer)) && b.propertyName.StartsWith("m_Materials.Array.data[") && t.GetComponent(b.type) != null;
+                        bool slot = t != null && (b.type == typeof(SkinnedMeshRenderer) || b.type == typeof(MeshRenderer) || (b.type == typeof(ParticleSystemRenderer) && t.GetComponent<ParticleSystem>() != null)) && b.propertyName.StartsWith("m_Materials.Array.data[") && t.GetComponent(b.type) != null;
                         bool past = slot && int.TryParse(b.propertyName.Substring("m_Materials.Array.data[".Length).TrimEnd(']'), out int n) && n >= ((Renderer)t.GetComponent(b.type)).sharedMaterials.Length;
                         Count(t == null ? "missing object" : past ? "slot past the renderer's slots" : slot ? "materialSlot" : "other reference " + b.type.Name + "." + b.propertyName.Split('.')[0]);
                         slot &= !past;

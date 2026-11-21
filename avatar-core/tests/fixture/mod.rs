@@ -150,6 +150,93 @@ fn clip(name: &str, curves: Vec<Curve>) -> Clip {
     }
 }
 
+fn constant_curve(value: f32) -> Serialized {
+    Serialized::Struct(BTreeMap::from([
+        ("minMaxState".into(), Serialized::Int(0)),
+        ("scalar".into(), Serialized::Float(value)),
+        ("minScalar".into(), Serialized::Float(value)),
+        ("maxCurve".into(), Serialized::Curve(AnimationCurve { keys: vec![key(0.0, 1.0), key(1.0, 1.0)] })),
+        ("minCurve".into(), Serialized::Curve(AnimationCurve { keys: vec![key(0.0, 1.0), key(1.0, 1.0)] })),
+    ]))
+}
+
+fn fields(entries: Vec<(&str, Serialized)>) -> BTreeMap<String, Serialized> {
+    entries.into_iter().map(|(k, v)| (k.to_string(), v)).collect()
+}
+
+/// An emitter: every kind of serialized value the exporter writes.
+fn particle_system() -> ParticleSystem {
+    let fade = Gradient {
+        mode: GradientMode::Blend,
+        color_keys: vec![
+            GradientColorKey { time: 0.0, color: [1.0, 0.8, 0.2] },
+            GradientColorKey { time: 1.0, color: [1.0, 0.2, 0.0] },
+        ],
+        alpha_keys: vec![
+            GradientAlphaKey { time: 0.0, alpha: 1.0 },
+            GradientAlphaKey { time: 1.0, alpha: 0.0 },
+        ],
+    };
+    ParticleSystem {
+        node: n(EMITTER),
+        system: fields(vec![
+            ("lengthInSec", Serialized::Float(2.0)),
+            ("looping", Serialized::Bool(true)),
+            ("randomSeed", Serialized::Int(4_000_000_000)),
+            ("ringBufferLoopRange", Serialized::Vector2([0.0, 1.0])),
+            ("moveWithCustomTransform", Serialized::Null {}),
+            ("InitialModule", Serialized::Struct(fields(vec![
+                ("enabled", Serialized::Bool(true)),
+                ("startLifetime", constant_curve(1.5)),
+                ("startColor", Serialized::Struct(fields(vec![
+                    ("minMaxState", Serialized::Int(1)),
+                    ("minColor", Serialized::Color([1.0, 1.0, 1.0, 1.0])),
+                    ("maxColor", Serialized::Color([1.0, 0.5, 0.0, 1.0])),
+                    ("maxGradient", Serialized::Gradient(fade.clone())),
+                    ("minGradient", Serialized::Gradient(fade.clone())),
+                ]))),
+                ("maxNumParticles", Serialized::Int(100)),
+            ]))),
+            ("ShapeModule", Serialized::Struct(fields(vec![
+                ("enabled", Serialized::Bool(true)),
+                ("type", Serialized::Int(4)),
+                ("m_Position", Serialized::Vector3([0.1, 0.0, 0.0])),
+                ("m_Texture", Serialized::Texture(TextureIndex(0))),
+                ("m_SkinnedMeshRenderer", Serialized::Node(n(BODY))),
+            ]))),
+            ("EmissionModule", Serialized::Struct(fields(vec![
+                ("enabled", Serialized::Bool(true)),
+                ("rateOverTime", constant_curve(10.0)),
+                ("m_Bursts", Serialized::Array(vec![Serialized::Struct(fields(vec![
+                    ("time", Serialized::Float(0.5)),
+                    ("countCurve", constant_curve(30.0)),
+                ]))])),
+            ]))),
+            ("ColorModule", Serialized::Struct(fields(vec![
+                ("enabled", Serialized::Bool(false)),
+                ("gradient", Serialized::Struct(fields(vec![
+                    ("minMaxState", Serialized::Int(1)),
+                    ("maxGradient", Serialized::Gradient(fade)),
+                ]))),
+            ]))),
+            ("SubModule", Serialized::Struct(fields(vec![
+                ("enabled", Serialized::Bool(true)),
+                ("subEmitters", Serialized::Array(vec![Serialized::Struct(fields(vec![
+                    ("emitter", Serialized::Node(n(EMITTER))),
+                    ("type", Serialized::Int(1)),
+                ]))])),
+            ]))),
+            ("CustomDataModule", Serialized::Struct(fields(vec![("colorLabel0", Serialized::String("Color".into()))]))),
+        ]),
+        renderer: fields(vec![
+            ("m_RenderMode", Serialized::Int(4)),
+            ("m_Pivot", Serialized::Vector3([0.0, 0.5, 0.0])),
+            ("m_Mesh", Serialized::Mesh(MeshIndex(1))),
+            ("m_Mesh1", Serialized::Null {}),
+        ]),
+    }
+}
+
 fn material(shader: ShaderFamily, shader_name: &str) -> Material {
     Material {
         shader,
@@ -223,7 +310,8 @@ const LEFT_HAND: u32 = 8;
 const RIGHT_HAND: u32 = 9;
 const LEFT_EYE: u32 = 10;
 const RIGHT_EYE: u32 = 11;
-const NODE_COUNT: u32 = 12;
+const EMITTER: u32 = 12;
+const NODE_COUNT: u32 = 13;
 
 fn model() -> AwAvatar {
     let mut opaque = material(ShaderFamily::Poiyomi, ".poiyomi/Poiyomi Toon");
@@ -244,6 +332,16 @@ fn model() -> AwAvatar {
             "_MainTex".into(),
             MaterialProperty::Texture(TextureProperty {
                 texture: Some(TextureIndex(0)),
+                cubemap: None,
+                tiling: [1.0, 1.0],
+                offset: [0.0, 0.0],
+            }),
+        ),
+        (
+            "_ClearCoatFallback".into(),
+            MaterialProperty::Texture(TextureProperty {
+                texture: None,
+                cubemap: Some(CubemapIndex(0)),
                 tiling: [1.0, 1.0],
                 offset: [0.0, 0.0],
             }),
@@ -252,12 +350,13 @@ fn model() -> AwAvatar {
             "_DecalTexture".into(),
             MaterialProperty::Texture(TextureProperty {
                 texture: None,
+                cubemap: None,
                 tiling: [2.0, 2.0],
                 offset: [0.5, 0.0],
             }),
         ),
     ]);
-    opaque.declared = ["_Color", "_EnableEmission", "_MainTex", "_DecalTexture"]
+    opaque.declared = ["_Color", "_EnableEmission", "_MainTex", "_DecalTexture", "_ClearCoatFallback"]
         .into_iter()
         .map(|k| (k.to_string(), opaque.properties[k].clone()))
         .chain([("_Cutoff".to_string(), MaterialProperty::Float(0.5))])
@@ -689,15 +788,27 @@ fn model() -> AwAvatar {
             },
             colliders: descriptor_colliders(),
         },
-        renderers: vec![Renderer {
-            node: n(BODY),
-            enabled: true,
-            materials: vec![MaterialIndex(0), MaterialIndex(1)],
-        }],
+        renderers: vec![
+            Renderer {
+                node: n(BODY),
+                enabled: true,
+                materials: vec![MaterialIndex(0), MaterialIndex(1)],
+            },
+            Renderer {
+                node: n(EMITTER),
+                enabled: true,
+                materials: vec![MaterialIndex(1), MaterialIndex(2)],
+            },
+        ],
+        particle_systems: vec![particle_system()],
         nodes: (0..NODE_COUNT)
             .map(|i| Node { active: i != PROP })
             .collect(),
         materials: [vec![opaque, blended, face], others.to_vec()].concat(),
+        cubemaps: vec![Cubemap {
+            faces: [0, 1, 2, 3, 4, 5].map(|i| ImageIndex(CUBE_FACES + i)),
+            filter: Filter::Trilinear,
+        }],
         physbones: vec![
             PhysBone {
                 node: n(HAIR),
@@ -1371,14 +1482,24 @@ fn model() -> AwAvatar {
         ],
         clips: vec![
             Clip {
-                slot_curves: vec![SlotCurve {
-                    renderer: n(BODY),
-                    slot: 1,
-                    keys: vec![SlotKey {
-                        time: 0.0,
-                        material: MaterialIndex(2),
-                    }],
-                }],
+                slot_curves: vec![
+                    SlotCurve {
+                        renderer: n(BODY),
+                        slot: 1,
+                        keys: vec![SlotKey {
+                            time: 0.0,
+                            material: MaterialIndex(2),
+                        }],
+                    },
+                    SlotCurve {
+                        renderer: n(EMITTER),
+                        slot: 0,
+                        keys: vec![SlotKey {
+                            time: 0.0,
+                            material: MaterialIndex(0),
+                        }],
+                    },
+                ],
                 ..clip(
                     "PropOff",
                     vec![
@@ -1393,6 +1514,24 @@ fn model() -> AwAvatar {
                         curve(
                             Binding::RendererEnabled { node: n(BODY) },
                             vec![key(0.0, 1.0)],
+                        ),
+                        curve(
+                            Binding::NodeActive { node: n(EMITTER) },
+                            vec![key(0.0, 0.0)],
+                        ),
+                        curve(
+                            Binding::ParticleSystem {
+                                node: n(EMITTER),
+                                property: "EmissionModule.rateOverTime.scalar".into(),
+                            },
+                            vec![key(0.0, 40.0)],
+                        ),
+                        curve(
+                            Binding::MaterialProperty {
+                                node: n(EMITTER),
+                                property: "_TintColor.a".into(),
+                            },
+                            vec![key(0.0, 0.25)],
                         ),
                         curve(
                             Binding::MaterialProperty {
@@ -1544,7 +1683,7 @@ fn model() -> AwAvatar {
         ],
         unsupported: vec![
             Unsupported {
-                kind: "ParticleSystem".into(),
+                kind: "Light".into(),
                 count: 2,
             },
             Unsupported {
@@ -1574,6 +1713,41 @@ impl Bin {
         }
         view
     }
+}
+
+const CUBE_FACES: u32 = 1;
+
+fn crc32(bytes: &[u8]) -> u32 {
+    let mut crc = !0u32;
+    for &b in bytes {
+        crc ^= b as u32;
+        for _ in 0..8 {
+            crc = if crc & 1 != 0 { (crc >> 1) ^ 0xedb8_8320 } else { crc >> 1 };
+        }
+    }
+    !crc
+}
+
+/// A one-texel 16-bit RGBA PNG of half-float bits, as a cubemap face is stored.
+fn png16(rgba: [u16; 4]) -> Vec<u8> {
+    use std::io::Write;
+    let chunk = |out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]| {
+        out.extend((data.len() as u32).to_be_bytes());
+        let start = out.len();
+        out.extend(kind);
+        out.extend(data);
+        let crc = crc32(&out[start..]);
+        out.extend(crc.to_be_bytes());
+    };
+    let mut raw = vec![0u8];
+    raw.extend(rgba.iter().flat_map(|c| c.to_be_bytes()));
+    let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
+    z.write_all(&raw).unwrap();
+    let mut out = b"\x89PNG\r\n\x1a\n".to_vec();
+    chunk(&mut out, b"IHDR", &[0, 0, 0, 1, 0, 0, 0, 1, 16, 6, 0, 0, 0]);
+    chunk(&mut out, b"IDAT", &z.finish().unwrap());
+    chunk(&mut out, b"IEND", &[]);
+    out
 }
 
 fn f32s(values: &[f32]) -> Vec<u8> {
@@ -1678,6 +1852,21 @@ fn gltf(materials: usize) -> (serde_json::Map<String, Value>, Vec<u8>) {
     ];
     views.push(bin.view(texture_png, None));
     let image_view = views.len() - 1;
+    let mut images = vec![json!({ "bufferView": image_view, "mimeType": "image/png" })];
+    for face in 0..6u16 {
+        let one = 0x3c00;
+        views.push(bin.view(&png16([one + face * 0x400, one - 0x400, 0x4400, one]), None));
+        images.push(json!({ "bufferView": views.len() - 1, "mimeType": "image/png" }));
+    }
+    assert_eq!(images.len(), CUBE_FACES as usize + 6);
+    let quad = [-0.5f32, -0.5, 0.0, 0.5, -0.5, 0.0, 0.5, 0.5, 0.0, -0.5, 0.5, 0.0];
+    views.push(bin.view(&f32s(&quad), Some(ARRAY_BUFFER)));
+    accessors.push(json!({ "bufferView": views.len() - 1, "componentType": FLOAT, "count": 4, "type": "VEC3",
+                           "min": [-0.5, -0.5, 0.0], "max": [0.5, 0.5, 0.0] }));
+    let quad_positions = accessors.len() - 1;
+    views.push(bin.view(&[0, 0, 1, 0, 2, 0, 0, 0, 2, 0, 3, 0], Some(ELEMENT_ARRAY_BUFFER)));
+    accessors.push(json!({ "bufferView": views.len() - 1, "componentType": UNSIGNED_SHORT, "count": 6, "type": "SCALAR" }));
+    let quad_indices = accessors.len() - 1;
     while !bin.0.len().is_multiple_of(4) {
         bin.0.push(0);
     }
@@ -1708,16 +1897,20 @@ fn gltf(materials: usize) -> (serde_json::Map<String, Value>, Vec<u8>) {
             node("Hair", [0.0, 0.1, 0.1], &[HAIR_TIP]),
             node("HairTip", [0.0, -0.2, 0.0], &[]),
             node("Prop", [0.0, 0.2, 0.0], &[]),
-            node("LeftHand", [0.5, 0.2, 0.0], &[]),
+            node("LeftHand", [0.5, 0.2, 0.0], &[EMITTER]),
             node("RightHand", [-0.5, 0.2, 0.0], &[]),
             node("LeftEye", [0.03, 0.05, 0.08], &[]),
             node("RightEye", [-0.03, 0.05, 0.08], &[]),
+            node("Emitter", [0.0, 0.05, 0.0], &[]),
         ],
         "meshes": [{
             "name": "Body",
             "primitives": [primitive(0), primitive(1)],
             "weights": vec![0.0; target_names.len()],
             "extras": { "targetNames": target_names },
+        }, {
+            "name": "Quad",
+            "primitives": [{ "attributes": { "POSITION": quad_positions }, "indices": quad_indices, "material": 1 }],
         }],
         "skins": [{ "joints": joints, "inverseBindMatrices": inverse_bind_accessor, "skeleton": HIPS }],
         "materials": (0..materials)
@@ -1725,7 +1918,7 @@ fn gltf(materials: usize) -> (serde_json::Map<String, Value>, Vec<u8>) {
             .collect::<Vec<_>>(),
         "textures": [{ "source": 0, "sampler": 0 }],
         "samplers": [{ "magFilter": 9729, "minFilter": 9987 }],
-        "images": [{ "bufferView": image_view, "mimeType": "image/png" }],
+        "images": images,
         "accessors": accessors,
         "bufferViews": views,
         "buffers": [{ "byteLength": bin.0.len() }],

@@ -52,7 +52,7 @@ fn fixture_round_trips_unchanged() {
     );
 }
 
-fn assert_every_section_filled(file: &str) {
+fn assert_every_section_filled(file: &str, count: usize) {
     let model = read(&std::fs::read(path(file)).unwrap()).unwrap().model;
     let serde_json::Value::Object(sections) = serde_json::to_value(&model).unwrap() else {
         unreachable!()
@@ -67,18 +67,19 @@ fn assert_every_section_filled(file: &str) {
         };
         assert!(!empty, "{file}'s {name} section is empty");
     }
-    assert_eq!(sections.len(), 16);
+    assert_eq!(sections.len(), count);
 }
 
 #[test]
 fn fixture_fills_every_section() {
-    assert_every_section_filled("fixtures/synthetic.glb");
+    assert_every_section_filled("fixtures/synthetic.glb", 18);
 }
 
-/// The synthetic fixture as the Unity exporter writes it from its Unity build of the fixture.
+/// The synthetic fixture as the Unity exporter writes it from its Unity build of the fixture, which holds no particle
+/// system or cubemap: the writer leaves out those two sections when empty.
 #[test]
 fn unity_export_fills_every_section() {
-    assert_every_section_filled("fixtures/unity-synthetic.glb");
+    assert_every_section_filled("fixtures/unity-synthetic.glb", 16);
 }
 
 #[test]
@@ -457,7 +458,7 @@ fn renderers_match_their_meshes() {
     let mut avatar = fixture::avatar();
     let renderer = avatar.model.renderers[0].clone();
     avatar.model.renderers.push(renderer);
-    refused_at(&avatar, "/renderers/1/node");
+    refused_at(&avatar, "/renderers/2/node");
 
     let mut avatar = fixture::avatar();
     let slot = avatar.model.renderers[0].materials[0];
@@ -522,4 +523,98 @@ fn muscle_frames_name_mapped_bones_with_unit_signs() {
     let mut avatar = fixture::avatar();
     avatar.model.humanoid.muscles.as_mut().unwrap().scale = 0.0;
     refused_at(&avatar, "/humanoid/muscles/scale");
+}
+
+#[test]
+fn the_fixture_carries_particle_systems_and_cubemaps() {
+    use avatar_core::model::{Binding, MaterialProperty, Serialized};
+    let avatar = read(&std::fs::read(path("fixtures/synthetic.glb")).unwrap()).unwrap();
+    let model = &avatar.model;
+    let [system] = &model.particle_systems[..] else { panic!("one particle system") };
+    let node = system.node;
+    assert!(model.renderers.iter().any(|r| r.node == node && r.materials.len() == 2), "its renderer has Unity's two slots");
+    for (property, value) in [
+        ("lengthInSec", 2.0),
+        ("looping", 1.0),
+        ("EmissionModule.rateOverTime.scalar", 10.0),
+        ("EmissionModule.m_Bursts.Array.data[0].countCurve.scalar", 30.0),
+        ("ShapeModule.m_Position.x", 0.1),
+        ("InitialModule.startColor.maxColor.g", 0.5),
+        ("randomSeed", 4e9),
+    ] {
+        assert_eq!(system.value(property), Some(value), "{property}");
+    }
+    for property in ["InitialModule", "ShapeModule.m_Position", "ShapeModule.m_Position.x.y", "EmissionModule.m_Bursts.Array.data[1].time", "Nothing"] {
+        assert_eq!(system.value(property), None, "{property} is no number");
+    }
+    let Some(Serialized::Mesh(mesh)) = system.renderer.get("m_Mesh") else { panic!("the renderer draws a mesh") };
+    assert!(avatar.gltf["meshes"][mesh.0 as usize]["primitives"].is_array());
+    assert!(model.clips.iter().flat_map(|c| &c.curves).any(|c| c.binding
+        == Binding::ParticleSystem { node, property: "EmissionModule.rateOverTime.scalar".into() }));
+
+    let [cubemap] = &model.cubemaps[..] else { panic!("one cubemap") };
+    let fallback = model.materials.iter().find_map(|m| match m.properties.get("_ClearCoatFallback") {
+        Some(MaterialProperty::Texture(t)) => t.cubemap,
+        _ => None,
+    });
+    assert_eq!(fallback.map(|c| c.0), Some(0), "a material property names the cubemap");
+    for face in cubemap.faces {
+        let image = &avatar.gltf["images"][face.0 as usize];
+        assert_eq!(image["mimeType"], "image/png");
+        let view = &avatar.gltf["bufferViews"][image["bufferView"].as_u64().unwrap() as usize];
+        let at = view["byteOffset"].as_u64().unwrap_or(0) as usize;
+        let png = &avatar.bin[at..at + view["byteLength"].as_u64().unwrap() as usize];
+        assert_eq!(&png[1..4], b"PNG");
+        assert_eq!((png[24], png[25]), (16, 6), "a 16-bit RGBA face");
+    }
+
+    let ev = avatar_core::evaluate::Evaluator::new(&avatar).unwrap();
+    let rate = ev.output().particles.iter().find(|(n, p, _)| *n == node.0 && p == "EmissionModule.rateOverTime.scalar");
+    assert!(matches!(rate, Some((_, _, v)) if *v == 10.0 || *v == 40.0), "the evaluator reports the bound rate, {rate:?}");
+}
+
+#[test]
+fn particle_systems_and_cubemaps_refer_only_to_what_exists() {
+    use avatar_core::model::{Binding, CubemapIndex, ImageIndex, MaterialProperty, MeshIndex, NodeIndex, Serialized};
+    let mut avatar = fixture::avatar();
+    avatar.model.particle_systems.push(avatar.model.particle_systems[0].clone());
+    refused_at(&avatar, "/particleSystems/1/node");
+
+    let mut avatar = fixture::avatar();
+    avatar.model.renderers.pop();
+    refused_at(&avatar, "/particleSystems/0/node");
+
+    let mut avatar = fixture::avatar();
+    avatar.model.particle_systems[0].renderer.insert("m_Mesh".into(), Serialized::Mesh(MeshIndex(9)));
+    refused_at(&avatar, "/renderer/m_Mesh/mesh");
+
+    let mut avatar = fixture::avatar();
+    avatar.model.cubemaps[0].faces[5] = ImageIndex(99);
+    refused_at(&avatar, "/cubemaps/0/faces/5");
+
+
+    let mut avatar = fixture::avatar();
+    let Some(MaterialProperty::Texture(t)) = avatar.model.materials[0].properties.get_mut("_ClearCoatFallback") else { unreachable!() };
+    t.cubemap = Some(CubemapIndex(1));
+    refused_at(&avatar, "/_ClearCoatFallback/texture/cubemap");
+
+    let mut avatar = fixture::avatar();
+    let Some(MaterialProperty::Texture(t)) = avatar.model.materials[0].properties.get_mut("_ClearCoatFallback") else { unreachable!() };
+    t.texture = Some(avatar_core::model::TextureIndex(0));
+    refused_at(&avatar, "/_ClearCoatFallback");
+
+    let mut avatar = fixture::avatar();
+    let curve = avatar.model.clips.iter_mut().flat_map(|c| &mut c.curves).find(|c| matches!(c.binding, Binding::ParticleSystem { .. })).unwrap();
+    curve.binding = Binding::ParticleSystem { node: NodeIndex(1), property: "lengthInSec".into() };
+    refused_at(&avatar, "/binding/node");
+
+    let mut avatar = fixture::avatar();
+    let curve = avatar.model.clips.iter_mut().flat_map(|c| &mut c.curves).find(|c| matches!(c.binding, Binding::ParticleSystem { .. })).unwrap();
+    let Binding::ParticleSystem { property, .. } = &mut curve.binding else { unreachable!() };
+    *property = "EmissionModule.rateOverTime".into();
+    refused_at(&avatar, "/binding/property");
+
+    let mut avatar = fixture::avatar();
+    avatar.gltf["nodes"].as_array_mut().unwrap()[12]["mesh"] = 1.into();
+    refused_at(&avatar, "/renderers/1/node");
 }

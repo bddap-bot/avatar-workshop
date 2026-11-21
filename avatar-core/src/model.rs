@@ -32,6 +32,21 @@ pub struct TextureIndex(pub u32);
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
+pub struct ImageIndex(pub u32);
+
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+pub struct MeshIndex(pub u32);
+
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+pub struct CubemapIndex(pub u32);
+
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
 pub struct ClipIndex(pub u32);
 
 #[derive(
@@ -59,10 +74,14 @@ pub struct AwAvatar {
     pub humanoid: Humanoid,
     pub descriptor: Descriptor,
     pub renderers: Vec<Renderer>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub particle_systems: Vec<ParticleSystem>,
     /// One entry per glTF node, in node order.
     pub nodes: Vec<Node>,
     /// One entry per glTF material, in material order.
     pub materials: Vec<Material>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cubemaps: Vec<Cubemap>,
     pub physbones: Vec<PhysBone>,
     pub colliders: Vec<Collider>,
     pub contacts: Contacts,
@@ -469,8 +488,137 @@ pub struct Renderer {
     pub node: NodeIndex,
     pub enabled: bool,
     /// The renderer's material slots, in slot order. A mesh shared by several renderers keeps
-    /// its own primitive materials as the generic viewer's fallback.
+    /// its own primitive materials as the generic viewer's fallback. A particle system's renderer
+    /// has Unity's slots: the particles' material, then the trails'.
     pub materials: Vec<MaterialIndex>,
+}
+
+/// A ParticleSystem and the ParticleSystemRenderer beside it on its node. The renderer's enabled
+/// flag and materials are its entry in `renderers`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ParticleSystem {
+    pub node: NodeIndex,
+    /// Every serialized property of the ParticleSystem, every module included, by the names
+    /// Unity serializes and animation curves bind them with.
+    pub system: BTreeMap<String, Serialized>,
+    /// The ParticleSystemRenderer's own serialized properties, those every Renderer has left out.
+    /// Animation curves bind only its enabled flag, material properties and slots, through `renderers`.
+    pub renderer: BTreeMap<String, Serialized>,
+}
+
+impl ParticleSystem {
+    /// The number a curve binding `property` reads in the ParticleSystem.
+    pub fn value(&self, property: &str) -> Option<f32> {
+        serialized_value(&self.system, property)
+    }
+}
+
+/// The number at a serialized property path, as a curve binding names it: a float, an integer, a
+/// flag as 0 or 1, or one component of a vector or colour.
+pub fn serialized_value(fields: &BTreeMap<String, Serialized>, property: &str) -> Option<f32> {
+    let mut parts = property.split('.').peekable();
+    let mut at = fields.get(parts.next()?)?;
+    while let Some(part) = parts.next() {
+        at = match at {
+            Serialized::Struct(fields) => fields.get(part)?,
+            Serialized::Array(items) if part == "Array" => {
+                let index = parts.next()?.strip_prefix("data[")?.strip_suffix(']')?;
+                items.get(index.parse::<usize>().ok()?)?
+            }
+            Serialized::Vector2(v) => return component(v, "xy", part, parts.peek()),
+            Serialized::Vector3(v) => return component(v, "xyz", part, parts.peek()),
+            Serialized::Color(v) => return component(v, "rgba", part, parts.peek()),
+            _ => return None,
+        };
+    }
+    match at {
+        Serialized::Bool(b) => Some(*b as u8 as f32),
+        Serialized::Int(i) => Some(*i as f32),
+        Serialized::Float(f) => Some(*f),
+        _ => None,
+    }
+}
+
+fn component(v: &[f32], names: &str, part: &str, rest: Option<&&str>) -> Option<f32> {
+    if rest.is_some() || part.len() != 1 {
+        return None;
+    }
+    v.get(names.find(part)?).copied()
+}
+
+/// A serialized Unity value as Unity's serialization holds it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub enum Serialized {
+    Bool(bool),
+    /// Every integer and enum, as its number.
+    Int(i64),
+    Float(f32),
+    Vector2(Vec2),
+    Vector3(Vec3),
+    Color(Vec4),
+    String(String),
+    Curve(AnimationCurve),
+    Gradient(Gradient),
+    /// A reference to a GameObject, a Transform or a component, by the node holding it.
+    Node(NodeIndex),
+    Mesh(MeshIndex),
+    Texture(TextureIndex),
+    /// An empty object reference.
+    Null {},
+    Struct(BTreeMap<String, Serialized>),
+    Array(Vec<Serialized>),
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Gradient {
+    pub mode: GradientMode,
+    pub color_keys: Vec<GradientColorKey>,
+    pub alpha_keys: Vec<GradientAlphaKey>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum GradientMode {
+    Blend,
+    Fixed,
+    PerceptualBlend,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GradientColorKey {
+    pub time: f32,
+    /// RGB as Unity holds it.
+    pub color: Vec3,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GradientAlphaKey {
+    pub time: f32,
+    pub alpha: f32,
+}
+
+/// A cube texture: six glTF images, its faces in Unity's order (+X, -X, +Y, -Y, +Z, -Z), each its
+/// texels in `Cubemap.GetPixels` order with the first row last, as Unity's PNG encoder writes a
+/// texture. The faces stay in Unity's axes: a glTF direction samples them with its X negated.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Cubemap {
+    /// Each face is a 16-bit RGBA PNG of linear values, each sample the bits of an IEEE 754 half float.
+    pub faces: [ImageIndex; 6],
+    pub filter: Filter,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum Filter {
+    Point,
+    Bilinear,
+    Trilinear,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -511,6 +659,8 @@ pub enum ShaderFamily {
     VrchatMobile,
     Mtoon,
     Standard,
+    /// Unity's built-in particle shaders.
+    Particles,
     Unknown,
 }
 
@@ -529,6 +679,9 @@ pub enum MaterialProperty {
 pub struct TextureProperty {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub texture: Option<TextureIndex>,
+    /// A cube texture in the property's place; a property holds a texture or a cubemap, never both.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cubemap: Option<CubemapIndex>,
     pub tiling: Vec2,
     pub offset: Vec2,
 }
@@ -1590,6 +1743,11 @@ pub enum Binding {
     ContactReceiver {
         index: ContactReceiverIndex,
         field: String,
+    },
+    /// `property` is the serialized property path as Unity binds it, e.g. `EmissionModule.rateOverTime.scalar`.
+    ParticleSystem {
+        node: NodeIndex,
+        property: String,
     },
 }
 

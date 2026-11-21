@@ -112,6 +112,15 @@ fn arr(v: &Value) -> &[Value] {
     v.as_array().map_or(&[], Vec::as_slice)
 }
 
+fn sub_emitters(p: &avatar_core::model::ParticleSystem) -> Option<f32> {
+    use avatar_core::model::Serialized;
+    let Some(Serialized::Struct(module)) = p.system.get("SubModule") else { return None };
+    let Some(Serialized::Array(items)) = module.get("subEmitters") else { return None };
+    // The scripting API counts only entries that name a system; an empty one stays serialized.
+    let named = items.iter().filter(|i| matches!(i, Serialized::Struct(f) if matches!(f.get("emitter"), Some(Serialized::Node(_)))));
+    Some(named.count() as f32)
+}
+
 fn num(v: &Value) -> f32 {
     match v {
         Value::Number(n) => n.as_f64().unwrap_or(f64::NAN) as f32,
@@ -140,6 +149,7 @@ impl Check<'_> {
         self.descriptor_colliders();
         self.counts();
         self.renderers();
+        self.particle_systems();
         self.parameters_and_menu();
         self.layers();
         self.curves();
@@ -441,6 +451,38 @@ impl Check<'_> {
             .chunks_exact(4)
             .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
             .collect()
+    }
+
+    /// Each particle system's values read through Unity's scripting API against the serialized ones the model holds.
+    fn particle_systems(&mut self) {
+        let unity = arr(&self.census["particleSystems"]);
+        let model = &self.model().particle_systems;
+        let mut faults = vec![];
+        for u in unity {
+            let node = u["node"].as_u64().unwrap_or(u64::MAX) as u32;
+            let Some(p) = model.iter().find(|p| p.node.0 == node) else {
+                faults.push(format!("node {node}: no model particle system"));
+                continue;
+            };
+            for (field, value, expected) in [
+                ("duration", p.value("lengthInSec"), num(&u["duration"])),
+                ("maxParticles", p.value("InitialModule.maxNumParticles"), num(&u["maxParticles"])),
+                ("rateOverTime", p.value("EmissionModule.rateOverTime.scalar"), num(&u["rateOverTime"])),
+                ("bursts", p.value("EmissionModule.m_BurstCount"), num(&u["bursts"])),
+                ("shape", p.value("ShapeModule.type"), num(&u["shape"])),
+                ("velocityX", p.value("VelocityModule.x.scalar"), num(&u["velocityX"])),
+                ("subEmitters", sub_emitters(p), num(&u["subEmitters"])),
+                ("renderMode", avatar_core::model::serialized_value(&p.renderer, "m_RenderMode"), num(&u["renderMode"])),
+            ] {
+                if value != Some(expected) {
+                    faults.push(format!("node {node} {field}: Unity {expected}, model {value:?}"));
+                }
+            }
+        }
+        if unity.len() != model.len() {
+            faults.push(format!("Unity {} particle systems, model {}", unity.len(), model.len()));
+        }
+        self.report.line("particle systems", unity.len(), model.len(), faults);
     }
 
     fn renderers(&mut self) {
@@ -785,6 +827,7 @@ impl Check<'_> {
                     Binding::Constraint { .. } => "constraint",
                     Binding::ContactSender { .. } => "contactSender",
                     Binding::ContactReceiver { .. } => "contactReceiver",
+                    Binding::ParticleSystem { .. } => "particleSystem",
                 };
                 *model.entry(k.into()).or_default() += 1;
             }
@@ -1016,6 +1059,13 @@ impl Check<'_> {
                             let mut t = json!({"tiling": [jf(num(&v[2])), jf(num(&v[3]))], "offset": [jf(num(&v[4])), jf(num(&v[5]))]});
                             if v[1] == "Texture2D" {
                                 t["texture"] = model["texture"].get("texture").cloned().unwrap_or(json!("<missing Texture2D>"));
+                            }
+                            if v[1] == "Cubemap" {
+                                let cubemap = model["texture"].get("cubemap").and_then(Value::as_u64);
+                                t["cubemap"] = match cubemap {
+                                    Some(c) if (c as usize) < self.model().cubemaps.len() => json!(c),
+                                    _ => json!("<missing Cubemap>"),
+                                };
                             }
                             json!({"texture": t})
                         }

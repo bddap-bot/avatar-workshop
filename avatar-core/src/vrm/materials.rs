@@ -41,7 +41,7 @@ fn color(v: [f32; 4]) -> MaterialProperty {
 }
 
 fn no_texture() -> MaterialProperty {
-    MaterialProperty::Texture(TextureProperty { texture: None, tiling: [1.0, 1.0], offset: [0.0, 0.0] })
+    MaterialProperty::Texture(TextureProperty { texture: None, cubemap: None, tiling: [1.0, 1.0], offset: [0.0, 0.0] })
 }
 
 impl Doc<'_> {
@@ -63,7 +63,7 @@ impl Doc<'_> {
         if set != 0 {
             self.report.add("vrm material texture on a second UV set");
         }
-        Ok(MaterialProperty::Texture(TextureProperty { texture: Some(TextureIndex(index as u32)), tiling: scale, offset: [offset[0], 1.0 - offset[1] - scale[1]] }))
+        Ok(MaterialProperty::Texture(TextureProperty { texture: Some(TextureIndex(index as u32)), cubemap: None, tiling: scale, offset: [offset[0], 1.0 - offset[1] - scale[1]] }))
     }
 }
 
@@ -310,7 +310,7 @@ fn v0_material(doc: &mut Doc, e: &Value) -> Result<Material, Error> {
             return Err(malformed(format!("material texture {k} names texture {index}, but there are {}", doc.array("textures").len())));
         }
         let st = floats::<4>(vectors.get(k)).unwrap_or([1.0, 1.0, 0.0, 0.0]);
-        p.insert(k.clone(), MaterialProperty::Texture(TextureProperty { texture: Some(TextureIndex(index as u32)), tiling: [st[0], st[1]], offset: [st[2], st[3]] }));
+        p.insert(k.clone(), MaterialProperty::Texture(TextureProperty { texture: Some(TextureIndex(index as u32)), cubemap: None, tiling: [st[0], st[1]], offset: [st[2], st[3]] }));
     }
     let keywords: Vec<String> = floats_of("keywordMap").into_iter().filter(|(_, on)| on.as_bool() == Some(true)).map(|(k, _)| k).collect();
     let queue = e.get("renderQueue").and_then(Value::as_i64).map(|q| q as i32);
