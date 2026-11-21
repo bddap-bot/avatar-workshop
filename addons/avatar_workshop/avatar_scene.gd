@@ -3,7 +3,8 @@
 
 
 ## `{scene, model, json, images, ...binding}` safe to share between instances, or `{error}` naming why the model has
-## no scene. `state` carries what the host's glTF document extensions read. Safe to call off the main thread.
+## no scene. `state` carries what the host's glTF document extensions read; the scene nodes it names are freed on
+## return. Safe to call off the main thread.
 static func pack(model: AvatarModel, state := GLTFState.new()) -> Dictionary:
 	var doc := GLTFDocument.new()
 	var err := doc.append_from_buffer(model.glb(), "", state)
@@ -18,12 +19,15 @@ static func pack(model: AvatarModel, state := GLTFState.new()) -> Dictionary:
 	var skeletons: Array[NodePath] = []
 	var bones := PackedStringArray()
 	var nodes: Array[NodePath] = []
+	var gltf_skeletons := state.get_skeletons()
 	for n: GLTFNode in state.get_nodes():
-		var sk: Skeleton3D = state.get_skeletons()[n.skeleton].get_godot_skeleton() if n.skeleton >= 0 else null
+		var sk: Skeleton3D = gltf_skeletons[n.skeleton].get_godot_skeleton() if n.skeleton >= 0 else null
 		var boned := sk != null and sk.find_bone(n.resource_name) >= 0
 		skeletons.append(root.get_path_to(sk) if boned else NodePath())
 		bones.append(n.resource_name if boned else "")
-		nodes.append(NodePath() if boned else named.get(n.resource_name, NodePath()))
+		var at: NodePath = named.get(n.resource_name, NodePath())
+		# A joint's own mesh hangs under a BoneAttachment3D, by the joint's name.
+		nodes.append(at if not boned or not at.is_empty() and root.get_node(at) is MeshInstance3D else NodePath())
 	var renderers: Array[NodePath] = []
 	for r: Dictionary in json.get("renderers", []):
 		var at: NodePath = nodes[int(r["node"])]
@@ -38,8 +42,8 @@ static func pack(model: AvatarModel, state := GLTFState.new()) -> Dictionary:
 	return {"scene": scene, "model": model, "json": json, "skeletons": skeletons, "bones": bones, "nodes": nodes, "renderers": renderers, "materials": state.get_materials(), "images": state.get_images()}
 
 
-## A new instance of a packed scene with its own evaluator bound to it: `{root, evaluator}`, or `{error}`. Safe off the
-## main thread; the root is outside the tree.
+## A new instance of a packed scene with its own evaluator bound to it and its own materials: `{root, evaluator}`, or
+## `{error}`. Safe off the main thread; the root is outside the tree.
 static func instance(packed: Dictionary) -> Dictionary:
 	var evaluator: Variant = AvatarEvaluator.create(packed.model)
 	if evaluator is String:
@@ -54,7 +58,9 @@ static func instance(packed: Dictionary) -> Dictionary:
 		bones.append(sk.find_bone(packed.bones[i]) if sk else -1)
 		placed.append(root.get_node_or_null(packed.nodes[i]) if not (packed.nodes[i] as NodePath).is_empty() else null)
 	var renderers: Array = (packed.renderers as Array).map(func(p: NodePath) -> Variant: return root.get_node_or_null(p) if not p.is_empty() else null)
-	evaluator.bind(held, bones, placed, renderers, packed.materials)
+	var materials: Array[Material] = []
+	materials.assign((packed.materials as Array).map(func(m: Material) -> Material: return m.duplicate()))
+	evaluator.bind(held, bones, placed, renderers, materials)
 	return {"root": root, "evaluator": evaluator}
 
 

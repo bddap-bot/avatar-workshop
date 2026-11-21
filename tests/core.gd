@@ -42,6 +42,9 @@ func _init() -> void:
 			continue
 		var opened := AvatarScene.instance(packed)
 		var twin := AvatarScene.instance(packed)
+		if opened.has("error") or twin.has("error"):
+			check(false, "%s instances: %s" % [file, opened.get("error", twin.get("error"))])
+			continue
 		check(not opened.has("error") and not twin.has("error"), "%s instances twice" % file)
 		var root: Node3D = opened["root"]
 		var ev: AvatarEvaluator = opened["evaluator"]
@@ -57,7 +60,7 @@ func _init() -> void:
 			var sk := root.get_node(packed.skeletons[i]) as Skeleton3D
 			if not near(sk.get_bone_pose(sk.find_bone(packed.bones[i])), ev.local(i)):
 				off += 1
-		check(off == 0, "%s: every bone is posed as the core's output (%d of %d off)" % [file, off, bound])
+		check(bound > 0 and off == 0, "%s: every bone is posed as the core's output (%d of %d off)" % [file, off, bound])
 		var twin_root: Node3D = twin["root"]
 		var moved := 0
 		for i in (packed.nodes as Array).size():
@@ -66,6 +69,13 @@ func _init() -> void:
 				var b := sk.find_bone(packed.bones[i])
 				moved += 0 if near(sk.get_bone_pose(b), sk.get_bone_rest(b)) else 1
 		check(moved == 0 or bound == 0, "%s: another instance's evaluator leaves this one's bones alone (%d moved)" % [file, moved])
+		var shared := 0
+		for mi: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
+			var other := twin_root.get_node(root.get_path_to(mi)) as MeshInstance3D
+			for i in mi.get_surface_override_material_count():
+				if mi.get_surface_override_material(i) != null and mi.get_surface_override_material(i) == other.get_surface_override_material(i):
+					shared += 1
+		check(shared == 0, "%s: each instance draws with its own materials (%d shared)" % [file, shared])
 		twin_root.free()
 		var json: Dictionary = JSON.parse_string(model.model())
 		var shown := 0
