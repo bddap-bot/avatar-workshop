@@ -7,7 +7,7 @@ use avatar_core::evaluate::{Evaluator, Input};
 use glam::{Quat, Vec3};
 use avatar_core::physbones::{HandCollider, Toucher, Transform};
 use avatar_core::Avatar;
-use godot::classes::{Material, MeshInstance3D, Node3D, Skeleton3D};
+use godot::classes::{Material, MeshInstance3D, Node3D, RenderingServer, Skeleton3D};
 use godot::prelude::*;
 
 struct AvatarCore;
@@ -79,6 +79,7 @@ struct Scene {
     renderers: Vec<Option<Gd<MeshInstance3D>>>,
     materials: Vec<Gd<Material>>,
     shapes: HashMap<(u32, String), i32>,
+    renderer_of: HashMap<u32, usize>,
 }
 
 fn from_godot(t: Transform3D) -> Transform {
@@ -143,6 +144,7 @@ impl AvatarEvaluator {
             renderers: (0..drawn).map(|r| renderers.get(r).and_then(|v| v.try_to::<Gd<MeshInstance3D>>().ok())).collect(),
             materials: materials.iter_shared().collect(),
             shapes: HashMap::new(),
+            renderer_of: self.evaluator.renderer_nodes().iter().enumerate().map(|(r, n)| (*n, r)).collect(),
         });
         let s = self.scene.as_mut().expect("bound");
         for (r, slots) in self.slots.iter().enumerate() {
@@ -231,33 +233,32 @@ impl AvatarEvaluator {
                 node.set_transform(to_godot(t));
             }
         }
-        let renderer = |node: u32| e.renderer_nodes().iter().position(|&n| n == node);
-        for (n, node) in s.nodes.iter_mut().enumerate() {
-            if let Some(node) = node.as_mut().filter(|_| renderer(n as u32).is_none()) {
-                if node.is_visible() != out.active[n] {
-                    node.set_visible(out.active[n]);
-                }
-            }
-        }
-        for (r, m) in s.renderers.iter_mut().enumerate() {
-            let shown = e.shown(r);
-            if let Some(m) = m.as_mut().filter(|m| m.is_visible() != shown) {
-                m.set_visible(shown);
+        let renderer = |node: &u32| s.renderer_of.get(node).copied();
+        let mut server = RenderingServer::singleton();
+        for (r, m) in s.renderers.iter().enumerate() {
+            if let Some(m) = m {
+                server.instance_set_visible(m.get_instance(), e.shown(r));
             }
         }
         for (node, shape, w) in &out.blendshapes {
-            let Some(m) = renderer(*node).and_then(|r| s.renderers[r].as_mut()) else { continue };
+            let Some(m) = renderer(node).and_then(|r| s.renderers[r].as_mut()) else { continue };
             let i = *s.shapes.entry((*node, shape.clone())).or_insert_with(|| m.find_blend_shape_by_name(shape.as_str()));
             if i >= 0 {
                 m.set_blend_shape_value(i, w / 100.0);
             }
         }
         for (node, slot, material) in &out.slots {
-            let Some(m) = renderer(*node).and_then(|r| s.renderers[r].as_mut()) else { continue };
+            let Some(m) = renderer(node).and_then(|r| s.renderers[r].as_mut()) else { continue };
             if let Some(mat) = s.materials.get(*material as usize).filter(|_| (*slot as i32) < m.get_surface_override_material_count()) {
                 m.set_surface_override_material(*slot as i32, mat);
             }
         }
+    }
+
+    /// Whether renderer `r`, in the model's order, draws after the last frame.
+    #[func]
+    fn shown(&self, r: i32) -> bool {
+        usize::try_from(r).ok().filter(|r| *r < self.evaluator.renderer_nodes().len()).is_some_and(|r| self.evaluator.shown(r))
     }
 
     /// A node's pose in the avatar's root space after the last frame.

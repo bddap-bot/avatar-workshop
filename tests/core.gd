@@ -58,9 +58,8 @@ func _init() -> void:
 		check(off == 0, "%s: every bone is posed as the core's output (%d off)" % [file, off])
 		var json: Dictionary = JSON.parse_string(model.model())
 		var shown := 0
-		for r in json.get("renderers", []):
-			var mesh := root.find_child(nodes[int(r["node"])].resource_name, true, false) as MeshInstance3D
-			shown += 1 if mesh and mesh.visible else 0
+		for r in json.get("renderers", []).size():
+			shown += 1 if ev.shown(r) else 0
 		check(json.get("renderers", []).is_empty() or shown > 0, "%s: renderers are shown" % file)
 		var humanoid: Dictionary = json.get("humanoid", {}).get("bones", {})
 		if humanoid.has("LeftHand"):
