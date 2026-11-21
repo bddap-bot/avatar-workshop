@@ -1,8 +1,8 @@
 # Avatar Workshop
 
 Portable Godot 4 avatar runtime components, licensed under MIT OR Apache-2.0.
-Copy `addons/avatar_workshop/` into a Godot 4.6 project. No editor plugin activation,
-native library, network access, file loading or third-party dependency is required.
+Copy `addons/avatar_workshop/` into a Godot 4.6 project, with the evaluation core's extension built into
+`addons/avatar_workshop/bin/` (below). No editor plugin activation or network access is required.
 
 ## Avatar model
 
@@ -129,6 +129,26 @@ of a model under a recording's scripted input: each frame the parameters `inputs
 hands of `track.tsv`, at 60 Hz. `OUT/tips.tsv` holds every PhysBone tip each frame, and `params.tsv`,
 `states.tsv` and `output.tsv` the animator's parameters, each layer's state and the frame output as change logs.
 Two runs write the same bytes; `cargo test --test evaluate` checks that on the fixture's recording.
+
+## Godot extension
+
+[`avatar-godot`](avatar-godot) is the evaluation core as a Godot 4.6 extension (gdext), which
+`addons/avatar_workshop/avatar_core.gdextension` loads from `addons/avatar_workshop/bin/<platform>-<arch>/`
+for Linux x86_64 and arm64, Windows x86_64 and Android arm64. `avatar-godot/install.sh` builds it for the
+host; another target is `cargo build --release --target <triple>` in `avatar-godot/` with that target's linker.
+
+- `AvatarModel.read(bytes)` returns the model a `.glb` with `AW_avatar` holds, or a VRM's through the
+  importer, or the reason it refuses as a string. `glb()` is the glTF binary the model's indices name and
+  `model()` the `AW_avatar` extension as JSON. Both are safe off the main thread.
+- `AvatarScene.open(model)` (`addons/avatar_workshop/avatar_scene.gd`) builds the model's scene with Godot's
+  glTF importer, off the tree and safe off the main thread, and returns `{root, evaluator, state}` or `{error}`.
+- `AvatarEvaluator` drives `Evaluator`: `set_parameter`, `set_builtin`, `set_eyes`, `set_head`, `pose(node,
+  root_space)` for the bones the host moves, `evaluate(dt, root, hands)` with other avatars' `hands(player)`,
+  `grab`, `hold`, `release`, then `apply()` writes node poses, renderer visibility, blendshapes and material
+  slots onto the bound scene. `space`, `local`, `parameters`, `saved`, `states`, `physbone_bones` and
+  `materials` read the last frame.
+
+Run `godot4 --headless --path . --script tests/core.gd` after `avatar-godot/install.sh`.
 
 ## Unity exporter
 
