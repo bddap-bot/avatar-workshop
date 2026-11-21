@@ -82,13 +82,18 @@ struct Scene {
     renderer_of: HashMap<u32, usize>,
 }
 
+/// Scale as column lengths, the sign of a mirror on the first, so a bone shrunk to almost nothing (a hidden hand)
+/// still crosses the boundary; a column of no length keeps its rotation's axis.
 fn from_godot(t: Transform3D) -> Transform {
-    let mut b = t.basis;
-    let mirror = if b.determinant() < 0.0 { -1.0 } else { 1.0 };
-    b.set_col_a(b.col_a() * mirror);
-    let (mut s, q) = (b.get_scale(), b.get_quaternion());
-    s.x *= mirror;
-    Transform { translation: Vec3::new(t.origin.x, t.origin.y, t.origin.z), rotation: Quat::from_xyzw(q.x, q.y, q.z, q.w).normalize(), scale: Vec3::new(s.x, s.y, s.z) }
+    let col = |v: Vector3| Vec3::new(v.x, v.y, v.z);
+    let (a, b, c) = (col(t.basis.col_a()), col(t.basis.col_b()), col(t.basis.col_c()));
+    let mirror = if a.cross(b).dot(c) < 0.0 { -1.0 } else { 1.0 };
+    let s = Vec3::new(a.length() * mirror, b.length(), c.length());
+    let unit = |v: Vec3, l: f32| if l.abs() > f32::MIN_POSITIVE { v / l } else { Vec3::ZERO };
+    let (x, y) = (unit(a, s.x), unit(b, s.y));
+    let z = x.cross(y);
+    let rotation = if x.length_squared() > 0.5 && y.length_squared() > 0.5 { Quat::from_mat3(&glam::Mat3::from_cols(x, z.cross(x), z)).normalize() } else { Quat::IDENTITY };
+    Transform { translation: Vec3::new(t.origin.x, t.origin.y, t.origin.z), rotation, scale: s }
 }
 
 fn to_godot(t: &Transform) -> Transform3D {
