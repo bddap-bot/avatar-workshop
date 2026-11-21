@@ -140,8 +140,10 @@ host; another target is `cargo build --release --target <triple>` in `avatar-god
 - `AvatarModel.read(bytes)` returns the model a `.glb` with `AW_avatar` holds, or a VRM's through the
   importer, or the reason it refuses as a string. `glb()` is the glTF binary the model's indices name and
   `model()` the `AW_avatar` extension as JSON. Both are safe off the main thread.
-- `AvatarScene.open(model)` (`addons/avatar_workshop/avatar_scene.gd`) builds the model's scene with Godot's
-  glTF importer, off the tree and safe off the main thread, and returns `{root, evaluator, state}` or `{error}`.
+- `AvatarScene.pack(model)` (`addons/avatar_workshop/avatar_scene.gd`) builds the model's scene once with Godot's
+  glTF importer and packs it with what binds an evaluator to it, or returns `{error}`; `AvatarScene.instance(packed)`
+  instantiates it with its own evaluator, `{root, evaluator}`, for each avatar wearing the model. Both are safe off the
+  main thread; the root is outside the tree.
 - `AvatarEvaluator` drives `Evaluator`: `set_parameter`, `set_builtin`, `set_eyes`, `set_head`, `pose(node,
   root_space)` for the bones the host moves, `evaluate(dt, root, hands)` with other avatars' `hands(player)`,
   `grab`, `hold`, `release`, then `apply()` writes node poses, renderer visibility (each renderer alone, its node and every ancestor active), blendshapes and

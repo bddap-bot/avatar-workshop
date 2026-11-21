@@ -36,26 +36,37 @@ func _init() -> void:
 		check(model is AvatarModel, "%s reads: %s" % [file, model])
 		if not model is AvatarModel:
 			continue
-		var opened := AvatarScene.open(model)
-		check(not opened.has("error"), "%s opens: %s" % [file, opened.get("error")])
-		if opened.has("error"):
+		var packed := AvatarScene.pack(model)
+		check(not packed.has("error"), "%s packs: %s" % [file, packed.get("error")])
+		if packed.has("error"):
 			continue
+		var opened := AvatarScene.instance(packed)
+		var twin := AvatarScene.instance(packed)
+		check(not opened.has("error") and not twin.has("error"), "%s instances twice" % file)
 		var root: Node3D = opened["root"]
 		var ev: AvatarEvaluator = opened["evaluator"]
-		var state: GLTFState = opened["state"]
 		for f in 30:
 			ev.evaluate(0.0 if f == 0 else 1.0 / 60.0, Transform3D.IDENTITY, [])
 		ev.apply()
-		var nodes := state.get_nodes()
 		var off := 0
-		for i in nodes.size():
-			var n: GLTFNode = nodes[i]
-			if n.skeleton < 0:
+		var bound := 0
+		for i in (packed.nodes as Array).size():
+			if (packed.skeletons[i] as NodePath).is_empty():
 				continue
-			var sk: Skeleton3D = state.get_skeletons()[n.skeleton].get_godot_skeleton()
-			if not near(sk.get_bone_pose(sk.find_bone(n.resource_name)), ev.local(i)):
+			bound += 1
+			var sk := root.get_node(packed.skeletons[i]) as Skeleton3D
+			if not near(sk.get_bone_pose(sk.find_bone(packed.bones[i])), ev.local(i)):
 				off += 1
-		check(off == 0, "%s: every bone is posed as the core's output (%d off)" % [file, off])
+		check(off == 0, "%s: every bone is posed as the core's output (%d of %d off)" % [file, off, bound])
+		var twin_root: Node3D = twin["root"]
+		var moved := 0
+		for i in (packed.nodes as Array).size():
+			if not (packed.skeletons[i] as NodePath).is_empty():
+				var sk := twin_root.get_node(packed.skeletons[i]) as Skeleton3D
+				var b := sk.find_bone(packed.bones[i])
+				moved += 0 if near(sk.get_bone_pose(b), sk.get_bone_rest(b)) else 1
+		check(moved == 0 or bound == 0, "%s: another instance's evaluator leaves this one's bones alone (%d moved)" % [file, moved])
+		twin_root.free()
 		var json: Dictionary = JSON.parse_string(model.model())
 		var shown := 0
 		for r in json.get("renderers", []).size():
@@ -82,8 +93,8 @@ func _init() -> void:
 		root.free()
 	var task := WorkerThreadPool.add_task(func() -> void:
 		var m: Variant = read("vrm/crimsom-1.0.vrm")
-		var o := AvatarScene.open(m)
-		check(o.has("root"), "a model reads and opens off the main thread")
+		var o := AvatarScene.instance(AvatarScene.pack(m))
+		check(o.has("root"), "a model reads, packs and instances off the main thread")
 		if o.has("root"):
 			(o["root"] as Node).free())
 	WorkerThreadPool.wait_for_task_completion(task)
