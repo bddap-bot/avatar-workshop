@@ -375,7 +375,7 @@ fn collided_bones_keep_their_length() {
     for (f, root) in recording.roots.iter().enumerate() {
         let mut locals = nodes.rest.clone();
         locals[head].rotation = recording.heads[f];
-        let frame = Frame { root: *root, nodes: nodes.world(&locals), locals: locals.clone(), active: vec![true; locals.len()], enabled: vec![true; avatar.model.physbones.len()] };
+        let frame = Frame { root: *root, nodes: nodes.world(&locals), locals: locals.clone(), active: vec![true; locals.len()], enabled: vec![true; avatar.model.physbones.len()], hands: vec![] };
         pb.advance(if f == 0 { 0.0 } else { STEP }, &frame);
         for p in 0..avatar.model.physbones.len() {
             for (n, t) in pb.bones(p).collect::<Vec<_>>().into_iter().zip(pb.local(p)).skip(1) {

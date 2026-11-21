@@ -106,7 +106,11 @@ natively, as a Godot extension, or compiled to WebAssembly. A runtime does not r
   write defaults, every blend-tree algorithm and Hermite clip sampling; behaviours run as VRChat runs them.
 - PhysBones: VRChat's documented semantics on a fixed timestep, in the avatar's own space and scale, with
   immobile, limits, gravity and falloff, stretch and squish, curves, colliders of every shape, grab and pose
-  with their filters, and the `_IsGrabbed`, `_IsPosed`, `_Angle`, `_Stretch` and `_Squish` parameters.
+  with their filters, and the `_IsGrabbed`, `_IsPosed`, `_Angle`, `_Stretch` and `_Squish` parameters. Hand and
+  finger colliders push each chain whose collision filter admits their owner, beside the chain's own colliders: the
+  wearer's are the descriptor's hand and finger colliders, capsules placed as their standard senders are; other
+  avatars' are host input, each avatar's evaluator giving its own as another's. A hand meets each bone's segment
+  from its parent, where a chain's own colliders meet its end alone.
 - Constraints and contacts: all six constraint kinds; contacts between the avatar, other avatars and hands, driving
   receiver parameters.
 - Humanoid: the animator's human stream (muscles, `RootT`, `RootQ`) poses the humanoid bones' local rotations and

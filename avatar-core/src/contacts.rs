@@ -41,7 +41,11 @@ fn place(at: &Transform, shape: &ContactShape, position: Vec3, rotation: Quat) -
 }
 
 fn closest(p: &Placed, q: &Placed) -> (Vec3, Vec3) {
-    let (d1, d2, r) = (p.b - p.a, q.b - q.a, p.a - q.a);
+    closest_on_segments(p.a, p.b, q.a, q.b)
+}
+
+pub(crate) fn closest_on_segments(a0: Vec3, a1: Vec3, b0: Vec3, b1: Vec3) -> (Vec3, Vec3) {
+    let (d1, d2, r) = (a1 - a0, b1 - b0, a0 - b0);
     let (a, e, f) = (d1.dot(d1), d2.dot(d2), d2.dot(r));
     let (s, t) = if a <= f32::EPSILON && e <= f32::EPSILON {
         (0.0, 0.0)
@@ -66,7 +70,7 @@ fn closest(p: &Placed, q: &Placed) -> (Vec3, Vec3) {
             (s, t)
         }
     };
-    (p.a + d1 * s, q.a + d2 * t)
+    (a0 + d1 * s, b0 + d2 * t)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -93,6 +97,15 @@ pub struct Contacts {
 /// them; a finger's also carries `Finger` and `Finger` with its side. On a humanoid avatar an automatic collider is
 /// the one the client computes from the skeleton in the humanoid's collider pose, whatever the descriptor stores.
 pub fn standard_senders(descriptor: &Descriptor, humanoid: &Humanoid, nodes: &Nodes) -> Vec<model::ContactSender> {
+    standard(descriptor, humanoid, nodes).into_iter().map(|(_, s)| s).collect()
+}
+
+/// The standard senders of the descriptor's hand and finger colliders: where the avatar's hands touch PhysBones.
+pub(crate) fn standard_hands(descriptor: &Descriptor, humanoid: &Humanoid, nodes: &Nodes) -> Vec<model::ContactSender> {
+    standard(descriptor, humanoid, nodes).into_iter().filter(|(p, _)| matches!(p, Part::Hand(_) | Part::Finger(_))).map(|(_, s)| s).collect()
+}
+
+fn standard(descriptor: &Descriptor, humanoid: &Humanoid, nodes: &Nodes) -> Vec<(Part, model::ContactSender)> {
     use HumanBodyBone as H;
     let c = &descriptor.colliders;
     let all: [(&DescriptorCollider, Part, &str, &str); 14] = [
@@ -145,14 +158,14 @@ pub fn standard_senders(descriptor: &Descriptor, humanoid: &Humanoid, nodes: &No
         if finger {
             collision_tags.extend(["Finger".to_string(), format!("Finger{side}")]);
         }
-        out.push(model::ContactSender {
+        out.push((part, model::ContactSender {
             node: model::NodeIndex(node as u32),
             enabled: true,
             shape,
             position,
             rotation,
             collision_tags,
-        });
+        }));
     }
     out
 }

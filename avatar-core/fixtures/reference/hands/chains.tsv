@@ -1,0 +1,7 @@
+tip	length
+HandRow/CollideAll|HandRow/CollideAll/CollideAll.1/CollideAll.2/CollideAll.3	0.3
+HandRow/CollideNone|HandRow/CollideNone/CollideNone.1/CollideNone.2/CollideNone.3	0.3
+HandRow/Nobody|HandRow/Nobody/Nobody.1/Nobody.2/Nobody.3	0.3
+HandRow/OthersOnly|HandRow/OthersOnly/OthersOnly.1/OthersOnly.2/OthersOnly.3	0.3
+HandRow/SelfAndOthers|HandRow/SelfAndOthers/SelfAndOthers.1/SelfAndOthers.2/SelfAndOthers.3	0.3
+HandRow/SelfOnly|HandRow/SelfOnly/SelfOnly.1/SelfOnly.2/SelfOnly.3	0.3

@@ -15,7 +15,7 @@ use std::path::Path;
 
 use avatar_core::contacts::Sender;
 use avatar_core::evaluate::{Animated, Evaluator, Field, Input, Output};
-use avatar_core::physbones::{Frame, Nodes, Toucher, Transform};
+use avatar_core::physbones::{Frame, HandCollider, Nodes, Toucher, Transform};
 use avatar_core::Avatar;
 use glam::{Quat, Vec3};
 
@@ -113,6 +113,10 @@ pub struct Replay {
     /// Each constraint and contact field a curve drives, by frame when it changes, signed as the model holds it.
     pub fields: BTreeMap<usize, Vec<(Field, f32)>>,
     pub grabs: BTreeMap<usize, Grab>,
+    /// Another player's hand colliders the recording moves, each at the identity, and their root-space poses on each
+    /// replayed frame.
+    pub hands: Vec<HandCollider>,
+    pub hand_track: Vec<Vec<Transform>>,
 }
 
 /// Per host frame (a fractional recording frame at other rates): tips in metres from the root along Unity's
@@ -197,7 +201,7 @@ impl Replay {
                 }
             }
             if let Some(&root) = roots.get(&f) {
-                out.push((f, Frame { root, nodes: space.clone(), locals: locals.clone(), active: active.clone(), enabled: enabled.clone() }));
+                out.push((f, Frame { root, nodes: space.clone(), locals: locals.clone(), active: active.clone(), enabled: enabled.clone(), hands: vec![] }));
             }
         }
         let first = out.first().map_or(frames.start, |(f, _)| *f);
@@ -222,7 +226,25 @@ impl Replay {
             posed: posed.into_iter().collect(),
             fields: BTreeMap::new(),
             grabs,
+            hands: vec![],
+            hand_track: vec![],
         };
+        let (hands, poses) = outside_hands(dir, frames.end);
+        let mut at = vec![Transform::IDENTITY; hands.len()];
+        for (_, p) in poses.range(..replay.first) {
+            for (i, t) in p {
+                at[*i] = *t;
+            }
+        }
+        replay.hand_track = (replay.first..replay.first + replay.frames.len())
+            .map(|f| {
+                for (i, t) in poses.get(&f).into_iter().flatten() {
+                    at[*i] = *t;
+                }
+                at.clone()
+            })
+            .collect();
+        replay.hands = hands;
         replay.fields = fields(dir, &replay, frames.end);
         replay
     }
@@ -261,6 +283,7 @@ impl Replay {
             holding.extend(poses.iter().copied());
         }
         let mut outside = vec![];
+        let mut hands = vec![];
         for k in 0.. {
             let t = k as f64 / rate;
             if t > span + 1e-9 {
@@ -280,6 +303,16 @@ impl Replay {
                 holding.extend(held.get(&at).into_iter().flatten().copied());
                 outside = senders(at, &frame.root);
             }
+            let rigid = Transform { scale: glam::Vec3::ONE, ..frame.root };
+            let next = (i + 1).min(self.frames.len() - 1);
+            let s = if whole { 0.0 } else { (x - i as f64) as f32 };
+            let held = if whole { (at - self.first).min(self.frames.len() - 1) } else { i };
+            hands.clear();
+            hands.extend(self.hands.iter().enumerate().map(|(h, hand)| {
+                let (a, b) = (self.hand_track[held][h], self.hand_track[if whole { held } else { next }][h]);
+                let mix = Transform { translation: a.translation.lerp(b.translation, s), rotation: a.rotation.slerp(b.rotation, s), scale: a.scale.lerp(b.scale, s) };
+                HandCollider { at: rigid.mul(&mix), ..*hand }
+            }));
             if let Some(g) = self.grabs.get(&at).filter(|_| whole) {
                 let chain = (0..physbones.len()).find(|&c| ev.physbones().bones(c).any(|n| n == g.node)).unwrap();
                 let world = g.at.map(|a| frame.root.point(a));
@@ -306,6 +339,7 @@ impl Replay {
                 poses: &poses,
                 held: &pinned,
                 senders: &outside,
+                hands: &hands,
             };
             ev.evaluate_animated(&input, &Animated { locals: &frame.locals, active: &frame.active, physbones: &frame.enabled, fields: &fields });
             each(self.first as f64 + x, &ev);
@@ -326,6 +360,42 @@ impl Replay {
     pub fn tips(&self, ev: &Evaluator, out: &Output) -> BTreeMap<String, Vec3> {
         tips(&self.avatar, &self.nodes, &self.names, ev, out)
     }
+}
+
+/// The hand colliders of another player a recording moves (`outside_hands` in `meta.json`), and their poses by frame
+/// before `end` in the avatar's root space.
+fn outside_hands(dir: &Path, end: usize) -> (Vec<HandCollider>, BTreeMap<usize, Vec<(usize, Transform)>>) {
+    let Ok(meta) = std::fs::read_to_string(dir.join("meta.json")) else { return (vec![], BTreeMap::new()) };
+    let meta: serde_json::Value = serde_json::from_str(&meta).unwrap();
+    let floats = |v: &serde_json::Value| -> Vec<f32> { v.as_array().unwrap().iter().map(|x| x.as_f64().unwrap() as f32).collect() };
+    let (mut hands, mut paths) = (vec![], vec![]);
+    for (part, h) in meta.get("outside_hands").and_then(|h| h.as_array()).into_iter().flatten().enumerate() {
+        let (p, q) = (floats(&h["position"]), floats(&h["rotation"]));
+        hands.push(HandCollider {
+            player: h["player"].as_u64().unwrap(),
+            part,
+            at: Transform::IDENTITY,
+            radius: h["radius"].as_f64().unwrap() as f32,
+            height: h["height"].as_f64().unwrap() as f32,
+            position: Vec3::new(-p[0], p[1], p[2]),
+            rotation: Quat::from_xyzw(q[0], -q[1], -q[2], q[3]),
+        });
+        paths.push(h["transform"].as_str().unwrap().to_string());
+    }
+    let mut poses = BTreeMap::<usize, Vec<(usize, Transform)>>::new();
+    if !paths.is_empty() {
+        for line in text(&dir.join("poses.tsv")).lines() {
+            let r: Vec<&str> = line.split('\t').collect();
+            let f: usize = r[0].parse().unwrap();
+            if f >= end {
+                break;
+            }
+            if let (true, Some(k)) = (r[1] == "root", paths.iter().position(|p| p == r[2])) {
+                poses.entry(f).or_default().push((k, unity(&self::floats(r[3]))));
+            }
+        }
+    }
+    (hands, poses)
 }
 
 /// Every simulated bone below each root, and a root with no simulated children, with the endpoint on leaves, in
@@ -409,6 +479,7 @@ fn blend(a: &Frame, b: &Frame, s: f32) -> Frame {
         locals: a.locals.iter().zip(&b.locals).map(|(x, y)| mix(x, y)).collect(),
         active: b.active.clone(),
         enabled: b.enabled.clone(),
+        hands: b.hands.clone(),
     }
 }
 

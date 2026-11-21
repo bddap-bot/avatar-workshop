@@ -167,12 +167,20 @@ fn angle_stretch_and_squish_parameters() {
     }
 }
 
-/// Runs at 72, 90 and 120 Hz agree with the 60 Hz run, at the times both hold a frame, within 1% of chain length.
+/// Runs at 72, 90 and 120 Hz agree with the 60 Hz run, at the times both hold a frame, within 1% of chain length over
+/// the motion; over the hand probe's sweeps, whose hands move at constant speeds so steps between host frames meet
+/// them exactly where they are, within 0.1%.
 #[test]
 fn host_rates_agree() {
-    for (recording, model) in [("fixtures/reference/fixture", "fixtures/unity-synthetic.glb"), ("fixtures/reference/probe", "fixtures/unity-probe.glb")] {
+    for (recording, model) in [
+        ("fixtures/reference/fixture", "fixtures/unity-synthetic.glb"),
+        ("fixtures/reference/probe", "fixtures/unity-probe.glb"),
+        ("fixtures/reference/hands", "fixtures/unity-hands.glb"),
+    ] {
         let dir = path(recording);
-        let window = reference::window(&dir);
+        let hands = recording.ends_with("hands");
+        let window = if hands { reference::step(&dir, "self sweep")..reference::step(&dir, "final") } else { reference::window(&dir) };
+        let bound = if hands { 0.001 } else { 0.01 };
         let replay = replay(recording, model, 0..window.end);
         let lengths: BTreeMap<String, f32> = reference::text(&dir.join("chains.tsv")).lines().skip(1).map(|l| l.split_once('\t').unwrap()).map(|(t, l)| (t.to_string(), l.parse().unwrap())).collect();
         let base = replay.run(60.0);
@@ -196,7 +204,7 @@ fn host_rates_agree() {
             assert!(sums.values().all(|(s, _)| s.is_finite()));
             let worst = sums.iter().map(|(tip, (s, n))| ((s / *n as f32).sqrt(), *tip)).fold((0.0f32, ""), |a, b| if b.0 > a.0 { b } else { a });
             eprintln!("{recording} at {rate} Hz: largest RMS difference from 60 Hz {:.5} of chain length ({})", worst.0, worst.1);
-            assert!(worst.0 <= 0.01, "{recording} at {rate} Hz: {} differs from 60 Hz by {} of its length", worst.1, worst.0);
+            assert!(worst.0 <= bound, "{recording} at {rate} Hz: {} differs from 60 Hz by {} of its length", worst.1, worst.0);
         }
     }
 }
@@ -221,4 +229,129 @@ fn filters_decide_by_toucher() {
     pb.release(tail, true, avatar_core::physbones::Toucher::Wearer);
     let p = pb.parameters(tail);
     assert!(!p.is_grabbed && !p.is_posed, "posing is not the wearer's");
+}
+
+/// Hands push a chain only when its collision filter admits their owner, whatever the chain's own colliders: the
+/// wearer's own hand collider, its node moved beside the tail's tip, and another player's beside it, the avatar moved
+/// and turned in the world.
+#[test]
+fn hands_push_only_chains_their_filter_admits() {
+    use avatar_core::model::Permission;
+    use avatar_core::physbones::{HandCollider, PhysBones, Toucher, Transform};
+    let dir = path("fixtures/reference/fixture-grabs");
+    let start = reference::step(&dir, "grab Tail") - 103;
+    let mut base = avatar_core::read(&std::fs::read(path("fixtures/unity-synthetic.glb")).unwrap()).unwrap();
+    let tail = base.model.physbones.iter().position(|p| p.parameter.as_deref() == Some("Tail")).unwrap();
+    base.model.physbones[tail].radius.value = 0.03;
+    base.model.physbones[tail].radius.curve = None;
+    let hand = base.model.descriptor.colliders.hand_left.bone.unwrap().0 as usize;
+    let run = |collision: Permission, toucher: Option<Toucher>| -> Vec<Vec<Transform>> {
+        let mut avatar = base.clone();
+        avatar.model.physbones[tail].collision = collision;
+        let mut replay = Replay::load(&dir, avatar, start..start + 40);
+        let placed = Transform { translation: glam::Vec3::new(1.0, 0.0, 2.0), rotation: glam::Quat::from_rotation_y(1.2), scale: glam::Vec3::ONE };
+        for frame in &mut replay.frames {
+            frame.root = placed.mul(&frame.root);
+        }
+        let mut pb = PhysBones::new(&replay.avatar).unwrap();
+        let first = &replay.frames[0];
+        let tip = pb.bones(tail).last().unwrap();
+        let rigid = Transform { scale: glam::Vec3::ONE, ..first.root };
+        let beside = rigid.mul(&first.nodes[tip]).translation + glam::Vec3::new(0.02, 0.0, 0.0);
+        let own = pb.hands(0, &first.root, &first.nodes)[0];
+        let shift = rigid.rotation.inverse() * (beside - own.at.point(own.position));
+        pb.advance(0.0, first);
+        let mut poses = vec![];
+        for frame in &replay.frames[1..] {
+            let mut frame = frame.clone();
+            match toucher {
+                Some(Toucher::Wearer) => frame.nodes[hand].translation += shift,
+                Some(Toucher::Other) => frame.hands = vec![HandCollider {
+                    player: 1,
+                    part: 0,
+                    at: Transform { translation: beside, ..Transform::IDENTITY },
+                    radius: 0.05,
+                    height: 0.2,
+                    position: glam::Vec3::ZERO,
+                    rotation: glam::Quat::IDENTITY,
+                }],
+                None => {}
+            }
+            pb.advance(1.0 / 60.0, &frame);
+            poses.push(pb.local(tail));
+        }
+        poses
+    };
+    let moved = |a: &[Vec<Transform>], b: &[Vec<Transform>]| {
+        a.iter().flatten().zip(b.iter().flatten()).map(|(x, y)| x.rotation.angle_between(y.rotation)).fold(0.0f32, f32::max)
+    };
+    for (allow_self, allow_others) in [(false, false), (true, false), (false, true), (true, true)] {
+        let collision = Permission { allow_self, allow_others };
+        let free = run(collision, None);
+        for (owner, allowed) in [(Toucher::Wearer, allow_self), (Toucher::Other, allow_others)] {
+            let touched = run(collision, Some(owner));
+            let turn = moved(&free, &touched);
+            eprintln!("self {allow_self} others {allow_others}, {owner:?}'s hand: largest turn {:.2} degrees", turn.to_degrees());
+            if allowed {
+                assert!(turn.to_degrees() > 1.0, "a {owner:?} hand the filter admits pushed the tail {} degrees", turn.to_degrees());
+            } else {
+                assert!(free == touched, "a {owner:?} hand the filter refuses moved the tail");
+            }
+        }
+    }
+}
+
+/// The hand collider probe: the wearer's hand, another player's and both sweep through one chain per collision filter
+/// setting. Over every frame each tip's RMS error is within 5% of its chain's length of the recording, M5's bar, and
+/// no frame's error passes 7% (measured: 6.6%, on three-frame runs where a chain swings back over the hand); each
+/// sweep moves exactly the chains whose filter admits its hands, in the recording and in the core.
+#[test]
+fn hands_push_each_chain_their_filter_admits() {
+    let dir = path("fixtures/reference/hands");
+    let replay = replay("fixtures/reference/hands", "fixtures/unity-hands.glb", 0..usize::MAX);
+    assert_eq!(replay.hands.len(), 1, "the other player's hand");
+    let trace = replay.run(60.0);
+    let lengths: BTreeMap<String, f32> = reference::rows(&dir.join("chains.tsv"))[1..].iter().map(|r| (r[0].clone(), r[1].parse().unwrap())).collect();
+    let mut recorded = BTreeMap::<String, BTreeMap<usize, glam::Vec3>>::new();
+    for r in reference::rows(&dir.join("tips.tsv")) {
+        recorded.entry(r[1].clone()).or_default().insert(r[0].parse().unwrap(), glam::Vec3::new(r[2].parse().unwrap(), r[3].parse().unwrap(), r[4].parse().unwrap()));
+    }
+    let ours: BTreeMap<usize, &BTreeMap<String, glam::Vec3>> = trace.frames.iter().zip(&trace.tips).map(|(f, t)| (f.round() as usize, t)).collect();
+    let mut failed = vec![];
+    for (tip, length) in lengths.iter().filter(|(t, _)| t.starts_with("HandRow/")) {
+        let errors: Vec<(f32, usize)> = recorded[tip].iter().map(|(f, p)| (ours[f][tip].distance(*p) / length, *f)).collect();
+        assert_eq!(errors.len(), ours.len(), "{tip}: every frame compared");
+        let rms = (errors.iter().map(|(e, _)| e * e).sum::<f32>() / errors.len() as f32).sqrt();
+        let (worst, at) = errors.iter().copied().fold((0.0f32, 0), |a, b| if b.0 > a.0 { b } else { a });
+        eprintln!("{tip:<60} RMS {rms:.4}, worst {worst:.4} at frame {at}, of its length");
+        if rms > 0.05 || worst > 0.07 {
+            failed.push(format!("{tip}: RMS {rms:.4}, worst {worst:.4} at frame {at}"));
+        }
+    }
+    assert!(failed.is_empty(), "{failed:#?}");
+    for (step, wearer, other) in [("self sweep", true, false), ("other sweep", false, true), ("both sweep", true, true)] {
+        let (start, end) = (reference::step(&dir, step), reference::step(&dir, &step.replace("sweep", "away")));
+        for (chain, allow_self, allow_others) in [
+            ("CollideAll", true, true),
+            ("CollideNone", false, false),
+            ("SelfOnly", true, false),
+            ("OthersOnly", false, true),
+            ("SelfAndOthers", true, true),
+            ("Nobody", false, false),
+        ] {
+            let pushed = (wearer && allow_self) || (other && allow_others);
+            for (who, tips) in [("the recording", None), ("the core", Some(&ours))] {
+                let moved = lengths
+                    .keys()
+                    .filter(|t| t.starts_with(&format!("HandRow/{chain}|")))
+                    .map(|t| {
+                        let at = |f: usize| tips.map_or(recorded[t][&f], |o| o[&f][t]);
+                        (start..end).map(|f| at(f).distance(at(start))).fold(0.0f32, f32::max)
+                    })
+                    .fold(0.0f32, f32::max);
+                eprintln!("{step}: {chain} moved {moved:.4} m in {who}");
+                assert_eq!(moved > 0.005, pushed, "{step}: {chain} moved {moved} m in {who}");
+            }
+        }
+    }
 }

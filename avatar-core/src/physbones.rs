@@ -1,7 +1,8 @@
 use glam::{Quat, Vec3, Vec4};
 use serde_json::Value;
 
-use crate::model::{self, ColliderShape, Curved, ImmobileType, IntegrationType, Limit, MultiChildType, PhysBoneVersion};
+use crate::contacts::{closest_on_segments, standard_hands};
+use crate::model::{self, ColliderShape, ContactShape, Curved, ImmobileType, IntegrationType, Limit, MultiChildType, PhysBoneVersion};
 use crate::Avatar;
 
 /// The simulation step: PhysBones advance in steps of this length whatever the host's frame rate.
@@ -90,6 +91,52 @@ pub struct Frame {
     pub active: Vec<bool>,
     /// Every PhysBone's enabled flag as animation left it.
     pub enabled: Vec<bool>,
+    /// Other avatars' hand and finger colliders in the world.
+    pub hands: Vec<HandCollider>,
+}
+
+/// Another avatar's hand or finger collider: a capsule on a transform, pushing each PhysBone whose collision filter
+/// admits others.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HandCollider {
+    /// The host's name for the avatar it belongs to; with `part`, names the collider across frames.
+    pub player: u64,
+    /// Its place among that avatar's hand and finger colliders.
+    pub part: usize,
+    /// The pose of the transform the capsule sits on, in the world.
+    pub at: Transform,
+    pub radius: f32,
+    pub height: f32,
+    pub position: Vec3,
+    pub rotation: Quat,
+}
+
+impl HandCollider {
+    fn touch(&self, owner: Toucher) -> Touch {
+        let scale = self.at.scale.x.abs();
+        let center = self.at.point(self.position);
+        let half = (self.at.rotation * self.rotation) * Vec3::Y * ((self.height * 0.5 - self.radius) * scale).max(0.0);
+        Touch { owner, a: center - half, b: center + half, radius: self.radius * scale }
+    }
+}
+
+/// A hand or finger capsule in the world, by its core segment, and whose hand it is.
+#[derive(Clone, Copy, Debug)]
+struct Touch {
+    owner: Toucher,
+    a: Vec3,
+    b: Vec3,
+    radius: f32,
+}
+
+/// One of the avatar's own hand or finger colliders: the descriptor's, placed where its standard sender is.
+#[derive(Clone, Copy, Debug)]
+struct OwnHand {
+    node: usize,
+    radius: f32,
+    height: f32,
+    position: Vec3,
+    rotation: Quat,
 }
 
 /// The `{parameter}_…` values VRChat derives from a PhysBone.
@@ -151,6 +198,7 @@ struct Chain {
     animated: bool,
     root_parent: Option<usize>,
     colliders: Vec<usize>,
+    collision: model::Permission,
     bones: Vec<Bone>,
     reference: Option<Transform>,
     rest: Vec<Transform>,
@@ -192,6 +240,7 @@ pub enum Toucher {
 pub struct PhysBones {
     chains: Vec<Chain>,
     colliders: Vec<ColliderAt>,
+    hands: Vec<OwnHand>,
     model: Vec<model::PhysBone>,
     /// The host's latest frame and its time.
     last: Option<(f64, Frame)>,
@@ -388,6 +437,7 @@ fn chain(pb: &model::PhysBone, roots: &[usize], nodes: &Nodes) -> Chain {
         animated: pb.is_animated,
         root_parent: nodes.parent[root],
         colliders: pb.colliders.iter().map(|c| c.0 as usize).collect(),
+        collision: pb.collision,
         bones,
         reference: None,
         rest: vec![Transform::IDENTITY; count],
@@ -416,8 +466,40 @@ impl PhysBones {
                 rotation: unit(Quat::from_array(c.rotation)),
             })
             .collect();
+        let hands = standard_hands(&model.descriptor, &model.humanoid, &nodes)
+            .into_iter()
+            .filter_map(|s| match s.shape {
+                ContactShape::Capsule { radius, height } => Some(OwnHand {
+                    node: s.node.0 as usize,
+                    radius,
+                    height,
+                    position: Vec3::from(s.position),
+                    rotation: unit(Quat::from_array(s.rotation)),
+                }),
+                ContactShape::Sphere { .. } => None,
+            })
+            .collect();
         let authored: Vec<Vec<Transform>> = chains.iter().map(|c| c.bones.iter().filter(|b| b.node.is_some()).map(|b| b.authored).collect()).collect();
-        Ok(PhysBones { chains, colliders, model: model.physbones.clone(), last: None, now: 0.0, stepped: 0.0, before: authored.clone(), after: authored })
+        Ok(PhysBones { chains, colliders, hands, model: model.physbones.clone(), last: None, now: 0.0, stepped: 0.0, before: authored.clone(), after: authored })
+    }
+
+    /// The avatar's hand and finger colliders in the world, from the avatar root in the world and every node's pose in
+    /// its space, as `player`'s.
+    pub fn hands(&self, player: u64, root: &Transform, space: &[Transform]) -> Vec<HandCollider> {
+        let root = root.rigid();
+        self.hands
+            .iter()
+            .enumerate()
+            .map(|(part, h)| HandCollider {
+                player,
+                part,
+                at: root.mul(&space.get(h.node).copied().unwrap_or(Transform::IDENTITY)),
+                radius: h.radius,
+                height: h.height,
+                position: h.position,
+                rotation: h.rotation,
+            })
+            .collect()
     }
 
     /// The nodes each chain poses, in the order [`PhysBones::local`] answers for them.
@@ -461,13 +543,15 @@ impl PhysBones {
             let s = if t1 > t0 { 1.0 + ((time - t1) / (t1 - t0).max(STEP as f64 / 2.0)) as f32 } else { 1.0 };
             let input = blend(&last, frame, s);
             self.before = self.after.clone();
+            let own = self.hands(0, &input.root, &input.nodes);
+            let hands: Vec<Touch> = own.iter().map(|h| h.touch(Toucher::Wearer)).chain(input.hands.iter().map(|h| h.touch(Toucher::Other))).collect();
             for (i, c) in self.chains.iter_mut().enumerate() {
                 let on = c.on(&input, i);
                 if on {
                     if !c.running {
                         c.reset(&input);
                     }
-                    c.step(&input, &self.colliders);
+                    c.step(&input, &self.colliders, &hands);
                 } else if c.running && c.reset_when_disabled {
                     c.reset(&input);
                 } else if !c.running {
@@ -548,6 +632,14 @@ fn blend(a: &Frame, b: &Frame, s: f32) -> Frame {
         locals: mix(&a.locals, &b.locals),
         active: b.active.clone(),
         enabled: b.enabled.clone(),
+        hands: b
+            .hands
+            .iter()
+            .map(|y| match a.hands.iter().find(|x| (x.player, x.part) == (y.player, y.part)) {
+                Some(x) => HandCollider { at: x.at.lerp(&y.at, s), ..*y },
+                None => *y,
+            })
+            .collect(),
     }
 }
 
@@ -622,7 +714,7 @@ impl Chain {
         t
     }
 
-    fn step(&mut self, frame: &Frame, colliders: &[ColliderAt]) {
+    fn step(&mut self, frame: &Frame, colliders: &[ColliderAt], hands: &[Touch]) {
         self.animate(frame);
         let reference = self.reference_frame(frame);
         let moved = reference.mul(&self.reference.unwrap_or(reference).inverse_rigid());
@@ -634,6 +726,8 @@ impl Chain {
             .filter_map(|&c| colliders.get(c))
             .map(|c| (c.clone(), root.mul(&frame.nodes.get(c.node).copied().unwrap_or(Transform::IDENTITY))))
             .collect();
+        let touches: Vec<Touch> = hands.iter().copied().filter(|h| allowed(&self.collision, h.owner)).collect();
+        let scale = self.parent_world(frame).scale.x.abs();
         self.bones[0].position = self.rest[0].translation;
         self.bones[0].previous = self.rest[0].translation;
         self.world[0] = self.base(frame, 0);
@@ -644,7 +738,7 @@ impl Chain {
         for p in 0..self.bones.len() {
             let children = self.bones[p].children.clone();
             for &i in &children {
-                self.solve(p, i, frame, moved, &places);
+                self.solve(p, i, frame, moved, &places, &touches, scale);
             }
             let driving = self.aim(p, frame);
             for &i in &children {
@@ -688,7 +782,8 @@ impl Chain {
         }
     }
 
-    fn solve(&mut self, p: usize, i: usize, frame: &Frame, moved: Transform, places: &[(ColliderAt, Transform)]) {
+    #[allow(clippy::too_many_arguments)]
+    fn solve(&mut self, p: usize, i: usize, frame: &Frame, moved: Transform, places: &[(ColliderAt, Transform)], touches: &[Touch], scale: f32) {
         if self.held[i] {
             return;
         }
@@ -741,11 +836,16 @@ impl Chain {
         let length = if free { offset.length().clamp(rest_length * low, rest_length * high) } else { rest_length };
         let direction = limit(offset.normalize_or(rest_direction), local.translation, parent.rotation, q.limit);
         bone.position = origin + direction * length;
-        for (collider, place) in places {
-            bone.position = collide(bone.position, q.radius * place.scale.x.abs(), collider, place);
-            let pushed = bone.position - origin;
+        let keep = |at: Vec3| {
+            let pushed = at - origin;
             let kept = if free { pushed.length().clamp(rest_length * low, rest_length * high) } else { rest_length };
-            bone.position = origin + pushed.normalize_or(direction) * kept;
+            origin + pushed.normalize_or(direction) * kept
+        };
+        for (collider, place) in places {
+            bone.position = keep(collide(bone.position, q.radius * place.scale.x.abs(), collider, place));
+        }
+        for touch in touches {
+            bone.position = keep(touch_bone(origin, bone.position, q.radius * scale, touch));
         }
     }
 
@@ -882,4 +982,17 @@ fn collide(position: Vec3, radius: f32, collider: &ColliderAt, place: &Transform
         return position;
     }
     core + d.normalize_or(axis.any_orthonormal_vector()) * reach
+}
+
+/// Pushes a bone's end at `position` so its segment from `origin`, its parent's end, clears a hand: the end moves as far
+/// as the segment's nearest point must, which leaves a contact near the parent partly inside. The hand probe's traces
+/// show this; an end sphere alone, or a push scaled to free that point, misses them by several times as much.
+fn touch_bone(origin: Vec3, position: Vec3, radius: f32, hand: &Touch) -> Vec3 {
+    let (on_bone, core) = closest_on_segments(origin, position, hand.a, hand.b);
+    let d = on_bone - core;
+    let reach = hand.radius + radius;
+    if radius <= 0.0 || d.length() >= reach {
+        return position;
+    }
+    position + core + d.normalize_or((hand.b - hand.a).any_orthonormal_vector()) * reach - on_bone
 }

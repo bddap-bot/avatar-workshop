@@ -9,7 +9,7 @@ use crate::animator::Animator;
 use crate::constraints::{Constraints, Scene};
 use crate::contacts::{Contacts, Sender};
 use crate::humanoid::{muscle_names, Body, Human};
-use crate::physbones::{Error, Frame, Nodes, PhysBones, Toucher, Transform};
+use crate::physbones::{Error, Frame, HandCollider, Nodes, PhysBones, Toucher, Transform};
 use crate::Avatar;
 
 /// What the host gives each frame.
@@ -26,6 +26,9 @@ pub struct Input<'a> {
     pub held: &'a [(usize, Transform)],
     /// Contact senders outside the avatar: other avatars' and the hands'.
     pub senders: &'a [Sender],
+    /// Other avatars' hand and finger colliders, each from its own avatar's [`Evaluator::hands`]; never this one's own,
+    /// which it already holds.
+    pub hands: &'a [HandCollider],
 }
 
 /// What animation leaves, given by a host that does not run the core's animator on this avatar.
@@ -94,6 +97,7 @@ pub struct Evaluator {
     authored_renderers: Vec<bool>,
     renderer_nodes: Vec<u32>,
     human: Option<HumanTargets>,
+    root: Transform,
     output: Output,
 }
 
@@ -134,6 +138,7 @@ impl Evaluator {
             authored_renderers: m.renderers.iter().map(|r| r.enabled).collect(),
             renderer_nodes: m.renderers.iter().map(|r| r.node.0).collect(),
             human: None,
+            root: Transform::IDENTITY,
             output: Output {
                 locals: nodes.rest.clone(),
                 space: vec![Transform::IDENTITY; count],
@@ -250,6 +255,12 @@ impl Evaluator {
         &self.output
     }
 
+    /// This avatar's hand and finger colliders after the last frame, in the world, named by the host's `player` for it:
+    /// what the host gives the avatars around it in [`Input::hands`].
+    pub fn hands(&self, player: u64) -> Vec<HandCollider> {
+        self.physbones.hands(player, &self.root, &self.output.space)
+    }
+
     /// Evaluates a frame, the core's animator posing the avatar.
     pub fn evaluate(&mut self, input: &Input) -> &Output {
         if input.dt > 0.0 {
@@ -324,7 +335,8 @@ impl Evaluator {
         self.constraints.solve_before_physbones(&mut Scene { root: rigid, locals: &mut locals, active: &active });
         let moved: Vec<bool> = before.iter().zip(&locals).map(|(a, b)| a != b).collect();
         let nodes = space(parent, &locals, &unmoved(parent, &posed, &moved));
-        let frame = Frame { root: input.root, nodes, locals: locals.clone(), active: active.clone(), enabled: enabled.to_vec() };
+        let frame = Frame { root: input.root, nodes, locals: locals.clone(), active: active.clone(), enabled: enabled.to_vec(), hands: input.hands.to_vec() };
+        self.root = input.root;
         self.physbones.advance(input.dt, &frame);
         for c in 0..self.physbone_parameters.len() {
             if !self.physbones.running(c) {

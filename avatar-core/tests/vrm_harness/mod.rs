@@ -48,7 +48,7 @@ pub fn replay(avatar: &Avatar, recording: &Recording, head: Option<usize>) -> Ve
         if let Some(h) = head {
             locals[h].rotation = recording.heads[f];
         }
-        let frame = Frame { root: *root, nodes: nodes.world(&locals), locals: locals.clone(), active: vec![true; count], enabled: vec![true; avatar.model.physbones.len()] };
+        let frame = Frame { root: *root, nodes: nodes.world(&locals), locals: locals.clone(), active: vec![true; count], enabled: vec![true; avatar.model.physbones.len()], hands: vec![] };
         physbones.advance(if f == 0 { 0.0 } else { STEP }, &frame);
         for p in 0..avatar.model.physbones.len() {
             let bones: Vec<usize> = physbones.bones(p).collect();

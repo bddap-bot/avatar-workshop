@@ -98,7 +98,7 @@ pub fn run(avatar: &Avatar, dir: &Path, frames: Option<usize>) -> Run {
             poses = tracked.iter().zip(&t[1..]).filter_map(|(n, p)| n.map(|n| (n, *p))).collect();
         }
         let dt = if f == first { 0.0 } else { 1.0 / 60.0 };
-        ev.evaluate(&Input { dt, root, poses: &poses, held: &[], senders: &[] });
+        ev.evaluate(&Input { dt, root, poses: &poses, held: &[], senders: &[], hands: &[] });
         for (tip, p) in tips(avatar, &nodes, &names, &ev, ev.output()) {
             writeln!(run.tips, "{f}\t{tip}\t{:?}\t{:?}\t{:?}", p.x, p.y, p.z).unwrap();
         }

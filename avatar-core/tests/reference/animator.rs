@@ -621,7 +621,7 @@ impl Run {
                 dt = (t - clock) as f32;
                 clock = t;
             }
-            ev.evaluate(&Input { dt, root: Transform::IDENTITY, poses: &[], held: &[], senders: &[] });
+            ev.evaluate(&Input { dt, root: Transform::IDENTITY, poses: &[], held: &[], senders: &[], hands: &[] });
             let anim = ev.animator();
             if let Ok(k) = std::env::var("AW_CLOCK") {
                 for s in anim.states().iter().filter(|s| format!("{}:{}", order[s.playable], s.layer) == k) {

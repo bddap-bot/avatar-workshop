@@ -13,7 +13,7 @@ fn fixture() -> avatar_core::Avatar {
 }
 
 fn input(dt: f32) -> Input<'static> {
-    Input { dt, root: Transform::IDENTITY, poses: &[], held: &[], senders: &[] }
+    Input { dt, root: Transform::IDENTITY, poses: &[], held: &[], senders: &[], hands: &[] }
 }
 
 #[test]
@@ -70,4 +70,43 @@ fn moving_the_root_swings_a_chain() {
         }
     }
     assert!(swing > 1e-3, "the chain swung {swing} m");
+}
+
+/// Another avatar's hands, as its own evaluator places them and given as host input, push a chain that allows others
+/// and none that refuses them; the avatar's own hand and finger are the descriptor's.
+#[test]
+fn another_avatars_hands_push_what_allows_others() {
+    let mut base = fixture();
+    let tail = base.model.physbones.iter().position(|p| p.parameter.as_deref() == Some("Tail")).unwrap();
+    base.model.physbones[tail].radius.value = 0.03;
+    let run = |allow_others: bool, hands: &[avatar_core::physbones::HandCollider]| -> Vec<glam::Vec3> {
+        let mut avatar = base.clone();
+        avatar.model.physbones[tail].collision = avatar_core::model::Permission { allow_self: true, allow_others };
+        let mut ev = Evaluator::new(&avatar).unwrap();
+        let tip = ev.physbones().bones(tail).last().unwrap();
+        (0..40)
+            .map(|k| {
+                ev.evaluate(&Input { hands: if k < 10 { &[] } else { hands }, ..input(if k == 0 { 0.0 } else { 1.0 / 60.0 }) });
+                ev.output().space[tip].translation
+            })
+            .collect()
+    };
+    let free = run(true, &[]);
+    let mut other = Evaluator::new(&base).unwrap();
+    let mut step = |root: glam::Vec3, dt: f32| {
+        other.evaluate(&Input { root: Transform { translation: root, ..Transform::IDENTITY }, ..input(dt) });
+        other.hands(1)
+    };
+    step(glam::Vec3::ZERO, 0.0);
+    let mut hand = vec![];
+    for _ in 0..10 {
+        hand = step(glam::Vec3::ZERO, 1.0 / 60.0);
+    }
+    assert_eq!(hand.len(), 2, "the fixture's left hand and index finger");
+    let shift = free[10] - hand[0].at.point(hand[0].position) + glam::Vec3::new(0.06, 0.0, 0.0);
+    let hands = step(shift, 1.0 / 60.0);
+    let moved = |a: &[glam::Vec3], b: &[glam::Vec3]| a.iter().zip(b).map(|(x, y)| x.distance(*y)).fold(0.0f32, f32::max);
+    let pushed = moved(&free, &run(true, &hands));
+    assert!(pushed > 0.01, "a hand that the chain allows moved its tip {pushed} m");
+    assert!(run(false, &[]) == run(false, &hands), "a hand that the chain refuses moved its tip");
 }

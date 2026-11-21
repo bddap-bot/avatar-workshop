@@ -19,6 +19,7 @@ using UnityEngine.Rendering;
 using VRC.Dynamics;
 using VRC.SDK3.Avatars.Components;
 using VRC.SDK3.Avatars.ScriptableObjects;
+using VRC.SDK3.Dynamics.PhysBone.Components;
 using VRC.SDKBase.Editor.BuildPipeline;
 using Control = VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu.Control;
 
@@ -65,7 +66,7 @@ namespace AvatarWorkshop.Reference
                 : scenePath == "genericrig" ? Fixture.Kind.GenericRig : scenePath == "generichold" ? Fixture.Kind.GenericHold
                 : scenePath == "genericweight" ? Fixture.Kind.GenericWeight
                 : scenePath == "loopdrift" ? Fixture.Kind.LoopDrift : scenePath == "feet" ? Fixture.Kind.Feet
-                : scenePath == "dynamics" ? Fixture.Kind.Dynamics : (Fixture.Kind?)null;
+                : scenePath == "dynamics" ? Fixture.Kind.Dynamics : scenePath == "hands" ? Fixture.Kind.Hands : (Fixture.Kind?)null;
             if (kind.HasValue) scenePath = Fixture.Build(kind.Value);
 
             EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
@@ -313,7 +314,7 @@ namespace AvatarWorkshop.Reference
         public bool Finished;
         readonly string output;
         readonly string avatarName;
-        readonly bool fixture, probe, human, blend, layering, sampleTime, rotation, dense, crossfade, generic, gridHold, gridRule, genericRig, genericHold, genericWeight, loopDrift, feet, dynamicsProbe;
+        readonly bool fixture, probe, human, blend, layering, sampleTime, rotation, dense, crossfade, generic, gridHold, gridRule, genericRig, genericHold, genericWeight, loopDrift, feet, dynamicsProbe, handsProbe;
         bool Cased => human || blend || layering || sampleTime || rotation || dense || crossfade || generic || gridHold || gridRule || genericRig || genericHold || genericWeight || loopDrift || feet;
         readonly bool migratedDynamicBones;
         bool exported;
@@ -331,7 +332,11 @@ namespace AvatarWorkshop.Reference
         int stepIndex = -1;
         int stepFrame;
         readonly List<Tip> tips = new List<Tip>();
-        Transform leftArm, rightArm;
+        Transform leftArm, rightArm, leftHand;
+        // In the root's space.
+        Vector3? handAt;
+        readonly List<VRCPhysBoneColliderBase> outsideHands = new List<VRCPhysBoneColliderBase>();
+        int placedHandColliders;
         Transform[] tracked = new Transform[0];
         Vector2 armSwing;
         Vector3 held;
@@ -402,6 +407,7 @@ namespace AvatarWorkshop.Reference
             loopDrift = kind == Fixture.Kind.LoopDrift;
             feet = kind == Fixture.Kind.Feet;
             dynamicsProbe = kind == Fixture.Kind.Dynamics;
+            handsProbe = kind == Fixture.Kind.Hands;
             this.output = output;
             this.avatarName = avatarName;
             this.migratedDynamicBones = migratedDynamicBones;
@@ -581,7 +587,9 @@ namespace AvatarWorkshop.Reference
 
         public void Pose()
         {
-            if (root == null || stepIndex < 0 || Finished || armSwing == Vector2.zero) return;
+            if (root == null || stepIndex < 0 || Finished) return;
+            if (handAt is Vector3 at && leftHand != null) leftHand.position = root.TransformPoint(at);
+            if (armSwing == Vector2.zero) return;
             foreach (var (bone, sign) in new[] { (leftArm, -1f), (rightArm, 1f) })
             {
                 if (bone == null) continue;
@@ -706,6 +714,7 @@ namespace AvatarWorkshop.Reference
             {
                 leftArm = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
                 rightArm = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+                leftHand = animator.GetBoneTransform(HumanBodyBones.LeftHand);
                 tracked = new[] { HumanBodyBones.Head, HumanBodyBones.LeftHand, HumanBodyBones.RightHand, HumanBodyBones.Hips }.Select(animator.GetBoneTransform).ToArray();
                 humanBones = Enumerable.Range(0, (int)HumanBodyBones.LastBone).Select(b => (animator.GetBoneTransform((HumanBodyBones)b), ((HumanBodyBones)b).ToString()))
                     .Where(x => x.Item1 != null).ToArray();
@@ -754,6 +763,7 @@ namespace AvatarWorkshop.Reference
                 Tips(pb, physBones);
             StandardSenders(descriptor);
             if (dynamicsProbe) CreateOutsideSenders();
+            if (handsProbe) CreateOutsideHands(descriptor);
             Inputs(physBones);
 
             Directory.CreateDirectory(output);
@@ -800,6 +810,13 @@ namespace AvatarWorkshop.Reference
                 if (absent.Count > 0) throw new Exception($"the {name} probe lacks {string.Join(", ", absent)}");
                 if (genericWeight && Coverage.WeightPlays(descriptor) is string plays) throw new Exception($"the {name} probe can play {plays}");
             }
+            if (handsProbe)
+            {
+                var settings = Fixture.CountHands(root.gameObject, outsideHands);
+                File.WriteAllText(Path.Combine(output, "compositions.json"), Json(settings) + "\n");
+                var absent = Fixture.HandSettings.Where(k => settings[k] == 0).ToList();
+                if (absent.Count > 0) throw new Exception($"the hand collider probe lacks {string.Join(", ", absent)}");
+            }
             if (dynamicsProbe)
             {
                 var settings = Coverage.CountDynamics(root.gameObject, descriptor, others.Select(o => o.GetComponent<ContactSender>()));
@@ -831,6 +848,15 @@ namespace AvatarWorkshop.Reference
                 ["loopdrift"] = loopDrift,
                 ["feet"] = feet,
                 ["dynamics"] = dynamicsProbe,
+                ["hands"] = handsProbe,
+                ["placed_hand_colliders"] = placedHandColliders,
+                ["outside_hands"] = outsideHands.Select(c => new Dictionary<string, object>
+                {
+                    ["transform"] = PathOf(c.GetRootTransform()), ["radius"] = c.radius, ["height"] = c.height,
+                    ["position"] = new[] { c.position.x, c.position.y, c.position.z },
+                    ["rotation"] = new[] { c.rotation.x, c.rotation.y, c.rotation.z, c.rotation.w },
+                    ["player"] = c.playerId,
+                }).ToList(),
                 ["outside_senders"] = others.Select(o => o.GetComponent<ContactSender>()).Select(c => new Dictionary<string, object>
                 {
                     ["transform"] = PathOf(c.transform), ["shape"] = c.shapeType.ToString().ToLowerInvariant(), ["radius"] = c.radius, ["height"] = c.height,
@@ -1001,6 +1027,7 @@ namespace AvatarWorkshop.Reference
             foreach (var c in root.GetComponentsInChildren<VRCPhysBoneColliderBase>(true)) Role(c.GetRootTransform(), "collider");
             foreach (var c in root.GetComponentsInChildren<ContactBase>(true)) Role(c.GetRootTransform(), "contact");
             foreach (var t in others) Role(t, "outside-sender");
+            foreach (var c in outsideHands) Role(c.GetRootTransform(), "outside-hand");
             foreach (var (slot, sender) in standardSenders) Role(sender.GetRootTransform(), "standard-sender:" + slot);
             foreach (var c in root.GetComponentsInChildren<VRCConstraintBase>(true))
             {
@@ -1184,6 +1211,30 @@ namespace AvatarWorkshop.Reference
             }
         }
 
+        // Another player's hand: a global PhysBone collider outside the avatar, with a player id of its own. The stand-ins
+        // rest on the emulator leaving no PhysBone collider on the descriptor's hand and finger collider bones.
+        void CreateOutsideHands(VRCAvatarDescriptor descriptor)
+        {
+            var go = new GameObject(Fixture.OtherHand.name);
+            var c = go.AddComponent<VRCPhysBoneCollider>();
+            c.rootTransform = go.transform;
+            c.shapeType = VRCPhysBoneColliderBase.ShapeType.Capsule;
+            c.radius = Fixture.OtherHand.radius; c.height = Fixture.OtherHand.height; c.rotation = Quaternion.Euler(0, 0, 90);
+            c.globalCollision = VRCPhysBoneBase.AdvancedBool.True;
+            c.playerId = Fixture.OtherPlayer;
+            go.transform.SetPositionAndRotation(root.position + root.rotation * Fixture.Parked, root.rotation);
+            outsideHands.Add(c);
+            foreach (var (slot, config) in AvatarWorkshop.Exporter.Exporter.DescriptorColliders(descriptor))
+            {
+                if (!(slot.StartsWith("hand") || slot.StartsWith("finger")) || config.state == VRCAvatarDescriptor.ColliderConfig.State.Disabled || config.transform == null) continue;
+                var bone = slot.StartsWith("finger") ? config.transform.parent : config.transform;
+                placedHandColliders += bone.GetComponents<VRCPhysBoneColliderBase>().Length;
+            }
+            if (placedHandColliders != 0) throw new Exception($"the emulator put {placedHandColliders} PhysBone colliders on the descriptor's hand and finger bones");
+        }
+
+        void MoveHand(VRCPhysBoneColliderBase c, Vector3 local) => c.transform.SetPositionAndRotation(root.position + root.rotation * local, root.rotation);
+
         void MoveOutside(string name, Vector3 local)
         {
             var t = others.Single(o => o.name == name);
@@ -1194,6 +1245,21 @@ namespace AvatarWorkshop.Reference
         {
             placed = Xf(position, rotation);
             root.SetPositionAndRotation(position, rotation);
+        }
+
+        // The wearer's left hand, then the other player's hand, then both from opposite ends, each along the row of chains
+        // and back at a walking pace, then away while the chains settle.
+        void HandSweeps(Func<string, int, bool, Step> S)
+        {
+            float half = Fixture.HandRowHalf;
+            int frames = Mathf.CeilToInt(2 * half / Fixture.HandSweepSpeed * Harness.Rate);
+            Vector3 Along(int k, bool back) { float u = Mathf.Min(k, 2 * frames) / (float)frames; u = u <= 1 ? u : 2 - u; return Fixture.OnHandRow(back ? half - 2 * half * u : -half + 2 * half * u); }
+            S("self sweep", 2 * frames + 1, false).Each = (r, k) => r.handAt = Along(k, false);
+            S("self away", 120, false).Each = (r, k) => { if (k == 0) r.handAt = null; };
+            S("other sweep", 2 * frames + 1, false).Each = (r, k) => r.MoveHand(r.outsideHands[0], Along(k, false));
+            S("other away", 120, false).Each = (r, k) => { if (k == 0) r.MoveHand(r.outsideHands[0], Fixture.Parked); };
+            S("both sweep", 2 * frames + 1, false).Each = (r, k) => { r.handAt = Along(k, false); r.MoveHand(r.outsideHands[0], Along(k, true)); };
+            S("both away", 120, false).Each = (r, k) => { if (k == 0) { r.handAt = null; r.MoveHand(r.outsideHands[0], Fixture.Parked); } };
         }
 
         void Swing(Vector2 arms)
@@ -1250,12 +1316,12 @@ namespace AvatarWorkshop.Reference
         {
             Step S(string label, int frames, bool render = false) => Add(new Step { Label = label, Frames = frames, Render = render });
 
-            var rest = S("rest", probe ? 900 : 90, render: true);
+            var rest = S("rest", probe ? 900 : handsProbe ? 300 : 90, render: true);
             foreach (var (n, v) in Builtins) rest.Set[n] = v;
             var script = Harness.Env("AW_STEPS");
             if (script != null)
             {
-                if (Cased || dynamicsProbe) throw new Exception("AW_STEPS cannot replace a probe's cases");
+                if (Cased || dynamicsProbe || handsProbe) throw new Exception("AW_STEPS cannot replace a probe's cases");
                 int hold = int.Parse(Harness.Env("AW_STEP_FRAMES") ?? "20", inv);
                 foreach (var text in script.Split(';'))
                 {
@@ -1277,6 +1343,12 @@ namespace AvatarWorkshop.Reference
                 return;
             }
 
+            if (handsProbe)
+            {
+                HandSweeps(S);
+                S("final", 60, render: true);
+                return;
+            }
             var motion = S("motion", 6 * Harness.Rate);
             motion.Each = (r, k) =>
             {

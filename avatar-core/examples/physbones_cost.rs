@@ -34,6 +34,7 @@ fn main() {
         locals: nodes.rest.clone(),
         active: vec![true; count],
         enabled: vec![true; avatar.model.physbones.len()],
+        hands: vec![],
     };
     let mut pb = PhysBones::new(&avatar).unwrap();
     let joints: usize = (0..avatar.model.physbones.len()).map(|c| pb.bones(c).count()).sum();
