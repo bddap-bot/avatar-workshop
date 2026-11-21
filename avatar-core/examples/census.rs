@@ -130,9 +130,13 @@ fn num(v: &Value) -> f32 {
     }
 }
 
-fn same(a: f32, b: f32) -> bool {
-    a == b || (a.is_nan() && b.is_nan())
+fn same(a: f32, b: f32, steps: u32) -> bool {
+    a == b || (a.is_nan() && b.is_nan()) || (a.is_finite() && b.is_finite() && a.is_sign_negative() == b.is_sign_negative() && a.to_bits().abs_diff(b.to_bits()) <= steps)
 }
+
+/// How many float32 steps a material float Unity reports may lie from the value its material file saves: Unity
+/// holds some a few steps off the saved value, a difference no author set and no render shows.
+const MATERIAL_STEPS: u32 = 8;
 
 impl Check<'_> {
     fn model(&self) -> &AwAvatar {
@@ -188,7 +192,7 @@ impl Check<'_> {
             let found = std::cell::RefCell::new(vec![]);
             let eq = |field: &str, expected: Value, at: &str| {
                 let actual = m.pointer(at).cloned().unwrap_or(json!("<absent>"));
-                if !values_equal(&expected, &actual, non_finite) {
+                if !values_equal(&expected, &actual, non_finite, 0) {
                     found.borrow_mut().push(format!("physbone {i} (node {node}): {field}: Unity {expected}, model {at} {actual}"));
                 }
             };
@@ -270,7 +274,7 @@ impl Check<'_> {
                     "parameter" => eq(name, if value.as_str() == Some("") { json!("<absent>") } else { value.clone() }, "/parameter"),
                     "ignoreOtherPhysBones" => {
                         let actual = m.pointer("/ignoreOtherPhysBones").cloned().unwrap_or(json!(false));
-                        if !values_equal(value, &actual, non_finite) {
+                        if !values_equal(value, &actual, non_finite, 0) {
                             found.borrow_mut().push(format!("physbone {i} (node {node}): {name}: Unity {value}, model {actual}"));
                         }
                     }
@@ -339,7 +343,7 @@ impl Check<'_> {
                 };
                 checked += 1;
                 let actual = m.pointer(at).cloned().unwrap_or(json!("<absent>"));
-                if !values_equal(&expected, &actual, false) {
+                if !values_equal(&expected, &actual, false, 0) {
                     faults.push(format!("{field}.{name}: Unity {expected}, model {slot}{at} {actual}"));
                 }
             }
@@ -579,8 +583,8 @@ impl Check<'_> {
                         values += expected.len();
                         if actual.len() != expected.len() {
                             fault(format!("{sname}: Unity {} values, glTF {}", expected.len(), actual.len()));
-                        } else if let Some(i) = (0..expected.len()).find(|&i| !same(expected[i], actual[i])) {
-                            let differ = (0..expected.len()).filter(|&i| !same(expected[i], actual[i])).count();
+                        } else if let Some(i) = (0..expected.len()).find(|&i| !same(expected[i], actual[i], 0)) {
+                            let differ = (0..expected.len()).filter(|&i| !same(expected[i], actual[i], 0)).count();
                             fault(format!("{sname}: {differ} values differ, first at {i}: Unity {}, glTF {}", expected[i], actual[i]));
                         }
                     }
@@ -995,7 +999,7 @@ impl Check<'_> {
         for (k, g) in model {
             let u: Vec<f32> = arr(&unity[k]).iter().map(num).collect();
             let m: Vec<f32> = g.position.iter().chain(&g.rotation).copied().collect();
-            if u.len() == m.len() && u.iter().zip(&m).all(|(a, b)| same(*a, *b)) {
+            if u.len() == m.len() && u.iter().zip(&m).all(|(a, b)| same(*a, *b, 0)) {
                 equal += 1;
             } else {
                 faults.push(format!("{k}: Unity {u:?}, model {m:?}"));
@@ -1070,7 +1074,7 @@ impl Check<'_> {
                             json!({"texture": t})
                         }
                     };
-                    if !values_equal(&expected, model, non_finite) {
+                    if !values_equal(&expected, model, non_finite, if kind == "float" { MATERIAL_STEPS } else { 0 }) {
                         faults.push(format!("material {name}.{prop} ({which}): Unity {expected}, model {model}"));
                     }
                 }
@@ -1164,15 +1168,15 @@ fn slope(t: f32) -> Value {
 
 /// A non-finite Unity value matches the model's written stand-in (0, or the largest finite value
 /// of its sign) when the export reports writing one.
-fn values_equal(a: &Value, b: &Value, non_finite: bool) -> bool {
+fn values_equal(a: &Value, b: &Value, non_finite: bool, steps: u32) -> bool {
     match (a, b) {
-        (Value::Number(x), Value::Number(y)) => same(x.as_f64().unwrap() as f32, y.as_f64().unwrap() as f32),
+        (Value::Number(x), Value::Number(y)) => same(x.as_f64().unwrap() as f32, y.as_f64().unwrap() as f32, steps),
         (Value::String(_), Value::Number(y)) if non_finite => {
             let (x, y) = (num(a), y.as_f64().unwrap() as f32);
             (x.is_nan() && y == 0.0) || (x == f32::INFINITY && y == f32::MAX) || (x == f32::NEG_INFINITY && y == f32::MIN)
         }
-        (Value::Array(x), Value::Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(a, b)| values_equal(a, b, non_finite)),
-        (Value::Object(x), Value::Object(y)) => x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).is_some_and(|w| values_equal(v, w, non_finite))),
+        (Value::Array(x), Value::Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(a, b)| values_equal(a, b, non_finite, steps)),
+        (Value::Object(x), Value::Object(y)) => x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).is_some_and(|w| values_equal(v, w, non_finite, steps))),
         _ => a == b,
     }
 }
@@ -1182,5 +1186,43 @@ fn jf(f: f32) -> Value {
         json!("NaN")
     } else {
         slope(f)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn step(value: f32, steps: i32) -> f32 {
+        f32::from_bits(value.to_bits().wrapping_add_signed(steps))
+    }
+
+    /// The faults the material check finds on the synthetic fixture's first material when Unity reports `values` for it.
+    fn material_faults(values: Value) -> Vec<String> {
+        let avatar = avatar_core::read(include_bytes!("../fixtures/unity-synthetic.glb")).unwrap();
+        let material = &avatar.model.materials[0];
+        let census = json!({"materials": [{
+            "name": avatar.gltf["materials"][0]["name"],
+            "shader": material.shader_name,
+            "properties": material.properties.keys().collect::<Vec<_>>(),
+            "keywords": material.keywords,
+            "values": values,
+        }]});
+        let mut report = Report::default();
+        Check { avatar: &avatar, census: &census, streams: &[], report: &mut report }.materials();
+        report.lines.into_iter().flat_map(|line| line.4).filter(|fault| fault.contains("._Cutoff (") || fault.contains("._Color (")).collect()
+    }
+
+    #[test]
+    fn a_material_float_a_few_float32_steps_off_matches_and_a_real_difference_does_not() {
+        let cutoff = |steps: i32| material_faults(json!({"_Cutoff": ["float", step(0.5, steps)]}));
+        for steps in [-8, -1, 0, 1, 8] {
+            assert_eq!(cutoff(steps), Vec::<String>::new(), "{steps} steps off matches");
+        }
+        for steps in [-9, 9, 1 << 16] {
+            assert_eq!(cutoff(steps).len(), 2, "{steps} steps off fails, saved and declared");
+        }
+        assert_eq!(material_faults(json!({"_Cutoff": ["float", 0.501]})).len(), 2);
+        assert_eq!(material_faults(json!({"_Color": ["color", step(0.9, 1), 0.75, 0.65, 1.0]})).len(), 2, "a colour still matches exactly");
     }
 }

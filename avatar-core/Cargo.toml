@@ -13,5 +13,9 @@ schemars = "1.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 
+[[example]]
+name = "census"
+test = true
+
 [dev-dependencies]
 flate2 = "1.1.10"
