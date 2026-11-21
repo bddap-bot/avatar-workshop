@@ -134,6 +134,7 @@ namespace AvatarWorkshop.Reference
 
         struct InputsStage { }
         struct PoseStage { }
+        struct HumanoidStage { }
         struct RecordStage { }
         struct DriversStage { }
         struct DynamicsStage { }
@@ -156,6 +157,7 @@ namespace AvatarWorkshop.Reference
                     list.Insert(anim, new PlayerLoopSystem { type = typeof(DynamicsStage), updateDelegate = () => Guard(recorder.Dynamics) });
                     int at = list.FindIndex(s => s.type == typeof(PreLateUpdate.ScriptRunBehaviourLateUpdate));
                     list.Insert(at < 0 ? 0 : at, new PlayerLoopSystem { type = typeof(PoseStage), updateDelegate = () => Guard(recorder.Pose) });
+                    list.Insert(at < 0 ? 0 : at, new PlayerLoopSystem { type = typeof(HumanoidStage), updateDelegate = () => Guard(recorder.Humanoid) });
                     int sdk = list.FindIndex(s => s.type?.Name == "VRCAvatarDynamicsPreSchedule");
                     if (sdk >= 0)
                     {
@@ -341,6 +343,10 @@ namespace AvatarWorkshop.Reference
         AnimationLayerMixerPlayable mixer;
         (Transform t, string path)[] drivers = new (Transform, string)[0];
         (Transform t, string path)[] bones = new (Transform, string)[0];
+        (Transform t, string bone)[] humanBones = new (Transform, string)[0];
+        readonly Dictionary<string, string> lastHuman = new Dictionary<string, string>();
+        StreamWriter humanOut;
+        int humanFrame = -1;
         (Transform t, string path)[] targets = new (Transform, string)[0];
         (Transform t, string path)[] movedReads = new (Transform, string)[0];
         (string slot, ContactSender sender)[] standardSenders = new (string, ContactSender)[0];
@@ -560,6 +566,19 @@ namespace AvatarWorkshop.Reference
             dynamicsFrame = frame;
         }
 
+        // Each humanoid bone's local pose as the animator left it, before the scripted arm swing and the SDK's dynamics.
+        public void Humanoid()
+        {
+            if (root == null || stepIndex < 0 || Finished) return;
+            var f = frame.ToString(inv);
+            foreach (var (t, bone) in humanBones)
+            {
+                if (t == null) throw new Exception($"humanoid bone {bone} is gone at frame {f}");
+                WritePose(humanOut, lastHuman, f, "local", bone, LocalPose(t));
+            }
+            humanFrame = frame;
+        }
+
         public void Pose()
         {
             if (root == null || stepIndex < 0 || Finished || armSwing == Vector2.zero) return;
@@ -644,6 +663,7 @@ namespace AvatarWorkshop.Reference
             Clocks(f);
             if (root == null || stepIndex < 0) return;
             if (posedFrame != frame) throw new Exception($"no driver poses were taken before the SDK's dynamics at frame {f}");
+            if (humanBones.Length > 0 && humanFrame != frame) throw new Exception($"no humanoid bone poses were taken after animation at frame {f}");
             if (constrainedFrame != frame) throw new Exception($"no constrained poses were taken after the SDK's dynamics at frame {f}");
             if (applied.Count > 0 || placed != null || swung != null) throw new Exception($"scripted inputs were applied after frame {f}'s were logged");
             foreach (var (t, path) in bones) simulated[path] = LocalPose(t);
@@ -687,6 +707,8 @@ namespace AvatarWorkshop.Reference
                 leftArm = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
                 rightArm = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
                 tracked = new[] { HumanBodyBones.Head, HumanBodyBones.LeftHand, HumanBodyBones.RightHand, HumanBodyBones.Hips }.Select(animator.GetBoneTransform).ToArray();
+                humanBones = Enumerable.Range(0, (int)HumanBodyBones.LastBone).Select(b => (animator.GetBoneTransform((HumanBodyBones)b), ((HumanBodyBones)b).ToString()))
+                    .Where(x => x.Item1 != null).ToArray();
             }
             var descriptor = runtime.GetComponent<VRCAvatarDescriptor>();
             if (descriptor.expressionParameters != null)
@@ -744,6 +766,7 @@ namespace AvatarWorkshop.Reference
             rendersOut = Open("renders.tsv");
             trackOut = Open("track.tsv");
             posesOut = Open("poses.tsv");
+            humanOut = Open("humanoid.tsv");
             constrainedOut = Open("constrained.tsv");
             movedOut = Open("moved.tsv");
             grabsOut = Open("grabs.tsv");
@@ -1591,7 +1614,7 @@ namespace AvatarWorkshop.Reference
         void Complete()
         {
             Finished = true;
-            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, constrainedOut, movedOut, grabsOut, inputsOut, timeOut, dynamicsOut, clocksOut }) w?.Dispose();
+            foreach (var w in new[] { paramsOut, statesOut, tipsOut, valuesOut, stepsOut, rendersOut, trackOut, posesOut, humanOut, constrainedOut, movedOut, grabsOut, inputsOut, timeOut, dynamicsOut, clocksOut }) w?.Dispose();
             CheckInputs();
             File.WriteAllText(Path.Combine(output, "done"), frame.ToString(inv) + "\n");
             Debug.Log($"[aw-reference] recorded {frame} frames, {steps.Count} steps, {tips.Count} tips, {renderCount} renders into {output}");

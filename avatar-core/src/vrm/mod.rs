@@ -430,6 +430,7 @@ fn humanoid(doc: &Doc) -> Result<Humanoid, Error> {
         feet_spacing: given("feetSpacing", 0.0),
         has_translation_do_f: doc.version == Version::V0 && human.get("hasTranslationDoF").and_then(Value::as_bool) == Some(true),
         rest: None,
+        muscles: None,
     })
 }
 

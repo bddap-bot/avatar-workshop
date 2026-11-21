@@ -4,6 +4,7 @@ pub mod contacts;
 pub mod curve;
 pub mod evaluate;
 pub mod glb;
+pub mod humanoid;
 pub mod model;
 pub mod physbones;
 pub mod validate;

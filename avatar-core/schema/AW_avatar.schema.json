@@ -394,6 +394,17 @@
               "type": "null"
             }
           ]
+        },
+        "muscles": {
+          "description": "How Unity's humanoid Avatar, built from this rest pose and these limits, turns the human stream into bone\nposes. Absent on an avatar Unity did not build, whose humanoid curves then pose no bone.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HumanMuscles"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false,
@@ -588,6 +599,286 @@
         "rightFoot",
         "leftHand",
         "rightHand"
+      ]
+    },
+    "HumanMuscles": {
+      "description": "Unity's humanoid Avatar as it poses bones, in node space.",
+      "type": "object",
+      "properties": {
+        "scale": {
+          "description": "The height of the T-pose's centre of mass: `RootT` is the body's centre of mass in these units.",
+          "type": "number",
+          "format": "float"
+        },
+        "tPoseBody": {
+          "description": "The body frame of Unity's T-pose skeleton: `RootQ` is the posed body frame relative to it.",
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "armTwist": {
+          "description": "The share of its own twist the upper arm, the forearm and each leg bone keep; the rest turns its child.",
+          "type": "number",
+          "format": "float"
+        },
+        "forearmTwist": {
+          "type": "number",
+          "format": "float"
+        },
+        "legTwist": {
+          "type": "number",
+          "format": "float"
+        },
+        "bones": {
+          "type": "object",
+          "properties": {
+            "Chest": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "Head": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "Hips": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "Jaw": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftEye": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftFoot": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftHand": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftIndexDistal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftIndexIntermediate": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftIndexProximal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftLittleDistal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftLittleIntermediate": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftLittleProximal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftLowerArm": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftLowerLeg": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftMiddleDistal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftMiddleIntermediate": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftMiddleProximal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftRingDistal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftRingIntermediate": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftRingProximal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftShoulder": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftThumbDistal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftThumbIntermediate": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftThumbProximal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftToes": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftUpperArm": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "LeftUpperLeg": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "Neck": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightEye": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightFoot": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightHand": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightIndexDistal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightIndexIntermediate": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightIndexProximal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightLittleDistal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightLittleIntermediate": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightLittleProximal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightLowerArm": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightLowerLeg": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightMiddleDistal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightMiddleIntermediate": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightMiddleProximal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightRingDistal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightRingIntermediate": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightRingProximal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightShoulder": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightThumbDistal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightThumbIntermediate": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightThumbProximal": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightToes": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightUpperArm": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "RightUpperLeg": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "Spine": {
+              "$ref": "#/$defs/MuscleFrame"
+            },
+            "UpperChest": {
+              "$ref": "#/$defs/MuscleFrame"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "scale",
+        "tPoseBody",
+        "armTwist",
+        "forearmTwist",
+        "legTwist",
+        "bones"
+      ]
+    },
+    "MuscleFrame": {
+      "description": "A bone's local rotation is `pre · r · post⁻¹`, `r` turning by each degree of freedom's angle times `sign`: twist\nabout x, then y and z.",
+      "type": "object",
+      "properties": {
+        "pre": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "post": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "sign": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "min": {
+          "description": "Degrees per degree of freedom at muscle −1 and 1.",
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "max": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "mass": {
+          "description": "The bone's share of the body's mass.",
+          "type": "number",
+          "format": "float"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "pre",
+        "post",
+        "sign",
+        "min",
+        "max",
+        "mass"
       ]
     },
     "Descriptor": {

@@ -122,6 +122,21 @@ pub fn validate(gltf: &Map<String, Value>, model: &AwAvatar) -> Result<(), Inval
         Ok(())
     })?;
 
+    if let Some(m) = &model.humanoid.muscles {
+        if !(m.scale > 0.0) {
+            return Err(invalid("/humanoid/muscles/scale", format!("human scale {}", m.scale)));
+        }
+        for (bone, f) in &m.bones {
+            let at = format!("/humanoid/muscles/bones/{bone:?}");
+            if !model.humanoid.bones.contains_key(bone) {
+                return Err(invalid(at, "a muscle frame for a bone the humanoid does not map"));
+            }
+            if f.sign.iter().any(|s| s.abs() != 1.0) {
+                return Err(invalid(format!("{at}/sign"), format!("sign {:?}, not ±1", f.sign)));
+            }
+        }
+    }
+
     let gltf_meshes = gltf_array("meshes");
     let mut slots = BTreeMap::new();
     for (i, renderer) in model.renderers.iter().enumerate() {

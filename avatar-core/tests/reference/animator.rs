@@ -13,6 +13,8 @@ use avatar_core::physbones::{Nodes, Transform};
 use glam::{Quat, Vec3};
 use avatar_core::Avatar;
 
+use avatar_core::humanoid::{muscle_names, Body, Human};
+
 use super::{canonical, paths, text};
 
 /// The emulator's playable-graph time after each frame's evaluation, from the frame the graph exists.
@@ -255,6 +257,15 @@ pub struct Report {
     pub worst_clock: f32,
     pub bindings: Mismatches,
     pub worst_binding: f32,
+    /// Humanoid bones whose local rotation is past 0.1° or, on the hips, whose position is past 1e-4 m of
+    /// `humanoid.tsv`, keyed by bone; none compared on a recording without it.
+    pub humanoid: Mismatches,
+    pub worst_rotation: f32,
+    pub worst_hips: f32,
+    /// Frames past those bounds by cause: `animator` when posing the recorded human stream lands within them,
+    /// `dynamics` on a bone PhysBones or constraints move, `tracked` while the emulator's tracking holds the bone's
+    /// body part or blends it back to animation, else `unexplained`.
+    pub humanoid_causes: BTreeMap<&'static str, BTreeSet<usize>>,
 }
 
 impl Report {
@@ -286,11 +297,94 @@ pub struct Run {
     pub physics_nodes: BTreeSet<u32>,
 }
 
+/// `humanoid.tsv` by frame: the bones whose recorded local pose changed.
+fn humanoid_poses(dir: &Path) -> BTreeMap<usize, Vec<(avatar_core::model::HumanBodyBone, Transform)>> {
+    let mut out: BTreeMap<usize, Vec<_>> = BTreeMap::new();
+    if !dir.join("humanoid.tsv").exists() && !dir.join("humanoid.tsv.gz").exists() {
+        return out;
+    }
+    for l in text(&dir.join("humanoid.tsv")).lines() {
+        let f: Vec<&str> = l.split('\t').collect();
+        let bone = serde_json::from_value(serde_json::Value::String(f[2].into())).unwrap_or_else(|_| panic!("{} is no humanoid bone", f[2]));
+        let v: Vec<f32> = f[3].split(',').map(|x| x.parse().unwrap()).collect();
+        out.entry(f[0].parse().unwrap()).or_default().push((bone, super::unity(&v)));
+    }
+    out
+}
+
+/// The emulator's tracking part that holds a humanoid bone.
+fn tracking_part(b: avatar_core::model::HumanBodyBone) -> &'static str {
+    let n = format!("{b:?}");
+    let side = if n.starts_with("Left") { "left" } else { "right" };
+    let finger = ["Thumb", "Index", "Middle", "Ring", "Little"].iter().any(|f| n.contains(f));
+    match n.as_str() {
+        "Hips" | "Spine" | "Chest" | "UpperChest" => "hip",
+        "Neck" | "Head" => "head",
+        "LeftEye" | "RightEye" => "eyes",
+        "Jaw" => "mouth",
+        _ if finger => if side == "left" { "leftFingers" } else { "rightFingers" },
+        _ if n.contains("Leg") || n.contains("Foot") || n.contains("Toes") => if side == "left" { "leftFoot" } else { "rightFoot" },
+        _ => if side == "left" { "leftHand" } else { "rightHand" },
+    }
+}
+
+/// Frames the emulator takes to blend a part from tracking back to animation, as the fixture's recording shows.
+const TRACKING_BLEND_FRAMES: usize = 20;
+
 fn axis(i: usize) -> Axis {
     [Axis::X, Axis::Y, Axis::Z, Axis::W][i]
 }
 
 impl Run {
+    #[allow(clippy::too_many_arguments)]
+    fn score_humanoid(&self, rep: &mut Report, nodes: &Nodes, locals: &[Transform], streamed: Option<&[Transform]>, recorded: &BTreeMap<avatar_core::model::HumanBodyBone, Transform>, values: &BTreeMap<String, BTreeMap<usize, String>>, f: usize) {
+        let space_scale = |n: usize| {
+            let mut s = 1.0;
+            let mut x = nodes.parent[n];
+            while let Some(p) = x {
+                s *= locals[p].scale.x;
+                x = nodes.parent[p];
+            }
+            s
+        };
+        let hips = avatar_core::model::HumanBodyBone::Hips;
+        let error = |got: &Transform, want: &Transform, b: avatar_core::model::HumanBodyBone, n: usize| {
+            let angle = got.rotation.angle_between(want.rotation).to_degrees();
+            let d = if b == hips { (got.translation - want.translation).length() * space_scale(n) } else { 0.0 };
+            (angle, d, angle > 0.1 || d > 1e-4)
+        };
+        for (b, want) in recorded {
+            let Some(n) = self.avatar.model.humanoid.bones.get(b).map(|x| x.node.0 as usize) else { continue };
+            let (angle, d, over) = error(&locals[n], want, *b, n);
+            rep.humanoid.compared += 1;
+            rep.worst_rotation = rep.worst_rotation.max(angle);
+            rep.worst_hips = rep.worst_hips.max(d);
+            if !over {
+                continue;
+            }
+            let detail = if *b == hips { format!("{angle:.4}°, {d:.2e} m") } else { format!("{angle:.4}°") };
+            rep.humanoid.note(&format!("{b:?}"), f, detail);
+            let part = values.get(&format!("tracking:{}", tracking_part(*b)));
+            let entries: Vec<(&usize, &String)> = part.map_or(vec![], |log| log.range(..=f).collect());
+            let tracked = match entries.iter().rposition(|(_, v)| *v != "Animation") {
+                _ if entries.is_empty() => false,
+                None => false,
+                Some(i) if i + 1 == entries.len() => true,
+                Some(i) => f < *entries[i + 1].0 + TRACKING_BLEND_FRAMES,
+            };
+            let cause = if streamed.is_some_and(|s| !error(&s[n], want, *b, n).2) {
+                "animator"
+            } else if self.physics_nodes.contains(&(n as u32)) {
+                "dynamics"
+            } else if tracked {
+                "tracked"
+            } else {
+                "unexplained"
+            };
+            rep.humanoid_causes.entry(cause).or_default().insert(f);
+        }
+    }
+
     pub fn new(dir: &Path, avatar: Avatar) -> Run {
         let nodes = Nodes::read(&avatar).unwrap();
         let names = paths(&avatar, &nodes);
@@ -479,7 +573,15 @@ impl Run {
             worst_clock: 0.0,
             bindings: Mismatches::default(),
             worst_binding: 0.0,
+            humanoid: Mismatches::default(),
+            worst_rotation: 0.0,
+            worst_hips: 0.0,
+            humanoid_causes: BTreeMap::new(),
         };
+        let human = humanoid_poses(&self.dir);
+        let mut human_last: BTreeMap<avatar_core::model::HumanBodyBone, Transform> = BTreeMap::new();
+        let nodes = Nodes::read(&self.avatar).unwrap();
+        let poser = Human::new(&self.avatar.model.humanoid);
         let recorded: BTreeSet<&Target> = keys.iter().filter_map(|(_, k)| if let Key::Binding(t) = k { Some(t) } else { None }).collect();
         let curves = self.avatar.model.clips.iter().flat_map(|c| &c.curves).filter_map(|c| avatar_core::animator::motion::target_of(&c.binding));
         for t in curves.collect::<BTreeSet<_>>().iter() {
@@ -525,6 +627,25 @@ impl Run {
                 for s in anim.states().iter().filter(|s| format!("{}:{}", order[s.playable], s.layer) == k) {
                     eprintln!("{f}\t{k}\t{} {} {:?} {:?}", s.current, s.current_time, s.next, s.next_time);
                 }
+            }
+            for (b, t) in human.get(&f).into_iter().flatten() {
+                human_last.insert(*b, *t);
+            }
+            if f >= first && !human_last.is_empty() {
+                let streamed = poser.as_ref().map(|h| {
+                    let at_f = |k: &str, d: f32| values.get(&format!("muscle:{k}")).and_then(|l| at(l, f)).and_then(|v| v.parse().ok()).unwrap_or(d);
+                    let muscles: Vec<f32> = muscle_names().iter().map(|n| at_f(n, 0.0)).collect();
+                    let rest = self.avatar.model.humanoid.rest.as_ref().map(|r| (r.body.position, r.body.rotation));
+                    let (p, q) = rest.unwrap_or(([0.0; 3], [0.0, 0.0, 0.0, 1.0]));
+                    let body = Body {
+                        position: Vec3::new(at_f("RootT.x", p[0]), at_f("RootT.y", p[1]), at_f("RootT.z", p[2])),
+                        rotation: Quat::from_xyzw(at_f("RootQ.x", q[0]), at_f("RootQ.y", q[1]), at_f("RootQ.z", q[2]), at_f("RootQ.w", q[3])).normalize(),
+                    };
+                    let mut locals = ev.output().locals.clone();
+                    h.pose(&nodes.parent, &mut locals, &muscles, body);
+                    locals
+                });
+                self.score_humanoid(&mut rep, &nodes, &ev.output().locals, streamed.as_deref(), &human_last, &values, f);
             }
             if f < first {
                 continue;

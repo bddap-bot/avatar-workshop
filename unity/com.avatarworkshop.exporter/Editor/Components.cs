@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Unity.Collections;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.Animations;
 using UnityEngine.Playables;
@@ -77,6 +79,8 @@ namespace AvatarWorkshop.Exporter
             h.Add("hasTranslationDoF", desc.hasTranslationDoF);
             if (Rest(animator) is Obj rest) h.Add("rest", rest);
             else Drop("humanoid rest pose Unity did not evaluate");
+            if (Muscles(animator, limits) is Obj muscles) h.Add("muscles", muscles);
+            else Drop("humanoid muscle frames Unity did not report");
             return h;
         }
 
@@ -109,6 +113,65 @@ namespace AvatarWorkshop.Exporter
             {
                 foreach (var (t, p, r, sc) in saved) { t.localPosition = p; t.localRotation = r; t.localScale = sc; }
             }
+        }
+
+        static readonly string[] MassOrder =
+        {
+            "Hips", "LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg", "RightLowerLeg", "LeftFoot", "RightFoot", "Spine", "Chest", "UpperChest",
+            "Neck", "Head", "LeftShoulder", "RightShoulder", "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm", "LeftHand",
+            "RightHand", "LeftToes", "RightToes", "LeftEye", "RightEye", "Jaw",
+        };
+
+        // Unity's Avatar holds the frames it poses each bone's muscles in and the T-pose body behind RootT and RootQ;
+        // the frames are reachable only through its internal accessors, the rest through its serialized data.
+        Obj Muscles(Animator animator, Dictionary<string, HumanLimit> limits)
+        {
+            var avatar = animator.avatar;
+            MethodInfo Accessor(string name) => typeof(Avatar).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance, null, new[] { typeof(int) }, null);
+            var (pre, post, sign) = (Accessor("GetPreRotation"), Accessor("GetPostRotation"), Accessor("GetLimitSign"));
+            var human = new SerializedObject(avatar).FindProperty("m_Avatar.m_Human.data");
+            var mass = human?.FindPropertyRelative("m_HumanBoneMass");
+            if (pre == null || post == null || sign == null || mass == null || mass.arraySize != MassOrder.Length) return null;
+            var named = new[] { "m_Scale", "m_ArmTwist", "m_ForeArmTwist", "m_LegTwist", "m_RootX.q.x", "m_RootX.q.y", "m_RootX.q.z", "m_RootX.q.w" };
+            if (named.Any(n => human.FindPropertyRelative(n) == null)) return null;
+            float Float(string path) => human.FindPropertyRelative(path).floatValue;
+            var bones = new Obj();
+            for (int i = 0; i < (int)HumanBodyBones.LastBone; i++)
+            {
+                var bone = (HumanBodyBones)i;
+                if (!(Node(animator.GetBoneTransform(bone)) is int)) continue;
+                object[] id = { i };
+                var s = (Vector3)sign.Invoke(avatar, id);
+                var custom = limits.TryGetValue(HumanTrait.BoneName[i], out var limit) && !limit.useDefaultValues;
+                var (min, max) = (new float[3], new float[3]);
+                for (int d = 0; d < 3; d++)
+                {
+                    int m = HumanTrait.MuscleFromBone(i, d);
+                    if (m < 0) continue;
+                    min[d] = custom ? limit.min[d] : HumanTrait.GetMuscleDefaultMin(m);
+                    max[d] = custom ? limit.max[d] : HumanTrait.GetMuscleDefaultMax(m);
+                }
+                int k = Array.IndexOf(MassOrder, bone.ToString());
+                bones.Add(bone.ToString(), new Obj
+                {
+                    { "pre", Space.Q((Quaternion)pre.Invoke(avatar, id)) },
+                    { "post", Space.Q((Quaternion)post.Invoke(avatar, id)) },
+                    { "sign", new[] { s.x, -s.y, -s.z } },
+                    { "min", min },
+                    { "max", max },
+                    { "mass", k < 0 ? 0f : mass.GetArrayElementAtIndex(k).floatValue },
+                });
+            }
+            var body = new Quaternion(Float("m_RootX.q.x"), Float("m_RootX.q.y"), Float("m_RootX.q.z"), Float("m_RootX.q.w"));
+            return new Obj
+            {
+                { "scale", Float("m_Scale") },
+                { "tPoseBody", Space.Q(body) },
+                { "armTwist", Float("m_ArmTwist") },
+                { "forearmTwist", Float("m_ForeArmTwist") },
+                { "legTwist", Float("m_LegTwist") },
+                { "bones", bones },
+            };
         }
 
         struct RestJob : IAnimationJob

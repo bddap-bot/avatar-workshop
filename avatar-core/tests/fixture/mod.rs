@@ -605,6 +605,24 @@ fn model() -> AwAvatar {
                 left_hand: placed([0.0; 3], [0.0, 0.0, 0.0, 1.0]),
                 right_hand: placed([0.0; 3], [0.0, 0.0, 0.0, 1.0]),
             }),
+            muscles: Some(HumanMuscles {
+                scale: 0.99,
+                t_pose_body: [0.0, 0.0, 0.0, 1.0],
+                arm_twist: 0.5,
+                forearm_twist: 0.5,
+                leg_twist: 0.5,
+                bones: BTreeMap::from([(
+                    HumanBodyBone::Spine,
+                    MuscleFrame {
+                        pre: [-0.5, -0.5, 0.5, 0.5],
+                        post: [-0.5, -0.5, 0.5, 0.5],
+                        sign: [1.0, 1.0, 1.0],
+                        min: [-40.0, -40.0, -40.0],
+                        max: [40.0, 40.0, 40.0],
+                        mass: 0.0303,
+                    },
+                )]),
+            }),
         },
         descriptor: Descriptor {
             view_position: [0.0, 1.5, 0.08],

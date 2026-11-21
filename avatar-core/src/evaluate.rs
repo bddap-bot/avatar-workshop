@@ -8,6 +8,7 @@ use crate::animator::motion::{axis_index, unit, Target};
 use crate::animator::Animator;
 use crate::constraints::{Constraints, Scene};
 use crate::contacts::{Contacts, Sender};
+use crate::humanoid::{muscle_names, Body, Human};
 use crate::physbones::{Error, Frame, Nodes, PhysBones, Toucher, Transform};
 use crate::Avatar;
 
@@ -92,7 +93,16 @@ pub struct Evaluator {
     authored_enabled: Vec<bool>,
     authored_renderers: Vec<bool>,
     renderer_nodes: Vec<u32>,
+    human: Option<HumanTargets>,
     output: Output,
+}
+
+/// The humanoid bones' poser and where the animator holds what it reads.
+struct HumanTargets {
+    human: Human,
+    muscles: Vec<Option<usize>>,
+    body: [Option<usize>; 7],
+    rest: [f32; 7],
 }
 
 impl Evaluator {
@@ -123,6 +133,7 @@ impl Evaluator {
             authored_enabled: m.physbones.iter().map(|p| p.enabled).collect(),
             authored_renderers: m.renderers.iter().map(|r| r.enabled).collect(),
             renderer_nodes: m.renderers.iter().map(|r| r.node.0).collect(),
+            human: None,
             output: Output {
                 locals: nodes.rest.clone(),
                 space: vec![Transform::IDENTITY; count],
@@ -157,6 +168,19 @@ impl Evaluator {
                 _ => {}
             }
         }
+        e.human = Human::new(&m.humanoid).map(|human| {
+            let find = |name: &str| e.animator.targets().iter().position(|t| matches!(t, Target::Muscle(n) if n == name));
+            let rest = m.humanoid.rest.as_ref().map_or([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0], |r| {
+                let (p, q) = (r.body.position, r.body.rotation);
+                [p[0], p[1], p[2], q[0], q[1], q[2], q[3]]
+            });
+            HumanTargets {
+                human,
+                muscles: muscle_names().into_iter().map(find).collect(),
+                body: ["RootT.x", "RootT.y", "RootT.z", "RootQ.x", "RootQ.y", "RootQ.z", "RootQ.w"].map(find),
+                rest,
+            }
+        });
         e.transforms = transforms.into_iter().enumerate().filter_map(|(n, t)| t.map(|t| (n, t))).collect();
         e.output.active.clone_from(&e.authored_active);
         e.output.renderers.clone_from(&e.authored_renderers);
@@ -252,6 +276,12 @@ impl Evaluator {
                 }
                 r.rotation = unit(Quat::from_array(q));
             }
+        }
+        if let Some(h) = &self.human {
+            let muscles: Vec<f32> = h.muscles.iter().map(|i| i.map_or(0.0, |i| values[i])).collect();
+            let b: Vec<f32> = h.body.iter().zip(h.rest).map(|(i, r)| i.map_or(r, |i| values[i])).collect();
+            let body = Body { position: Vec3::new(b[0], b[1], b[2]), rotation: unit(Quat::from_xyzw(b[3], b[4], b[5], b[6])) };
+            h.human.pose(&self.nodes.parent, &mut locals, &muscles, body);
         }
         let mut active = self.authored_active.clone();
         for (i, n) in &self.node_active {

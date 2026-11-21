@@ -88,7 +88,23 @@ and every recorded node, blendshape and material value, animated or not, to matc
 each layer's state time from `clocks.tsv`, and the muscle, constraint and contact field values every curve binds,
 and fails if a recording lacks a frame's state times, a bound field's value or a frame's row of `inputs.tsv`.
 `cargo run --release --example animator -- RECORDING AVATAR.glb` scores any recording,
-numbering each differing key and menu control; `--names` prints their names.
+numbering each differing key and menu control; `--names` prints their names. Where the recording has
+`humanoid.tsv` it also scores every humanoid bone's local rotation and the hips' position against it, and gives
+each frame past 0.1° or 1e-4 m a cause: `animator` when posing the recording's own human stream lands within them,
+`dynamics` on a bone PhysBones or constraints move, `tracked` while the emulator's tracking holds the bone's body
+part or blends it back to animation, else `unexplained`.
+
+## Humanoid poses
+
+`avatar_core::humanoid::Human` poses the humanoid bones from the human stream as Unity's humanoid Avatar does:
+each bone's local rotation from its muscles through the frame the exporter took from Unity (`pre · r · post⁻¹`,
+`r` the twist and swing of each degree of freedom's angle), each bone but the hips at its position in the human
+description's skeleton, an absent UpperChest's muscles added to the Chest, part
+of the upper arm's, forearm's and leg bones' twist passed to the child bone, and the hips placed so that the
+skeleton's centre of mass and body frame are the stream's `RootT` and `RootQ`. The frame evaluation poses the bones
+with it after the animator. `cargo test --test humanoid` checks it against Unity's own `HumanPoseHandler` on the
+fixture: `reference/Editor/HumanSamples.cs` writes `fixtures/reference/human-samples/` (run it with
+`-executeMethod AvatarWorkshop.Reference.HumanSamples.Run` and `AW_OUT` in a project with the VRChat SDK).
 
 ## Frame evaluation
 
@@ -98,7 +114,7 @@ them; each frame the host sets parameters (`set_builtin`, `set`, `set_eyes`, `se
 also decides which receivers run), drives grabs (`grab`, `hold`, `release`), and calls `evaluate(&Input)` with
 the seconds since the last frame, the avatar root in the world, the root-space poses of the bones it moves
 (tracked or IK-solved, in any order) and the senders outside the avatar. The frame runs the animator (not on a
-frame with no time passed), applies its node transforms, active flags, PhysBone enabled flags and constraint and
+frame with no time passed), applies its node transforms and the humanoid bones its human stream poses, active flags, PhysBone enabled flags and constraint and
 contact fields over the rest pose, places the host's poses, solves the constraints before PhysBones, advances
 PhysBones (a stopped chain leaves its bones to animation), solves the constraints after them, advances contacts,
 and sets each receiver's and PhysBone's parameters on the animator for the next frame, where a host's own `set`
@@ -354,6 +370,7 @@ each muscle sample with the core's sampling of the same clip alone.
 | `tips.tsv`, `chains.tsv` | every PhysBone leaf (with its endpoint; for the probe, every bone below each root) each frame, in metres from the avatar root along its axes (its scale ignored), and its rest chain length |
 | `track.tsv` | the avatar root in the world, and its head, hands and hips in metres from the root along its axes, each frame, for replaying the same input elsewhere |
 | `poses.tsv`, `drivers.tsv` | the input the SDK's dynamics read, taken each frame after animation and before its constraints, PhysBones and contacts run: every transform they read besides the bones they simulate (each PhysBone root's parent and scene root, every collider and contact, each constraint's target, its parent, its sources and world-up transform) in metres from the root along its axes (`root` rows, scales world), each written when it changes, and each PhysBone bone's local pose (`local` rows) whenever it differs from the pose the SDK left it in the frame before, which is when animation set it. Every humanoid bone is recorded the same way as a `root` row, so a replay can stand the body in the recorded pose. A row is `frame, space, transform, px,py,pz,qx,qy,qz,qw,sx,sy,sz`; the root itself is the empty path. `drivers.tsv` lists each transform with its roles (`humanoid:<HumanBodyBones name>` for a humanoid bone; `outside-sender` for a dynamics probe sender outside the avatar, its path its name, its shape, offsets, tags and contact player id in `meta.json`'s `outside_senders`; `standard-sender:<collider>` for the root transform of a standard contact sender Av3Emulator places, standing for VRChat's, on an enabled descriptor collider whose bone is in the avatar (a finger's on the bone's parent) when the avatar loads, a sender the build did not hold, with its collider, shape, radius, height, local position and rotation offsets, collision tags and the number of identical copies the emulator placed in `meta.json`'s `standard_senders`; a recording fails if such a sender matches no collider, a collider has none, its copies differ or one is gone); `moved-by-dynamics` marks one at or under a simulated bone or under a constraint target, whose recorded pose is the one before the dynamics moved it. A recording fails if any of them is gone or unposed on a frame |
+| `humanoid.tsv` | each humanoid bone's local pose as the animator left it, taken each frame after animation and before the scripted arm motion and the SDK's dynamics, as a `local` row in `poses.tsv`'s layout with the bone's HumanBodyBones name in place of its path, each written when it changes. A recording fails if a bone is gone, or a frame has no humanoid poses |
 | `constrained.tsv` | the output of the SDK's dynamics: each VRChat constraint's effective target taken each frame directly after the SDK completes its dynamics (`VRCAvatarDynamicsComplete`), as a `root` row in `poses.tsv`'s layout and a `local` row with its local position, rotation and scale, each written when it changes. A recording fails if a target is gone, or a frame has no constrained poses or none of the driver poses taken before them |
 | `moved.tsv` | the poses the SDK's dynamics left on what its constraints and contacts read from PhysBones: each transform at or under a PhysBone bone that is a constraint's source, world-up object or target's parent, or a contact sender or receiver, taken at `constrained.tsv`'s stage as a `root` row in `poses.tsv`'s layout, each written when it changes. A recording fails if one is gone, or a frame has no constrained poses |
 | `clocks.tsv` | each layer's current state's normalized time as its animator holds it, every frame from the one the graph is created on, one column per `<playable>:<layer>`, with `>` and the next state's during a transition; a recording fails if a layer holds no state time on a frame, and the replay fails if a frame has no row |

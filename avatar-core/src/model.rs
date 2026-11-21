@@ -138,6 +138,40 @@ pub struct Humanoid {
     /// space, like the humanoid curves. Absent on an avatar with no humanoid definition.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rest: Option<HumanRest>,
+    /// How Unity's humanoid Avatar, built from this rest pose and these limits, turns the human stream into bone
+    /// poses. Absent on an avatar Unity did not build, whose humanoid curves then pose no bone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub muscles: Option<HumanMuscles>,
+}
+
+/// Unity's humanoid Avatar as it poses bones, in node space.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HumanMuscles {
+    /// The height of the T-pose's centre of mass: `RootT` is the body's centre of mass in these units.
+    pub scale: f32,
+    /// The body frame of Unity's T-pose skeleton: `RootQ` is the posed body frame relative to it.
+    pub t_pose_body: Quat,
+    /// The share of its own twist the upper arm, the forearm and each leg bone keep; the rest turns its child.
+    pub arm_twist: f32,
+    pub forearm_twist: f32,
+    pub leg_twist: f32,
+    pub bones: BTreeMap<HumanBodyBone, MuscleFrame>,
+}
+
+/// A bone's local rotation is `pre · r · post⁻¹`, `r` turning by each degree of freedom's angle times `sign`: twist
+/// about x, then y and z.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MuscleFrame {
+    pub pre: Quat,
+    pub post: Quat,
+    pub sign: Vec3,
+    /// Degrees per degree of freedom at muscle −1 and 1.
+    pub min: Vec3,
+    pub max: Vec3,
+    /// The bone's share of the body's mass.
+    pub mass: f32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]

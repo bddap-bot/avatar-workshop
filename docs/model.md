@@ -74,7 +74,7 @@ by its mesh's `extras.targetNames` entry.
 | Section | Contents |
 |---|---|
 | `source` | importer name and version, source format, licence text and author as found in the source (absent when the source has none; never invented) |
-| `humanoid` | Unity HumanBodyBones name → node; the source's rest pose as given (no assumed T-pose); muscle limits from the human description; the body and the four IK goals as Unity's humanoid stream holds them with every muscle at rest; each humanoid bone's transform in the collider pose, the pose the VRChat client computes automatic colliders on (below), as Unity poses the avatar |
+| `humanoid` | Unity HumanBodyBones name → node; the source's rest pose as given (no assumed T-pose); muscle limits from the human description; the body and the four IK goals as Unity's humanoid stream holds them with every muscle at rest; each humanoid bone's transform in the collider pose, the pose the VRChat client computes automatic colliders on (below), as Unity poses the avatar; and, from a Unity build, the frames Unity's Avatar poses each bone's muscles in (pre and post rotations, limit signs and limits), each bone's share of the body's mass, the human scale, the T-pose body frame and the twist shares |
 | `descriptor` | view position, lip-sync mode and the 15 viseme blendshapes, eyelid mode and shapes, eye bones and their rotation limits; the 14 body colliders (head, torso, hands, feet, four fingers a side) as stored: state (automatic, custom or disabled), bone, radius, height, position and rotation offsets. A standard contact sender sits on each enabled one with a bone, tagged by part and side: a capsule at its offsets on its bone, and a finger's from its bone's parent to its bone, or past it to its height, as the VRChat client places them. On a humanoid avatar an automatic one's stored values go unused: its collider is computed from the skeleton |
 | `renderers` | per mesh node: initially enabled, material slots |
 | `nodes` | per node: active as the uploaded avatar holds it; the evaluation core's animator applies the default states |
@@ -109,9 +109,11 @@ natively, as a Godot extension, or compiled to WebAssembly. A runtime does not r
   with their filters, and the `_IsGrabbed`, `_IsPosed`, `_Angle`, `_Stretch` and `_Squish` parameters.
 - Constraints and contacts: all six constraint kinds; contacts between the avatar, other avatars and hands, driving
   receiver parameters.
+- Humanoid: the animator's human stream (muscles, `RootT`, `RootQ`) poses the humanoid bones' local rotations and
+  the hips' position as Unity's humanoid Avatar does.
 - Output per frame: node local transforms, blendshape weights, node active and renderer enabled states, material
   property overrides and slot choices. Renderers apply it; they hold no avatar logic.
-- Order per frame, as `avatar_core::evaluate::Evaluator` runs it: animator, constraints that read nothing a
+- Order per frame, as `avatar_core::evaluate::Evaluator` runs it: animator and the humanoid pose, constraints that read nothing a
   PhysBone moves, PhysBones, the constraints that do, contacts; receiver and PhysBone parameters reach the next
   frame's animator.
 
@@ -178,6 +180,62 @@ No recording shows these, so the core claims nothing for them:
   full layer weight updating the memory; direct trees and interrupted transitions without write defaults holding other
   controllers' properties; a material slot under a partial playable; a playable at weight 0.
 - Behaviours: a normalized pose-space delay on a state whose speed is not 1, still counted in seconds.
+
+### Humanoid poses
+
+Unity's Avatar holds the frame it poses each bone's muscles in, the bones' masses, the human scale, the T-pose body
+frame and the twist shares; the exporter writes them as Unity holds them. The rules below that use them were
+measured on Unity's own posing. A degree of freedom's angle is the muscle times its limit (the upper limit for a positive muscle, the lower for
+a negative one) times its sign, and the bone's local rotation is `pre · r · post⁻¹` where `r` is the twist about x
+composed after the swing about y and z, each from the tangent of half its angle. An avatar without an UpperChest
+adds the UpperChest's muscles to the Chest's angles at Unity's default ±20°. Every humanoid bone but the hips stands
+where the human description's skeleton has it, whatever its node's own position (on one corpus avatar the two
+differ). The upper arm, forearm, upper leg and
+lower leg each keep their twist share (0.5 on every avatar measured) of their own twist and pass the rest to the
+child bone, leaving the child's pose in the world unchanged. The body is the skeleton's centre of mass and frame:
+the centre is each bone's mass at a mean of bone positions (a bone the avatar lacks left out of the mean) (the hips at the mean of both upper legs and the spine, a
+limb bone at the middle of it and its child, the chest at the mean of itself, the next spine bone and both shoulders,
+the left upper arm one eighth of the way to its forearm, a hand, foot, toe or head bone at itself), in units of the
+human scale; the frame's up runs from the upper legs' midpoint to the upper arms', its right is the sum of the
+spans across both, made perpendicular to up; `RootQ` is that frame relative to the T-pose's. The hips are placed so
+both hold. These rules come from Unity's `HumanPoseHandler` on the fixture and a corpus avatar
+(`avatar-core/tests/humanoid.rs` holds the fixture's samples) and are scored on the recordings.
+
+IK goals move no bone: Unity applies them only under a layer's IK pass or a state's Foot IK, and no recording,
+corpus avatar or VRChat default controller uses either. Frames past the bounds (0.1° on a bone's local rotation,
+1e-4 m on the hips' position) are listed by the animator replay by cause. On the recordings:
+
+| recording | bone samples compared | past the bounds | frames past, by cause |
+|---|---|---|---|
+| fixture | 129,003 | 18,213 | tracked 6,115 |
+| humanoid composition, rotation, Loop Pose drift, Feet height, dense clip, blend, layering, sample time, frame-grid rule, generic and dynamics probes | 4,616,724 | 0 | none |
+| additive crossfade probe | 106,680 | 33 | animator 33 |
+| frame-grid fill and hold probe | 138,810 | 296 | animator 296 |
+| corpus 1 | 205,269 | 120 | tracked 60 |
+| corpus 2 | 1,093,019 | 120 | tracked 60 |
+| corpus 3 | 190,638 | 120 | tracked 60 |
+| corpus 4 | 1,567,893 | 4 | tracked 2 |
+| corpus 5 | 2,335,869 | 435 | tracked 433 |
+| corpus 6 | 1,943,934 | 435 | tracked 433 |
+
+On the probes with none past the bounds the largest differences are 0.056° and 5.6e-6 m. `animator` frames are the human stream's own
+differences: the frame-grid probe's listed pose-binding residual, and on the crossfade probe a body value within 7e-4
+of the recording's, under the binding tolerance; posing the recorded stream puts their bones within the bounds. `tracked` frames are the emulator's tracking: the fixture's
+tracked left arm and chest, a tracked hip crouching at `Upright` 0.4 or turning at `TrackingType` 6, and one menu
+control on corpus 5 and 6 that moves the tracked hips by up to 1.2e-4 m. Where the fixture's tracking hands the parts
+to animation, every bone is within the bounds. The PhysBone probe plays no controller, so it has no human stream.
+
+Not measured:
+
+- An avatar with an UpperChest (no avatar measured has one): its own pose and its mass centre.
+- An avatar missing a Neck, Chest or shoulder: whether Unity passes its muscles to a neighbour, and where it then
+  puts the mass centres that would have named it.
+- IK goals under an IK pass or Foot IK, and translation degrees of freedom (the harness refuses an avatar with them).
+- The body frame's turn about its up axis when the spine bends and twists in several muscles at once: on Unity's
+  random poses of the fixture the core's hips lie up to 0.15° and 1.7e-4 m from Unity's, and up to 0.3° at the
+  extremes of two such muscles together; no recording reaches it.
+- Muscle frames for a VRM avatar: the VRM importer writes none, so a humanoid curve would pose no bone of one; its
+  importer writes no humanoid curve either.
 
 ### Constraint and contact coverage
 

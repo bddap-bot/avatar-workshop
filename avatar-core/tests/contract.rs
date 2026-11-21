@@ -505,3 +505,21 @@ fn a_synced_layer_follows_another_state_machine_layer() {
     *layer = index as u32;
     refused_at(&avatar, "/content/layer");
 }
+
+#[test]
+fn muscle_frames_name_mapped_bones_with_unit_signs() {
+    use avatar_core::model::HumanBodyBone;
+    let mut avatar = fixture::avatar();
+    let muscles = avatar.model.humanoid.muscles.as_mut().unwrap();
+    let frame = muscles.bones[&HumanBodyBone::Spine].clone();
+    muscles.bones.insert(HumanBodyBone::Jaw, frame);
+    refused_at(&avatar, "/humanoid/muscles/bones/Jaw");
+
+    let mut avatar = fixture::avatar();
+    avatar.model.humanoid.muscles.as_mut().unwrap().bones.get_mut(&HumanBodyBone::Spine).unwrap().sign[1] = 0.5;
+    refused_at(&avatar, "/humanoid/muscles/bones/Spine/sign");
+
+    let mut avatar = fixture::avatar();
+    avatar.model.humanoid.muscles.as_mut().unwrap().scale = 0.0;
+    refused_at(&avatar, "/humanoid/muscles/scale");
+}

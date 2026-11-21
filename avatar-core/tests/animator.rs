@@ -10,10 +10,19 @@ fn fixture() -> avatar_core::Avatar {
     avatar_core::read(&std::fs::read(root.join("fixtures/unity-synthetic.glb")).unwrap()).unwrap()
 }
 
+/// Every humanoid bone's local rotation within 0.1° and the hips' position within 1e-4 m of the recording on every
+/// compared frame but those `causes` explain.
+fn assert_humanoid(rep: &reference::animator::Report, compared: usize, causes: &[&str]) {
+    assert!(rep.humanoid.compared >= compared, "{} humanoid samples compared", rep.humanoid.compared);
+    let other: Vec<_> = rep.humanoid_causes.keys().filter(|c| !causes.contains(c)).collect();
+    assert!(other.is_empty(), "humanoid bones past the bounds by {other:?}: {}", rep.humanoid.summary(20));
+}
+
 #[test]
 fn fixture_follows_the_reference() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/reference/fixture-animator");
     let rep = Run::new(&dir, fixture()).run(None);
+    assert_humanoid(&rep, 100_000, &["tracked"]);
     assert!(rep.frames > 4900, "{} frames", rep.frames);
     assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
     assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
@@ -40,6 +49,7 @@ fn each_humanoid_composition_follows_its_reference_trace() {
     let dir = root.join("fixtures/reference/human-animator");
     let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-human.glb")).unwrap()).unwrap();
     let rep = Run::new(&dir, avatar).run(None);
+    assert_humanoid(&rep, 400_000, &[]);
     assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
     assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
     assert_eq!(rep.values.wrong, 0, "values: {}", rep.values.summary(20));
@@ -63,6 +73,7 @@ fn each_humanoid_rotation_follows_its_reference_trace() {
     let dir = root.join("fixtures/reference/rotation-animator");
     let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-rotation.glb")).unwrap()).unwrap();
     let rep = Run::new(&dir, avatar).run(None);
+    assert_humanoid(&rep, 340_000, &[]);
     assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
     assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
     assert_eq!(rep.values.wrong, 0, "values: {}", rep.values.summary(20));
@@ -84,6 +95,7 @@ fn each_loop_pose_drift_follows_its_reference_trace() {
     let dir = root.join("fixtures/reference/loopdrift-animator");
     let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-loopdrift.glb")).unwrap()).unwrap();
     let rep = Run::new(&dir, avatar).run(None);
+    assert_humanoid(&rep, 850_000, &[]);
     assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
     assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
     assert_eq!(rep.values.wrong, 0, "values: {}", rep.values.summary(20));
@@ -104,6 +116,7 @@ fn each_feet_height_basis_follows_its_reference_trace() {
     let dir = root.join("fixtures/reference/feet-animator");
     let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-feet.glb")).unwrap()).unwrap();
     let rep = Run::new(&dir, avatar).run(None);
+    assert_humanoid(&rep, 1_370_000, &[]);
     assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
     assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
     assert_eq!(rep.values.wrong, 0, "values: {}", rep.values.summary(20));
@@ -123,6 +136,7 @@ fn each_blend_tree_follows_its_reference_trace() {
     let dir = root.join("fixtures/reference/blend-animator");
     let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-blend.glb")).unwrap()).unwrap();
     let rep = Run::new(&dir, avatar).run(None);
+    assert_humanoid(&rep, 280_000, &[]);
     assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
     assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
     assert!(rep.clocks.compared > 170_000, "{} state times compared", rep.clocks.compared);
@@ -142,6 +156,7 @@ fn each_write_defaults_layering_follows_its_reference_trace() {
     let dir = root.join("fixtures/reference/layering-animator");
     let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-layering.glb")).unwrap()).unwrap();
     let rep = Run::new(&dir, avatar).run(None);
+    assert_humanoid(&rep, 100_000, &[]);
     assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
     assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
     assert!(rep.clocks.compared > 110_000, "{} state times compared", rep.clocks.compared);
@@ -161,6 +176,7 @@ fn each_clip_sample_time_follows_its_reference_trace() {
     let dir = root.join("fixtures/reference/sampletime-animator");
     let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-sampletime.glb")).unwrap()).unwrap();
     let rep = Run::new(&dir, avatar).run(None);
+    assert_humanoid(&rep, 69_000, &[]);
     assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
     assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
     assert!(rep.clocks.compared > 660_000, "{} state times compared", rep.clocks.compared);
@@ -180,6 +196,7 @@ fn each_dense_clip_follows_its_reference_trace() {
     let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-dense.glb")).unwrap()).unwrap();
     assert!(avatar.model.clips.iter().filter(|c| !c.high_quality_curve).count() >= 32);
     let rep = Run::new(&dir, avatar).run(None);
+    assert_humanoid(&rep, 680_000, &[]);
     assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
     assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
     assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
@@ -201,6 +218,7 @@ fn each_additive_crossfade_and_scrubbed_mirror_follows_its_reference_trace() {
     let dir = root.join("fixtures/reference/crossfade-animator");
     let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-crossfade.glb")).unwrap()).unwrap();
     let rep = Run::new(&dir, avatar).run(None);
+    assert_humanoid(&rep, 100_000, &["animator"]);
     assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
     assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
     assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
@@ -1273,6 +1291,7 @@ fn each_generic_additive_and_curve_quality_case_follows_its_reference_trace() {
     let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-generic.glb")).unwrap()).unwrap();
     assert_eq!(avatar.model.clips.iter().filter(|c| !c.high_quality_curve).count(), 15);
     let rep = Run::new(&dir, avatar).run(None);
+    assert_humanoid(&rep, 230_000, &[]);
     assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
     assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
     assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
@@ -1296,6 +1315,7 @@ fn each_frame_grid_fill_and_hold_case_follows_its_reference_trace() {
     let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-gridhold.glb")).unwrap()).unwrap();
     assert_eq!(avatar.model.clips.iter().filter(|c| !c.high_quality_curve).count(), 30);
     let rep = Run::new(&dir, avatar).run(None);
+    assert_humanoid(&rep, 138_000, &["animator"]);
     assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
     assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
     assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));
@@ -1381,6 +1401,7 @@ fn each_frame_grid_rule_case_follows_its_reference_trace() {
     let avatar = avatar_core::read(&std::fs::read(root.join("fixtures/unity-gridrule.glb")).unwrap()).unwrap();
     assert_eq!(avatar.model.clips.iter().filter(|c| !c.high_quality_curve).count(), 46);
     let rep = Run::new(&dir, avatar).run(None);
+    assert_humanoid(&rep, 160_000, &[]);
     assert_eq!(rep.parameters.wrong, 0, "parameters: {}", rep.parameters.summary(20));
     assert_eq!(rep.states.wrong, 0, "states: {}", rep.states.summary(20));
     assert_eq!(rep.clocks.wrong, 0, "state times: {}", rep.clocks.summary(20));

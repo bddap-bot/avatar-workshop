@@ -27,6 +27,14 @@ fn main() {
     println!("values: {} (largest difference {})", summary(&rep.values), rep.worst_value);
     println!("state times: {} ({} not the recorded bits, largest difference {})", summary(&rep.clocks), rep.clock_bits_differ, rep.worst_clock);
     println!("muscle, constraint and contact bindings: {} (largest difference {})", summary(&rep.bindings), rep.worst_binding);
+    let causes: Vec<String> = rep.humanoid_causes.iter().map(|(c, f)| format!("{c} {} (first {})", f.len(), f.iter().next().unwrap())).collect();
+    println!(
+        "humanoid bones: {} (largest rotation {}°, hips position {} m); frames past 0.1° or 1e-4 m by cause: {}",
+        summary(&rep.humanoid),
+        rep.worst_rotation,
+        rep.worst_hips,
+        if causes.is_empty() { "none".into() } else { causes.join(", ") }
+    );
     let controls = rep.controls(Path::new(&args[1]));
     let matched = controls.iter().filter(|c| c.1).count();
     println!("menu controls: {matched} of {} match", controls.len());
