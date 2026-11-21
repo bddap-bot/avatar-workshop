@@ -9,8 +9,9 @@
 //! before collision for `pull = a / (1 + a)`, `spring = (1 - dragForce)(1 - pull)` and
 //! `gravity = 2 · gravityPower · dt · (1 - pull) / L`, `dt` being the PhysBone step and `gravityPower` scaled by how
 //! far `gravityDir` points down. A chain's lengths vary, so these ride on curves over its depth; a VRM 0.x tree
-//! takes the mean length at each depth, and gravity past the PhysBone range of ±1 is clamped, so there the match is
-//! approximate.
+//! takes the mean length at each depth, and on a short bone gravity runs past the ±1 range VRChat authors use,
+//! which the core takes as it is. A spring with a center is fully immobile against that node, so its tails keep
+//! their velocity in the node's space as three-vrm's do.
 
 use glam::{Quat, Vec3};
 use serde_json::Value;
@@ -63,11 +64,13 @@ fn constant(value: f32) -> Curved {
 
 /// The PhysBone for one VRM chain or tree, whose bones at each depth below its root take `per_depth`'s settings
 /// and lengths.
-fn physbone(root: NodeIndex, ignore: Vec<NodeIndex>, endpoint: Vec3, per_depth: &[(Joint, f32)], colliders: Vec<ColliderIndex>) -> PhysBone {
+/// `scale` is the world scale of the root's parent, by which the core multiplies a bone's radius where VRM takes it
+/// in world units.
+fn physbone(root: NodeIndex, ignore: Vec<NodeIndex>, endpoint: Vec3, per_depth: &[(Joint, f32)], colliders: Vec<ColliderIndex>, scale: f32, center: Option<NodeIndex>) -> PhysBone {
     let by = |f: &dyn Fn(&(Joint, f32)) -> f32| curved(&per_depth.iter().map(f).collect::<Vec<_>>());
-    let per_length = |x: f32, length: f32| if length > 1e-6 { x.max(0.0) * STEP / length } else { 0.0 };
+    let per_length = |x: f32, length: f32| if length > 1e-6 { x * STEP / length } else { 0.0 };
     let pull = |s: &Joint, l: f32| {
-        let a = per_length(s.stiffness, l);
+        let a = per_length(s.stiffness.max(0.0), l);
         a / (1.0 + a)
     };
     let no = Permission { allow_self: false, allow_others: false };
@@ -86,10 +89,10 @@ fn physbone(root: NodeIndex, ignore: Vec<NodeIndex>, endpoint: Vec3, per_depth: 
         stiffness: constant(0.0),
         gravity: by(&|(s, l)| 2.0 * per_length(s.gravity, *l) * (1.0 - pull(s, *l))),
         gravity_falloff: constant(0.0),
-        immobile_type: ImmobileType::AllMotion,
-        immobile: constant(0.0),
+        immobile_type: center.map_or(ImmobileType::AllMotion, ImmobileType::Node),
+        immobile: constant(if center.is_some() { 1.0 } else { 0.0 }),
         limit: Limit::None {},
-        radius: by(&|(s, _)| s.radius),
+        radius: by(&|(s, _)| s.radius / scale),
         max_stretch: constant(0.0),
         stretch_motion: constant(0.0),
         max_squish: constant(0.0),
@@ -110,13 +113,23 @@ impl Doc<'_> {
         (self.world[to].translation - self.world[from].translation).length()
     }
 
-    /// A joint's downward gravity; PhysBones fall only along -Y.
+    /// A node's world scale, by which the core multiplies radii that VRM gives in world units.
+    fn scale(&self, node: NodeIndex) -> f32 {
+        let s = self.world[node.0 as usize].scale.x.abs();
+        if s > 1e-9 { s } else { 1.0 }
+    }
+
+    fn parent_scale(&self, node: NodeIndex) -> f32 {
+        self.nodes.parent[node.0 as usize].map_or(1.0, |p| self.scale(NodeIndex(p as u32)))
+    }
+
+    /// A joint's downward gravity, negative for upward; PhysBones fall only along Y.
     fn gravity(&mut self, power: f32, direction: Vec3) -> f32 {
-        let direction = direction.normalize_or(Vec3::NEG_Y);
-        if power != 0.0 && direction.dot(Vec3::NEG_Y) < 1.0 - 1e-4 {
-            self.report.add("vrm spring gravity not straight down");
+        let down = direction.normalize_or(Vec3::NEG_Y).dot(Vec3::NEG_Y);
+        if power != 0.0 && down.abs() < 1.0 - 1e-4 {
+            self.report.add("vrm spring gravity not vertical");
         }
-        power * direction.dot(Vec3::NEG_Y).max(0.0)
+        power * down
     }
 }
 
@@ -134,7 +147,7 @@ fn v1(doc: &mut Doc, ext: Option<&Value>) -> Result<(Vec<PhysBone>, Vec<Collider
         let node = doc.node(c.get("node"), &format!("spring collider {i}"))?;
         let extended = c.pointer("/extensions/VRMC_springBone_extended_collider/shape");
         let shape = extended.or(c.get("shape")).ok_or_else(|| malformed(format!("spring collider {i} has no shape")))?;
-        colliders.push(collider(node, shape)?);
+        colliders.push(collider(node, shape, doc.scale(node))?);
     }
     let groups: Vec<Vec<ColliderIndex>> = ext
         .get("colliderGroups")
@@ -174,9 +187,7 @@ fn v1(doc: &mut Doc, ext: Option<&Value>) -> Result<(Vec<PhysBone>, Vec<Collider
             doc.report.add("vrm spring whose joints are not a chain");
             continue;
         }
-        if spring.get("center").is_some() {
-            doc.report.add("vrm spring center");
-        }
+        let center = spring.get("center").map(|c| doc.node(Some(c), &format!("spring {s} center"))).transpose()?;
         let in_chain = |n: usize| joints.iter().any(|j| j.0 == n);
         let mut ignore = vec![];
         for (n, _) in &joints {
@@ -196,26 +207,28 @@ fn v1(doc: &mut Doc, ext: Option<&Value>) -> Result<(Vec<PhysBone>, Vec<Collider
                 }
             }
         }
-        physbones.push(physbone(NodeIndex(joints[0].0 as u32), ignore, Vec3::ZERO, &per_depth, used));
+        let root = NodeIndex(joints[0].0 as u32);
+        physbones.push(physbone(root, ignore, Vec3::ZERO, &per_depth, used, doc.parent_scale(root), center));
     }
     Ok((physbones, colliders))
 }
 
 /// A VRM 1.0 collider shape, or a VRM 0.x sphere, whose offsets the caller has put in glTF axes.
-fn collider(node: NodeIndex, shape: &Value) -> Result<Collider, Error> {
+/// Its radius, in world units in VRM, is divided by `scale`, the node's world scale, which the core multiplies it by.
+fn collider(node: NodeIndex, shape: &Value, scale: f32) -> Result<Collider, Error> {
     let at = |s: &Value, k: &str| floats::<3>(s.get(k)).map_or(Vec3::ZERO, Vec3::from);
     let inside = |s: &Value| s.get("inside").and_then(Value::as_bool) == Some(true);
     if let Some(s) = shape.get("sphere") {
         return Ok(Collider {
             node,
-            shape: ColliderShape::Sphere { radius: number(s.get("radius"), 0.0), inside_bounds: inside(s) },
+            shape: ColliderShape::Sphere { radius: number(s.get("radius"), 0.0) / scale, inside_bounds: inside(s) },
             position: at(s, "offset").to_array(),
             rotation: Quat::IDENTITY.to_array(),
             bones_as_spheres: false,
         });
     }
     if let Some(s) = shape.get("capsule") {
-        let (a, b, radius) = (at(s, "offset"), at(s, "tail"), number(s.get("radius"), 0.0));
+        let (a, b, radius) = (at(s, "offset"), at(s, "tail"), number(s.get("radius"), 0.0) / scale);
         let axis = b - a;
         return Ok(Collider {
             node,
@@ -249,7 +262,7 @@ fn v0(doc: &mut Doc) -> Result<(Vec<PhysBone>, Vec<Collider>), Error> {
             let o = super::xyz(c.get("offset")).unwrap_or_default();
             let sphere = serde_json::json!({ "sphere": { "offset": [o.x, o.y, -o.z], "radius": number(c.get("radius"), 0.0) } });
             members.push(ColliderIndex(colliders.len() as u32));
-            colliders.push(collider(node, &sphere)?);
+            colliders.push(collider(node, &sphere, doc.scale(node))?);
         }
         groups.push(members);
     }
@@ -263,9 +276,10 @@ fn v0(doc: &mut Doc) -> Result<(Vec<PhysBone>, Vec<Collider>), Error> {
             gravity: doc.gravity(number(g.get("gravityPower"), 0.0), dir),
             radius: number(g.get("hitRadius"), 0.0),
         };
-        if g.get("center").and_then(Value::as_i64).is_some_and(|c| c >= 0) {
-            doc.report.add("vrm spring center");
-        }
+        let center = match g.get("center").and_then(Value::as_i64) {
+            Some(c) if c >= 0 => Some(doc.node(g.get("center"), &format!("bone group {i} center"))?),
+            _ => None,
+        };
         let mut used = vec![];
         for k in g.get("colliderGroups").and_then(Value::as_array).into_iter().flatten() {
             let group = k.as_u64().and_then(|k| groups.get(k as usize)).ok_or_else(|| malformed(format!("bone group {i} names a missing collider group")))?;
@@ -277,10 +291,10 @@ fn v0(doc: &mut Doc) -> Result<(Vec<PhysBone>, Vec<Collider>), Error> {
         }
         for b in g.get("bones").and_then(Value::as_array).into_iter().flatten() {
             let root = doc.node(Some(b), &format!("bone group {i}"))?;
-            roots.push((root, settings, used.clone()));
+            roots.push((root, settings, used.clone(), center));
         }
     }
-    for (root, settings, used) in roots {
+    for (root, settings, used, center) in roots {
         let r = root.0 as usize;
         let mut walk = vec![(r, 0usize)];
         let mut order = vec![];
@@ -317,7 +331,7 @@ fn v0(doc: &mut Doc) -> Result<(Vec<PhysBone>, Vec<Collider>), Error> {
             doc.report.add("vrm 0.x spring tree whose bones at one depth differ in length, given their mean");
         }
         let per_depth: Vec<(Joint, f32)> = depths.iter().map(|ls| (settings, ls.iter().sum::<f32>() / ls.len().max(1) as f32)).collect();
-        physbones.push(physbone(root, vec![], endpoint, &per_depth, used));
+        physbones.push(physbone(root, vec![], endpoint, &per_depth, used, doc.parent_scale(root), center));
     }
     Ok((physbones, colliders))
 }

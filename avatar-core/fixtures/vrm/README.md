@@ -17,5 +17,7 @@ Public VRM files the importer's tests read, each unchanged from its source excep
   `94e82dd346fa6cf0337c4421728640e5252dd38e`,
   `samples/VRM1_Constraint_Twist_Sample/vrm/VRM1_Constraint_Twist_Sample.vrm`.
 
-`godette-0.x.springs.tsv` and `twist-1.0.springs.tsv` are `vrm-reference/run.sh` recordings of
-three-vrm moving those files' spring bones.
+`spring-*.vrm` are synthetic, written by `synthetic` in `avatar-core/tests/vrm.rs` (`AW_BLESS=1 cargo test`
+rewrites them): a bare skeleton with one spring feature each.
+
+Each `*.springs.tsv` is a `vrm-reference/run.sh` recording of three-vrm moving its file's spring bones.

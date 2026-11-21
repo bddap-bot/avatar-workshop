@@ -710,6 +710,9 @@ pub enum IntegrationType {
 pub enum ImmobileType {
     AllMotion,
     World,
+    /// A node's motion, which VRChat has no type for: a VRM spring's center, in whose space the chain's bone ends
+    /// keep their velocity.
+    Node(NodeIndex),
 }
 
 /// Angles in degrees.

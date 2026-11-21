@@ -2081,10 +2081,27 @@
       ]
     },
     "ImmobileType": {
-      "type": "string",
-      "enum": [
-        "allMotion",
-        "world"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "allMotion",
+            "world"
+          ]
+        },
+        {
+          "description": "A node's motion, which VRChat has no type for: a VRM spring's center, in whose space the chain's bone ends\nkeep their velocity.",
+          "type": "object",
+          "properties": {
+            "node": {
+              "$ref": "#/$defs/NodeIndex"
+            }
+          },
+          "required": [
+            "node"
+          ],
+          "additionalProperties": false
+        }
       ]
     },
     "Limit": {

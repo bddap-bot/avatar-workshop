@@ -242,6 +242,11 @@ pub struct PhysBones {
     colliders: Vec<ColliderAt>,
     hands: Vec<OwnHand>,
     model: Vec<model::PhysBone>,
+    /// The chains in the order they step: one reading a node below another's bones steps after it.
+    order: Vec<usize>,
+    /// For each chain another reads, every node below its root, parents first.
+    below: Vec<Option<Below>>,
+    parent: Vec<Option<usize>>,
     /// The host's latest frame and its time.
     last: Option<(f64, Frame)>,
     now: f64,
@@ -370,7 +375,7 @@ fn params(pb: &model::PhysBone, t: f32) -> Params {
         pull: at(&pb.pull, t).clamp(0.0, 1.0),
         spring: at(&pb.spring, t).clamp(0.0, 1.0),
         stiffness: at(&pb.stiffness, t).clamp(0.0, 1.0),
-        gravity: at(&pb.gravity, t).clamp(-1.0, 1.0),
+        gravity: at(&pb.gravity, t),
         gravity_falloff: at(&pb.gravity_falloff, t).clamp(0.0, 1.0),
         immobile: at(&pb.immobile, t).clamp(0.0, 1.0),
         radius: at(&pb.radius, t).max(0.0),
@@ -456,7 +461,7 @@ impl PhysBones {
         let model = &avatar.model;
         let roots: Vec<usize> = model.physbones.iter().map(|p| p.root.0 as usize).collect();
         let chains: Vec<Chain> = model.physbones.iter().map(|pb| chain(pb, &roots, &nodes)).collect();
-        let colliders = model
+        let colliders: Vec<ColliderAt> = model
             .colliders
             .iter()
             .map(|c| ColliderAt {
@@ -480,7 +485,21 @@ impl PhysBones {
             })
             .collect();
         let authored: Vec<Vec<Transform>> = chains.iter().map(|c| c.bones.iter().filter(|b| b.node.is_some()).map(|b| b.authored).collect()).collect();
-        Ok(PhysBones { chains, colliders, hands, model: model.physbones.clone(), last: None, now: 0.0, stepped: 0.0, before: authored.clone(), after: authored })
+        let (order, below) = schedule(&chains, &colliders, &nodes);
+        Ok(PhysBones {
+            chains,
+            colliders,
+            hands,
+            model: model.physbones.clone(),
+            order,
+            below,
+            parent: nodes.parent,
+            last: None,
+            now: 0.0,
+            stepped: 0.0,
+            before: authored.clone(),
+            after: authored,
+        })
     }
 
     /// The avatar's hand and finger colliders in the world, from the avatar root in the world and every node's pose in
@@ -541,11 +560,12 @@ impl PhysBones {
         while self.stepped < t1 - 1e-9 {
             let time = self.stepped + STEP as f64;
             let s = if t1 > t0 { 1.0 + ((time - t1) / (t1 - t0).max(STEP as f64 / 2.0)) as f32 } else { 1.0 };
-            let input = blend(&last, frame, s);
+            let mut input = blend(&last, frame, s);
             self.before = self.after.clone();
             let own = self.hands(0, &input.root, &input.nodes);
             let hands: Vec<Touch> = own.iter().map(|h| h.touch(Toucher::Wearer)).chain(input.hands.iter().map(|h| h.touch(Toucher::Other))).collect();
-            for (i, c) in self.chains.iter_mut().enumerate() {
+            for &i in &self.order {
+                let c = &mut self.chains[i];
                 let on = c.on(&input, i);
                 if on {
                     if !c.running {
@@ -559,6 +579,19 @@ impl PhysBones {
                 }
                 c.running = on;
                 self.after[i] = c.locals(&input);
+                if let Some(below) = self.below[i].as_ref().filter(|_| on) {
+                    let unroot = input.root.rigid().inverse_rigid();
+                    for &(n, bone) in below {
+                        let posed = match (bone, self.parent[n]) {
+                            (Some(b), _) => Some(unroot.mul(&c.world[b])),
+                            (None, Some(p)) => input.nodes.get(p).zip(input.locals.get(n)).map(|(p, l)| p.mul(l)),
+                            (None, None) => None,
+                        };
+                        if let (Some(posed), Some(at)) = (posed, input.nodes.get_mut(n)) {
+                            *at = posed;
+                        }
+                    }
+                }
             }
             self.stepped = time;
         }
@@ -617,6 +650,80 @@ impl PhysBones {
     }
 }
 
+/// Nodes below a chain's root, each with the chain's bone that poses it, if one does.
+type Below = Vec<(usize, Option<usize>)>;
+
+/// The order chains step in, and what each chain another reads must refresh below it. A chain reads its root's
+/// parent, its immobile node and its colliders' nodes; where one lies below another chain's bones, as when a
+/// chain's root hangs from another chain, it steps after that chain and sees its simulated pose, as three-vrm
+/// orders its joints after their parents' and colliders'. Chains that read each other step in model order.
+fn schedule(chains: &[Chain], colliders: &[ColliderAt], nodes: &Nodes) -> (Vec<usize>, Vec<Option<Below>>) {
+    let mut posed_by: Vec<Vec<usize>> = vec![vec![]; nodes.parent.len()];
+    for (i, c) in chains.iter().enumerate() {
+        for n in c.bones.iter().filter_map(|b| b.node) {
+            posed_by[n].push(i);
+        }
+    }
+    let reads: Vec<Vec<usize>> = chains
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let reference = match c.immobile_type {
+                ImmobileType::Node(n) => Some(n.0 as usize),
+                ImmobileType::AllMotion | ImmobileType::World => None,
+            };
+            let mut read: Vec<usize> = c.root_parent.into_iter().chain(reference).chain(c.colliders.iter().filter_map(|&k| colliders.get(k)).map(|k| k.node)).collect();
+            let mut on = vec![];
+            while let Some(n) = read.pop() {
+                for &j in posed_by.get(n).into_iter().flatten() {
+                    if j != i && !on.contains(&j) {
+                        on.push(j);
+                    }
+                }
+                read.extend(nodes.parent.get(n).copied().flatten());
+            }
+            on
+        })
+        .collect();
+    fn visit(i: usize, reads: &[Vec<usize>], state: &mut [u8], order: &mut Vec<usize>) {
+        if state[i] != 0 {
+            return;
+        }
+        state[i] = 1;
+        for &j in &reads[i] {
+            visit(j, reads, state, order);
+        }
+        state[i] = 2;
+        order.push(i);
+    }
+    let mut state = vec![0u8; chains.len()];
+    let mut order = vec![];
+    for i in 0..chains.len() {
+        visit(i, &reads, &mut state, &mut order);
+    }
+    let below = (0..chains.len())
+        .map(|i| {
+            reads.iter().any(|r| r.contains(&i)).then(|| {
+                let c = &chains[i];
+                let bone = |n: usize| c.bones.iter().position(|b| b.node == Some(n));
+                let mut out = vec![];
+                let mut next = c.bones[0].node.into_iter().collect::<Vec<_>>();
+                while let Some(n) = next.pop() {
+                    out.push((n, bone(n)));
+                    next.extend(nodes.children[n].iter().rev());
+                }
+                out
+            })
+        })
+        .collect();
+    (order, below)
+}
+
+/// A node's pose in the world, the avatar root's for none.
+fn node_world(frame: &Frame, node: Option<usize>) -> Transform {
+    frame.root.rigid().mul(&node.and_then(|n| frame.nodes.get(n)).copied().unwrap_or(Transform::IDENTITY))
+}
+
 fn allowed(p: &model::Permission, who: Toucher) -> bool {
     match who {
         Toucher::Wearer => p.allow_self,
@@ -649,14 +756,14 @@ impl Chain {
     }
 
     fn parent_world(&self, frame: &Frame) -> Transform {
-        let parent = self.root_parent.and_then(|p| frame.nodes.get(p)).copied().unwrap_or(Transform::IDENTITY);
-        frame.root.rigid().mul(&parent)
+        node_world(frame, self.root_parent)
     }
 
     fn reference_frame(&self, frame: &Frame) -> Transform {
         match self.immobile_type {
             ImmobileType::AllMotion => self.parent_world(frame).rigid(),
             ImmobileType::World => Transform { translation: frame.root.translation, ..Transform::IDENTITY },
+            ImmobileType::Node(n) => node_world(frame, Some(n.0 as usize)).rigid(),
         }
     }
 
@@ -719,12 +826,11 @@ impl Chain {
         let reference = self.reference_frame(frame);
         let moved = reference.mul(&self.reference.unwrap_or(reference).inverse_rigid());
         self.reference = Some(reference);
-        let root = frame.root.rigid();
         let places: Vec<(ColliderAt, Transform)> = self
             .colliders
             .iter()
             .filter_map(|&c| colliders.get(c))
-            .map(|c| (c.clone(), root.mul(&frame.nodes.get(c.node).copied().unwrap_or(Transform::IDENTITY))))
+            .map(|c| (c.clone(), node_world(frame, Some(c.node))))
             .collect();
         let touches: Vec<Touch> = hands.iter().copied().filter(|h| allowed(&self.collision, h.owner)).collect();
         let scale = self.parent_world(frame).scale.x.abs();
@@ -842,7 +948,7 @@ impl Chain {
             origin + pushed.normalize_or(direction) * kept
         };
         for (collider, place) in places {
-            bone.position = keep(collide(bone.position, q.radius * place.scale.x.abs(), collider, place));
+            bone.position = keep(collide(bone.position, q.radius * scale, collider, place));
         }
         for touch in touches {
             bone.position = keep(touch_bone(origin, bone.position, q.radius * scale, touch));

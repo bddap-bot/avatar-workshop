@@ -69,7 +69,7 @@ fn skinning_and_blendshapes_survive() {
 /// three-vrm's under the same motion of the avatar and its head.
 #[test]
 fn springs_follow_three_vrm() {
-    for name in ["godette-0.x", "twist-1.0"] {
+    for name in ["godette-0.x", "twist-1.0"].into_iter().chain(SYNTHETIC) {
         let avatar = import(name);
         let recording = vrm_harness::parse(&std::fs::read_to_string(fixture(&format!("{name}.springs.tsv"))).unwrap());
         let replayed = vrm_harness::replay(&avatar, &recording, vrm_harness::head(&avatar));
@@ -298,6 +298,7 @@ fn malformed_files_are_refused() {
         ("unknown bone", Box::new(|j| j["extensions"]["VRMC_vrm"]["humanoid"]["humanBones"][""] = serde_json::json!({ "node": 1 }))),
         ("missing collider group", Box::new(|j| j["extensions"]["VRMC_springBone"]["springs"][0]["colliderGroups"] = serde_json::json!([999]))),
         ("missing collider", Box::new(|j| j["extensions"]["VRMC_springBone"]["colliderGroups"][0]["colliders"] = serde_json::json!([999]))),
+        ("spring center on a missing node", Box::new(|j| j["extensions"]["VRMC_springBone"]["springs"][0]["center"] = serde_json::json!(100000))),
         ("missing morph target", Box::new(|j| j["extensions"]["VRMC_vrm"]["expressions"]["preset"]["aa"]["morphTargetBinds"][0]["index"] = serde_json::json!(9999))),
         ("missing texture", Box::new(|j| j["materials"][0]["extensions"]["VRMC_materials_mtoon"]["shadeMultiplyTexture"] = serde_json::json!({ "index": 9999 }))),
         ("node cycle", Box::new(|j| {
@@ -418,4 +419,112 @@ fn texture_transform_binds_become_curves() {
     };
     let authored: Vec<f32> = targets.iter().map(|&i| rest[i as usize]).collect();
     assert_eq!(authored, vec![t.tiling[0], t.tiling[1], t.offset[0], t.offset[1]], "an idle offset bind holds the texture's own tiling and offset");
+}
+
+/// A node of a synthetic VRM: its offset from its parent, its children and its scale.
+fn node(translation: [f32; 3], children: &[usize], scale: f32) -> Value {
+    let mut n = serde_json::json!({ "translation": translation, "children": children });
+    if scale != 1.0 {
+        n["scale"] = serde_json::json!([scale, scale, scale]);
+    }
+    n
+}
+
+/// A VRM with a root, hips at node 1 and a head at node 2 whose children are `hung`, followed by `rest`, and the
+/// spring extension `springs`: VRM 0.x's `secondaryAnimation` for `v0`, else VRM 1.0's `VRMC_springBone`.
+fn synthetic_vrm(v0: bool, hung: &[usize], rest: Vec<Value>, springs: Value) -> Vec<u8> {
+    let mut nodes = vec![node([0.0, 0.0, 0.0], &[1], 1.0), node([0.0, 0.9, 0.0], &[2], 1.0), node([0.0, 0.6, 0.0], hung, 1.0)];
+    nodes.extend(rest);
+    let meta = serde_json::json!({ "name": "synthetic", "authors": ["synthetic"], "licenseUrl": "https://vrm.dev/licenses/1.0/" });
+    let (used, extensions) = if v0 {
+        let humanoid = serde_json::json!({ "humanBones": [{ "bone": "hips", "node": 1 }, { "bone": "head", "node": 2 }] });
+        (serde_json::json!(["VRM"]), serde_json::json!({ "VRM": { "specVersion": "0.0", "meta": meta, "humanoid": humanoid, "secondaryAnimation": springs } }))
+    } else {
+        let humanoid = serde_json::json!({ "humanBones": { "hips": { "node": 1 }, "head": { "node": 2 } } });
+        (serde_json::json!(["VRMC_vrm", "VRMC_springBone"]), serde_json::json!({ "VRMC_vrm": { "specVersion": "1.0", "meta": meta, "humanoid": humanoid }, "VRMC_springBone": springs }))
+    };
+    let gltf = serde_json::json!({ "asset": { "version": "2.0" }, "extensionsUsed": used, "scene": 0, "scenes": [{ "nodes": [0] }], "nodes": nodes, "extensions": extensions });
+    glb_of(gltf.as_object().unwrap(), &[])
+}
+
+/// VRM 1.0 joints on `nodes`, each with these settings.
+fn joints(nodes: std::ops::Range<usize>, settings: Value) -> Value {
+    Value::Array(
+        nodes
+            .map(|n| {
+                let mut j = settings.clone();
+                j["node"] = serde_json::json!(n);
+                j
+            })
+            .collect(),
+    )
+}
+
+/// A chain of `count` nodes from node `first`, the first at `start` from its parent, each next one `step` on.
+fn chain(first: usize, count: usize, start: [f32; 3], step: [f32; 3], scale: f32) -> Vec<Value> {
+    (0..count)
+        .map(|k| {
+            let next: Vec<usize> = (k + 1 < count).then_some(first + k + 1).into_iter().collect();
+            node(if k == 0 { start } else { step }, &next, if k == 0 { scale } else { 1.0 })
+        })
+        .collect()
+}
+
+/// Synthetic VRMs, one per spring feature three-vrm simulates and the PhysBones must match: built here, kept
+/// beside their `vrm-reference/run.sh` recordings.
+fn synthetic(name: &str) -> Vec<u8> {
+    let hanging = || chain(3, 4, [0.0, 0.05, -0.1], [0.0, -0.1, 0.0], 1.0);
+    let loose = serde_json::json!({ "stiffness": 0.8, "dragForce": 0.3, "gravityPower": 0.2, "gravityDir": [0, -1, 0], "hitRadius": 0.02 });
+    match name {
+        "spring-center-0.x" => synthetic_vrm(
+            true,
+            &[3],
+            hanging(),
+            serde_json::json!({ "boneGroups": [{ "bones": [3], "center": 1, "stiffiness": 0.8, "dragForce": 0.3, "gravityPower": 0.2, "gravityDir": { "x": 0, "y": -1, "z": 0 }, "hitRadius": 0.02, "colliderGroups": [] }], "colliderGroups": [] }),
+        ),
+        "spring-center-1.0" => synthetic_vrm(false, &[3], hanging(), serde_json::json!({ "specVersion": "1.0", "springs": [{ "joints": joints(3..7, loose), "center": 1 }] })),
+        "spring-nested-1.0" => {
+            let mut nodes = hanging();
+            nodes[1]["children"] = serde_json::json!([5, 7]);
+            nodes.extend(chain(7, 3, [0.06, -0.03, 0.0], [0.0, -0.1, 0.0], 1.0));
+            let firm = serde_json::json!({ "stiffness": 2.0, "dragForce": 0.5, "gravityPower": 0.0, "hitRadius": 0.0 });
+            synthetic_vrm(false, &[3], nodes, serde_json::json!({ "specVersion": "1.0", "springs": [{ "joints": joints(3..7, loose) }, { "joints": joints(7..10, firm) }] }))
+        }
+        "spring-short-gravity-1.0" => {
+            let weighted = serde_json::json!({ "stiffness": 0.5, "dragForce": 0.4, "gravityPower": 1.0, "gravityDir": [0, -1, 0], "hitRadius": 0.0 });
+            synthetic_vrm(false, &[3], chain(3, 8, [0.0, 0.05, -0.1], [0.0, 0.0, -0.01], 1.0), serde_json::json!({ "specVersion": "1.0", "springs": [{ "joints": joints(3..11, weighted) }] }))
+        }
+        "spring-up-gravity-1.0" => {
+            let up = serde_json::json!({ "stiffness": 0.5, "dragForce": 0.4, "gravityPower": 0.5, "gravityDir": [0, 1, 0], "hitRadius": 0.0 });
+            synthetic_vrm(false, &[3], chain(3, 4, [0.0, 0.05, -0.1], [0.0, 0.0, -0.08], 1.0), serde_json::json!({ "specVersion": "1.0", "springs": [{ "joints": joints(3..7, up) }] }))
+        }
+        "spring-scaled-collider-1.0" => {
+            let mut nodes = vec![node([0.0, 0.05, -0.1], &[4], 0.5)];
+            nodes.extend(chain(4, 4, [0.0, 0.0, 0.0], [0.0, -0.2, 0.0], 1.0));
+            nodes.push(node([0.0, -0.1, -0.05], &[], 2.0));
+            let springs = serde_json::json!({
+                "specVersion": "1.0",
+                "colliders": [{ "node": 8, "shape": { "sphere": { "offset": [0.0, -0.02, 0.0], "radius": 0.04 } } }],
+                "colliderGroups": [{ "colliders": [0] }],
+                "springs": [{ "joints": joints(4..8, serde_json::json!({ "stiffness": 0.8, "dragForce": 0.3, "gravityPower": 0.2, "gravityDir": [0, -1, 0], "hitRadius": 0.03 })), "colliderGroups": [0] }],
+            });
+            synthetic_vrm(false, &[3, 8], nodes, springs)
+        }
+        other => panic!("no synthetic VRM {other}"),
+    }
+}
+
+const SYNTHETIC: [&str; 6] = ["spring-center-0.x", "spring-center-1.0", "spring-nested-1.0", "spring-short-gravity-1.0", "spring-up-gravity-1.0", "spring-scaled-collider-1.0"];
+
+/// Each synthetic VRM is the file checked in beside its recording; `AW_BLESS=1` rewrites it from the code.
+#[test]
+fn synthetic_vrms_are_generated() {
+    for name in SYNTHETIC {
+        let file = fixture(&format!("{name}.vrm"));
+        let generated = synthetic(name);
+        if std::env::var_os("AW_BLESS").is_some() {
+            std::fs::write(&file, &generated).unwrap();
+        }
+        assert!(std::fs::read(&file).unwrap_or_default() == generated, "{name}.vrm differs from the generated one; regenerate with `AW_BLESS=1 cargo test`, then record it with vrm-reference/run.sh");
+    }
 }

@@ -44,9 +44,12 @@ The semantics were measured against the SDK's own simulation through the referen
 binaries. Simplified integration blends velocity toward pull by spring; advanced keeps momentum and pull,
 both scaled down by stiffness, and carries each bone with its parent's movement by stiffness. Version 1.1 gravity
 turns the rest direction toward down by the gravity value less its falloff; version 1.0 gravity is a force.
-Immobile all-motion follows the root's parent, world only the avatar's position. Curves are read by depth along
-the chain. Bones collide as spheres of their radius at their ends, and bones of radius 0 pass through spheres
-and capsules but not planes; a bone a collider pushes is put back at a length its stretch allows.
+Immobile all-motion follows the root's parent, world only the avatar's position, and node, a type VRChat lacks,
+that node. Curves are read by depth along the chain. A chain whose root's parent, immobile node or collider is a
+descendant of another chain's bones steps after that chain and reads its simulated pose. Gravity is not clamped
+to the ±1 VRChat's inspector allows. Bones collide as spheres of their radius, times the world scale of the
+root's parent, at their ends, and bones of radius 0 pass through spheres and capsules but not planes; a bone a
+collider pushes is put back at a length its stretch allows.
 
 `cargo test --test physbones` replays recordings in `avatar-core/fixtures/reference/` (the probe, the
 fixture's motion and its grabs, trimmed to what the replays read) and checks each field's probe, the fixture's
@@ -196,8 +199,10 @@ and MToon properties are read as VRM 0.x holds them; nothing outside the importe
   node's rest pose as given and VRM 0.x's muscle limits on bones whose `useDefaultValues` is false.
 - Spring bones become version 1.0 PhysBones with advanced integration, one per VRM 1.0 spring or VRM 0.x root,
   whose pull, spring and gravity make the PhysBone step equal VRM's spring step before collision (derived in
-  `avatar-core/src/vrm/springs.rs`); VRM's per-joint values ride on curves over the chain. Colliders keep their
-  shapes.
+  `avatar-core/src/vrm/springs.rs`); VRM's per-joint values ride on curves over the chain. A spring with a
+  center is fully immobile against that node, so its bone ends keep their velocity in the node's space. Colliders
+  keep their shapes. VRM gives radii in world units; a collider's is divided by its node's world scale and a
+  joint's by that of the spring root's parent, the scales the core multiplies them by.
 - MToon becomes an `mtoon` material record holding every MToon property: VRM 1.0's as the `VRM10/MToon10`
   properties UniVRM gives it, VRM 0.x's as the `VRM/MToon` properties the file stores. Other materials become `standard`
   records, or `unknown` ones for unlit shaders.
@@ -205,15 +210,17 @@ and MToon properties are read as VRM 0.x holds them; nothing outside the importe
   blink its eyelids when each is one blendshape at full weight on one mesh; a bone look-at becomes the eye
   rotations; the look-at offset from the head becomes the view position.
 - What the model cannot hold is in `unsupported`: node constraints, expression overrides and binary
-  expressions, look-at by expression, a spring centre, gravity not straight down, a texture transform's
+  expressions, look-at by expression, gravity not vertical, a texture transform's
   rotation, among others; each entry names its kind and a count.
 
 `cargo test --test vrm` imports the files in [`avatar-core/fixtures/vrm/`](avatar-core/fixtures/vrm) (their
 sources and licences are listed there) and checks that each round-trips through the writer and keeps its
 skinned vertices under a bend and its blendshapes, that every MToon property reaches its record, that each
 avatar faces +Z, that its visemes, eyelids, expression clips and `unsupported` report match the file, and, for
-the two fixtures with spring bones, that every spring tip run through the core's PhysBones stays within 5% of
-its path length of three-vrm's tip under the same motion. `cargo run --release --example vrm -- AVATAR.vrm
+the two fixtures with spring bones and six synthetic VRMs the test builds (a spring with a center, in VRM 0.x and
+1.0; a spring hanging from another spring's joint; gravity on short bones; upward gravity; a chain under a scaled
+node and a collider on one), that every spring tip run through the core's PhysBones stays within 5% of its path length
+of three-vrm's tip under the same motion, on every frame. `cargo run --release --example vrm -- AVATAR.vrm
 [--bend] [--out MODEL.glb] [--springs RECORDING.tsv]` imports any file and prints its `unsupported` report, with
 `--bend` how far its skinned vertices land from the source's under that bend, and with a recording each spring
 tip's RMS distance from three-vrm's as a fraction of its path length.
