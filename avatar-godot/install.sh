@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Builds the extension for this machine into addons/avatar_workshop/bin/, where avatar_core.gdextension finds it.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 cargo build --release --manifest-path "$root/avatar-godot/Cargo.toml"

@@ -67,8 +67,8 @@ pub struct AvatarHands {
 #[class(no_init, base = RefCounted)]
 pub struct AvatarEvaluator {
     evaluator: Evaluator,
-    parents: Vec<Option<usize>>,
-    renderer_nodes: Vec<usize>,
+    slots: Vec<Vec<u32>>,
+    physbones: usize,
     poses: Vec<(usize, Transform)>,
     scene: Option<Scene>,
 }
@@ -79,17 +79,20 @@ struct Scene {
     renderers: Vec<Option<Gd<MeshInstance3D>>>,
     materials: Vec<Gd<Material>>,
     shapes: HashMap<(u32, String), i32>,
-    shown: Vec<bool>,
 }
 
-fn transform(t: Transform3D) -> Transform {
-    let (s, q) = (t.basis.get_scale(), t.basis.get_quaternion());
+fn from_godot(t: Transform3D) -> Transform {
+    let mut b = t.basis;
+    let mirror = if b.determinant() < 0.0 { -1.0 } else { 1.0 };
+    b.set_col_a(b.col_a() * mirror);
+    let (mut s, q) = (b.get_scale(), b.get_quaternion());
+    s.x *= mirror;
     Transform { translation: Vec3::new(t.origin.x, t.origin.y, t.origin.z), rotation: Quat::from_xyzw(q.x, q.y, q.z, q.w).normalize(), scale: Vec3::new(s.x, s.y, s.z) }
 }
 
-fn godot(t: &Transform) -> Transform3D {
+fn to_godot(t: &Transform) -> Transform3D {
     let (p, q, s) = (t.translation, t.rotation, t.scale);
-    let basis = Basis::from_quaternion(Quaternion::new(q.x, q.y, q.z, q.w)).scaled(Vector3::new(s.x, s.y, s.z));
+    let basis = Basis::from_quaternion(Quaternion::new(q.x, q.y, q.z, q.w)) * Basis::from_scale(Vector3::new(s.x, s.y, s.z));
     Transform3D::new(basis, Vector3::new(p.x, p.y, p.z))
 }
 
@@ -107,15 +110,11 @@ impl AvatarEvaluator {
     #[func]
     fn create(model: Gd<AvatarModel>) -> Variant {
         let m = model.bind();
-        let parents = match avatar_core::physbones::Nodes::read(&m.avatar) {
-            Ok(n) => n.parent,
-            Err(e) => return GString::from(e.to_string().as_str()).to_variant(),
-        };
         match Evaluator::new(&m.avatar) {
             Ok(evaluator) => Gd::from_object(AvatarEvaluator {
                 evaluator,
-                parents,
-                renderer_nodes: m.avatar.model.renderers.iter().map(|r| r.node.0 as usize).collect(),
+                slots: m.avatar.model.renderers.iter().map(|r| r.materials.iter().map(|x| x.0).collect()).collect(),
+                physbones: m.avatar.model.physbones.len(),
                 poses: vec![],
                 scene: None,
             })
@@ -124,22 +123,52 @@ impl AvatarEvaluator {
         }
     }
 
-    /// Binds the scene `apply` writes, by glTF node: the skeleton holding it (null for none) and its bone there, or
-    /// its own node; each model renderer's mesh instance; and the glTF materials by index.
+    /// Binds the scene `apply` writes, once, by glTF node: the skeleton holding it (null for none) and its bone there,
+    /// or its own node; each model renderer's mesh instance; and the glTF materials by index. Each renderer takes its
+    /// own material slots.
     #[func]
     fn bind(&mut self, skeletons: Array<Variant>, bones: PackedInt32Array, nodes: Array<Variant>, renderers: Array<Variant>, materials: Array<Gd<Material>>) {
-        let count = self.parents.len();
+        if self.scene.is_some() {
+            godot_error!("avatar: a scene is already bound");
+            return;
+        }
+        let count = self.evaluator.parents().len();
+        let drawn = self.evaluator.renderer_nodes().len();
         let node = |v: Variant| v.try_to::<Gd<Node3D>>().ok();
         self.scene = Some(Scene {
             bones: (0..count)
                 .map(|n| Some((skeletons.get(n)?.try_to::<Gd<Skeleton3D>>().ok()?, bones.get(n).filter(|b| *b >= 0)?)))
                 .collect(),
             nodes: (0..count).map(|n| nodes.get(n).and_then(node)).collect(),
-            renderers: (0..self.renderer_nodes.len()).map(|r| renderers.get(r).and_then(|v| v.try_to::<Gd<MeshInstance3D>>().ok())).collect(),
+            renderers: (0..drawn).map(|r| renderers.get(r).and_then(|v| v.try_to::<Gd<MeshInstance3D>>().ok())).collect(),
             materials: materials.iter_shared().collect(),
             shapes: HashMap::new(),
-            shown: vec![true; self.renderer_nodes.len()],
         });
+        let s = self.scene.as_mut().expect("bound");
+        for (r, slots) in self.slots.iter().enumerate() {
+            let Some(m) = &mut s.renderers[r] else { continue };
+            for (slot, material) in slots.iter().enumerate() {
+                if let Some(mat) = s.materials.get(*material as usize).filter(|_| (slot as i32) < m.get_surface_override_material_count()) {
+                    m.set_surface_override_material(slot as i32, mat);
+                }
+            }
+        }
+    }
+
+    fn node(&self, node: i32) -> Option<usize> {
+        let n = usize::try_from(node).ok().filter(|n| *n < self.evaluator.parents().len());
+        if n.is_none() {
+            godot_error!("avatar: no node {node}");
+        }
+        n
+    }
+
+    fn physbone(&self, physbone: i32) -> Option<usize> {
+        let p = usize::try_from(physbone).ok().filter(|p| *p < self.physbones);
+        if p.is_none() {
+            godot_error!("avatar: no PhysBone {physbone}");
+        }
+        p
     }
 
     #[func]
@@ -161,13 +190,14 @@ impl AvatarEvaluator {
     /// The head's animated pose in the avatar's root space.
     #[func]
     fn set_head(&mut self, head: Transform3D) {
-        self.evaluator.set_head(transform(head))
+        self.evaluator.set_head(from_godot(head))
     }
 
     /// Sets a node's pose in the avatar's root space for the next `evaluate`, after animation and before dynamics.
     #[func]
     fn pose(&mut self, node: i32, at: Transform3D) {
-        self.poses.push((node as usize, transform(at)));
+        let Some(n) = self.node(node) else { return };
+        self.poses.push((n, from_godot(at)));
     }
 
     /// Evaluates a frame `dt` seconds after the last, the avatar root at `root` in the world, with the poses set
@@ -176,20 +206,21 @@ impl AvatarEvaluator {
     fn evaluate(&mut self, dt: f32, root: Transform3D, hands: VarArray) {
         let poses = std::mem::take(&mut self.poses);
         let others: Vec<HandCollider> = hands.iter_shared().filter_map(|h| h.try_to::<Gd<AvatarHands>>().ok()).flat_map(|h| h.bind().hands.clone()).collect();
-        self.evaluator.evaluate(&Input { dt, root: transform(root), poses: &poses, held: &[], senders: &[], hands: &others });
+        self.evaluator.evaluate(&Input { dt, root: from_godot(root), poses: &poses, held: &[], senders: &[], hands: &others });
     }
 
     /// This avatar's hand and finger colliders after the last frame, named `player` for the avatars around it.
     #[func]
     fn hands(&self, player: i64) -> Gd<AvatarHands> {
-        Gd::from_object(AvatarHands { hands: self.evaluator.hands(player as u64) })
+        Gd::from_object(AvatarHands { hands: self.evaluator.hands(player.cast_unsigned()) })
     }
 
     /// Writes the last frame's output to the bound scene.
     #[func]
     fn apply(&mut self) {
         let Some(s) = &mut self.scene else { return };
-        let out = self.evaluator.output();
+        let e = &self.evaluator;
+        let out = e.output();
         for (n, t) in out.locals.iter().enumerate() {
             if let Some((sk, b)) = &mut s.bones[n] {
                 let q = t.rotation;
@@ -197,35 +228,33 @@ impl AvatarEvaluator {
                 sk.set_bone_pose_rotation(*b, Quaternion::new(q.x, q.y, q.z, q.w));
                 sk.set_bone_pose_scale(*b, Vector3::new(t.scale.x, t.scale.y, t.scale.z));
             } else if let Some(node) = &mut s.nodes[n] {
-                node.set_transform(godot(t));
+                node.set_transform(to_godot(t));
             }
         }
-        for (r, &n) in self.renderer_nodes.iter().enumerate() {
-            let mut active = true;
-            let mut at = Some(n);
-            while let Some(i) = at {
-                active &= out.active[i];
-                at = self.parents[i];
-            }
-            let shown = active && out.renderers[r];
-            if shown != s.shown[r] {
-                if let Some(m) = &mut s.renderers[r] {
-                    m.set_visible(shown);
+        let renderer = |node: u32| e.renderer_nodes().iter().position(|&n| n == node);
+        for (n, node) in s.nodes.iter_mut().enumerate() {
+            if let Some(node) = node.as_mut().filter(|_| renderer(n as u32).is_none()) {
+                if node.is_visible() != out.active[n] {
+                    node.set_visible(out.active[n]);
                 }
-                s.shown[r] = shown;
+            }
+        }
+        for (r, m) in s.renderers.iter_mut().enumerate() {
+            let shown = e.shown(r);
+            if let Some(m) = m.as_mut().filter(|m| m.is_visible() != shown) {
+                m.set_visible(shown);
             }
         }
         for (node, shape, w) in &out.blendshapes {
-            let Some(r) = self.renderer_nodes.iter().position(|&n| n == *node as usize) else { continue };
-            let Some(m) = &mut s.renderers[r] else { continue };
+            let Some(m) = renderer(*node).and_then(|r| s.renderers[r].as_mut()) else { continue };
             let i = *s.shapes.entry((*node, shape.clone())).or_insert_with(|| m.find_blend_shape_by_name(shape.as_str()));
             if i >= 0 {
                 m.set_blend_shape_value(i, w / 100.0);
             }
         }
         for (node, slot, material) in &out.slots {
-            let Some(r) = self.renderer_nodes.iter().position(|&n| n == *node as usize) else { continue };
-            if let (Some(m), Some(mat)) = (&mut s.renderers[r], s.materials.get(*material as usize)) {
+            let Some(m) = renderer(*node).and_then(|r| s.renderers[r].as_mut()) else { continue };
+            if let Some(mat) = s.materials.get(*material as usize).filter(|_| (*slot as i32) < m.get_surface_override_material_count()) {
                 m.set_surface_override_material(*slot as i32, mat);
             }
         }
@@ -234,13 +263,13 @@ impl AvatarEvaluator {
     /// A node's pose in the avatar's root space after the last frame.
     #[func]
     fn space(&self, node: i32) -> Transform3D {
-        self.evaluator.output().space.get(node as usize).map_or(Transform3D::IDENTITY, godot)
+        self.node(node).map_or(Transform3D::IDENTITY, |n| to_godot(&self.evaluator.output().space[n]))
     }
 
     /// A node's local pose after the last frame.
     #[func]
     fn local(&self, node: i32) -> Transform3D {
-        self.evaluator.output().locals.get(node as usize).map_or(Transform3D::IDENTITY, godot)
+        self.node(node).map_or(Transform3D::IDENTITY, |n| to_godot(&self.evaluator.output().locals[n]))
     }
 
     /// Every animator parameter's value.
@@ -286,22 +315,27 @@ impl AvatarEvaluator {
     /// The nodes each PhysBone moves, root first.
     #[func]
     fn physbone_bones(&self, physbone: i32) -> PackedInt32Array {
-        self.evaluator.physbones().bones(physbone as usize).map(|n| n as i32).collect()
+        self.physbone(physbone).map_or_else(PackedInt32Array::new, |p| self.evaluator.physbones().bones(p).map(|n| n as i32).collect())
     }
 
     /// Grabs `node` of `physbone` with a hand at `at` in the world; whether the grab filter lets it hold.
     #[func]
     fn grab(&mut self, physbone: i32, node: i32, at: Vector3, other: bool) -> bool {
-        self.evaluator.grab(physbone as usize, node as usize, Vec3::new(at.x, at.y, at.z), who(other))
+        let (Some(p), Some(n)) = (self.physbone(physbone), self.node(node)) else { return false };
+        self.evaluator.grab(p, n, Vec3::new(at.x, at.y, at.z), who(other))
     }
 
     #[func]
     fn hold(&mut self, physbone: i32, at: Vector3) {
-        self.evaluator.hold(physbone as usize, Vec3::new(at.x, at.y, at.z))
+        if let Some(p) = self.physbone(physbone) {
+            self.evaluator.hold(p, Vec3::new(at.x, at.y, at.z))
+        }
     }
 
     #[func]
     fn release(&mut self, physbone: i32, pose: bool, other: bool) {
-        self.evaluator.release(physbone as usize, pose, who(other))
+        if let Some(p) = self.physbone(physbone) {
+            self.evaluator.release(p, pose, who(other))
+        }
     }
 }

@@ -255,6 +255,28 @@ impl Evaluator {
         &self.output
     }
 
+    /// Each renderer's node, in the model's renderer order.
+    pub fn renderer_nodes(&self) -> &[u32] {
+        &self.renderer_nodes
+    }
+
+    /// Every node's parent.
+    pub fn parents(&self) -> &[Option<usize>] {
+        &self.nodes.parent
+    }
+
+    /// Whether renderer `r` draws after the last frame: enabled, on a node active with all its ancestors.
+    pub fn shown(&self, r: usize) -> bool {
+        let mut at = Some(self.renderer_nodes[r] as usize);
+        while let Some(n) = at {
+            if !self.output.active[n] {
+                return false;
+            }
+            at = self.nodes.parent[n];
+        }
+        self.output.renderers[r]
+    }
+
     /// This avatar's hand and finger colliders after the last frame, in the world, named by the host's `player` for it:
     /// what the host gives the avatars around it in [`Input::hands`].
     pub fn hands(&self, player: u64) -> Vec<HandCollider> {

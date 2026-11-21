@@ -144,9 +144,11 @@ host; another target is `cargo build --release --target <triple>` in `avatar-god
   glTF importer, off the tree and safe off the main thread, and returns `{root, evaluator, state}` or `{error}`.
 - `AvatarEvaluator` drives `Evaluator`: `set_parameter`, `set_builtin`, `set_eyes`, `set_head`, `pose(node,
   root_space)` for the bones the host moves, `evaluate(dt, root, hands)` with other avatars' `hands(player)`,
-  `grab`, `hold`, `release`, then `apply()` writes node poses, renderer visibility, blendshapes and material
-  slots onto the bound scene. `space`, `local`, `parameters`, `saved`, `states`, `physbone_bones` and
-  `materials` read the last frame.
+  `grab`, `hold`, `release`, then `apply()` writes node poses, node and renderer visibility, blendshapes and
+  material slots onto the bound scene. `bind` gives each renderer its own slots. `space`, `local`,
+  `parameters`, `saved`, `states`, `physbone_bones` and `materials` (the animated material properties, which a
+  host's material renderer applies) read the last frame. A node or PhysBone index out of range is refused
+  with an error.
 
 Run `godot4 --headless --path . --script tests/core.gd` after `avatar-godot/install.sh`.
 

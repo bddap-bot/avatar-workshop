@@ -110,3 +110,25 @@ fn another_avatars_hands_push_what_allows_others() {
     assert!(pushed > 0.01, "a hand that the chain allows moved its tip {pushed} m");
     assert!(run(false, &[]) == run(false, &hands), "a hand that the chain refuses moved its tip");
 }
+
+#[test]
+fn a_renderer_draws_only_under_active_ancestors() {
+    let base = fixture();
+    let parents = Evaluator::new(&base).unwrap().parents().to_vec();
+    let (r, ancestor) = base
+        .model
+        .renderers
+        .iter()
+        .enumerate()
+        .find_map(|(r, x)| parents[x.node.0 as usize].map(|p| (r, p)))
+        .expect("a renderer below another node");
+    let mut e = Evaluator::new(&base).unwrap();
+    e.evaluate(&input(0.0));
+    let drawn = e.shown(r);
+    let mut hidden = base.clone();
+    hidden.model.nodes[ancestor].active = false;
+    let mut h = Evaluator::new(&hidden).unwrap();
+    h.evaluate(&input(0.0));
+    assert!(drawn || !base.model.renderers[r].enabled, "an enabled renderer under active nodes draws");
+    assert!(!h.shown(r), "a renderer below an inactive node does not draw");
+}
