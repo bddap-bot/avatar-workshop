@@ -128,8 +128,9 @@ reference replays drive it with what the recording's animation left (`evaluate_a
 replay, with the SDK's PhysBone output in place of the core's (`Input::held`); a runtime uses neither.
 
 `cargo run --release --example run -- RECORDING AVATAR.glb OUT [--frames N]` writes the core's reference run
-of a model under a recording's scripted input: each frame the parameters `inputs.tsv` sets and the root, head and
-hands of `track.tsv`, at 60 Hz. `OUT/tips.tsv` holds every PhysBone tip each frame, and `params.tsv`,
+of a model under a recording's scripted input: each frame the parameters `inputs.tsv` sets, the root of `track.tsv`,
+and the humanoid trunk and limbs where `poses.tsv` holds them, as a host gives the pose its IK solved (fingers, eyes
+and jaw stay the animator's), at 60 Hz. `OUT/tips.tsv` holds every PhysBone tip each frame, and `params.tsv`,
 `states.tsv` and `output.tsv` the animator's parameters, each layer's state and the frame output as change logs. `script.tsv` is what each frame fed the core (`set`, `head`, `pose` and `frame` lines, in the order it applied them, each value the hex of its f32 bits), so another runtime can feed its own the same and compare.
 Two runs write the same bytes; `cargo test --test evaluate` checks that on the fixture's recording.
 
@@ -676,7 +677,8 @@ constrained positions and scales within 1e-6 and rotations within 1e-4 degrees (
 
 A runtime replays the recording from `track.tsv`, `poses.tsv`, `values.tsv`, `grabs.tsv` and `steps.tsv` and writes `tips.tsv` and `render/`
 in the same layout; `reference/compare.py REFERENCE RUNTIME` (Python 3 with numpy and Pillow) scores
-it: PhysBone tip RMS error over chain length (a leaf or frame the runtime lacks counts as unmoving), the
+it: PhysBone tip RMS error over chain length (a leaf or frame the runtime lacks counts as unmoving; tips compare with
+VRCFury's per-build object numbers dropped, as the export and the recording may come from different builds), the
 fraction of menu controls that match, and mean image error. A control matches when the runtime's
 `menu.tsv` lists its name path in the first column, before a tab (names compare with runs of whitespace
 collapsed, so a name may span lines), and each of its swept renders changes the same region from the

@@ -1,7 +1,9 @@
 //! The core's reference run of a model under a recording's scripted input: each frame the harness's parameter
-//! inputs (`inputs.tsv`) and its root, head and hands (`track.tsv`), stepped at 60 Hz through
-//! [`Evaluator::evaluate`], the head and hands posed where the script holds them. It writes, per frame, every
-//! PhysBone tip, and as change logs the animator's parameters and states and the frame output.
+//! inputs (`inputs.tsv`) and its root (`track.tsv`), stepped at 60 Hz through [`Evaluator::evaluate`], the body
+//! standing in the recorded pose (`poses.tsv`): the humanoid trunk and limbs, which VRChat's IK places and the core
+//! takes from its host, posed where the recording holds them, their scale included, while fingers, eyes and jaw stay
+//! the animator's. It writes, per frame, every PhysBone tip, and as change logs the animator's parameters and states
+//! and the frame output.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
@@ -13,7 +15,7 @@ use avatar_core::model::HumanBodyBone;
 use avatar_core::physbones::{Nodes, Transform};
 use avatar_core::Avatar;
 
-use super::{animator::inputs, paths, text, tips, unity};
+use super::{animator::inputs, canonical, floats, paths, rows, text, tips, unity};
 
 #[derive(Default, PartialEq, Eq, Debug)]
 pub struct Run {
@@ -70,16 +72,19 @@ pub fn run(avatar: &Avatar, dir: &Path, frames: Option<usize>) -> Run {
     let nodes = Nodes::read(avatar).unwrap();
     let names = paths(avatar, &nodes);
     let bone = |b: HumanBodyBone| avatar.model.humanoid.bones.get(&b).map(|b| b.node.0 as usize);
-    let tracked = [bone(HumanBodyBone::Head), bone(HumanBodyBone::LeftHand), bone(HumanBodyBone::RightHand)];
-    let track: BTreeMap<usize, Vec<Transform>> = text(&dir.join("track.tsv"))
-        .lines()
-        .skip(1)
-        .map(|l| {
-            let f: Vec<&str> = l.split('\t').collect();
-            let poses = f[1..5].iter().map(|p| unity(&p.split(',').map(|x| x.parse().unwrap()).collect::<Vec<f32>>())).collect();
-            (f[0].parse().unwrap(), poses)
-        })
-        .collect();
+    let index: BTreeMap<String, usize> = names.iter().enumerate().filter_map(|(i, n)| n.as_deref().map(|n| (canonical(n), i))).collect();
+    let body: BTreeSet<usize> = avatar.model.humanoid.bones.iter().filter(|(b, _)| **b <= HumanBodyBone::RightToes).map(|(_, b)| b.node.0 as usize).collect();
+    let roots: BTreeMap<usize, Transform> = rows(&dir.join("track.tsv"))[1..].iter().map(|r| (r[0].parse().unwrap(), unity(&floats(&r[1])))).collect();
+    let mut stood = BTreeMap::<usize, Vec<(usize, Transform)>>::new();
+    for line in text(&dir.join("poses.tsv")).lines() {
+        let r: Vec<&str> = line.splitn(4, '\t').collect();
+        if r[1] != "root" {
+            continue;
+        }
+        if let Some(&n) = index.get(canonical(r[2]).as_str()).filter(|n| body.contains(n)) {
+            stood.entry(r[0].parse().unwrap()).or_default().push((n, unity(&floats(r[3]))));
+        }
+    }
     let script = inputs(dir);
     let first = *script.keys().next().expect("the script has no frames");
     let last = *script.keys().next_back().unwrap();
@@ -101,14 +106,19 @@ pub fn run(avatar: &Avatar, dir: &Path, frames: Option<usize>) -> Run {
             }
             writeln!(run.script, "{f}\tset\t{n}\t{:08x}\t{}", v.to_bits(), b as u8).unwrap();
         }
-        if let Some(head) = tracked[0] {
+        if let Some(head) = bone(HumanBodyBone::Head) {
             let h = Transform { scale: glam::Vec3::ONE, ..ev.output().space[head] };
             ev.set_head(h);
             writeln!(run.script, "{f}\thead\t{}", bits(&h)).unwrap();
         }
-        if let Some(t) = track.get(&f) {
-            root = t[0];
-            poses = tracked.iter().zip(&t[1..]).filter_map(|(n, p)| n.map(|n| (n, *p))).collect();
+        if let Some(&r) = roots.get(&f) {
+            root = r;
+        }
+        for &(n, p) in stood.get(&f).into_iter().flatten() {
+            match poses.iter_mut().find(|(m, _)| *m == n) {
+                Some(at) => at.1 = p,
+                None => poses.push((n, p)),
+            }
         }
         for (n, p) in &poses {
             writeln!(run.script, "{f}\tpose\t{n}\t{}", bits(p)).unwrap();

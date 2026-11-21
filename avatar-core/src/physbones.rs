@@ -189,6 +189,8 @@ struct Bone {
 struct Chain {
     /// The component's node and its ancestors.
     lineage: Vec<usize>,
+    /// Another component earlier in the model has the same root: VRChat poses those bones by the first alone.
+    shadowed: bool,
     running: bool,
     reset_when_disabled: bool,
     version: PhysBoneVersion,
@@ -433,6 +435,7 @@ fn chain(pb: &model::PhysBone, roots: &[usize], nodes: &Nodes) -> Chain {
     }
     Chain {
         lineage,
+        shadowed: false,
         running: false,
         reset_when_disabled: pb.reset_when_disabled,
         version: pb.version,
@@ -460,7 +463,10 @@ impl PhysBones {
         let nodes = Nodes::read(avatar)?;
         let model = &avatar.model;
         let roots: Vec<usize> = model.physbones.iter().map(|p| p.root.0 as usize).collect();
-        let chains: Vec<Chain> = model.physbones.iter().map(|pb| chain(pb, &roots, &nodes)).collect();
+        let mut chains: Vec<Chain> = model.physbones.iter().map(|pb| chain(pb, &roots, &nodes)).collect();
+        for (i, c) in chains.iter_mut().enumerate() {
+            c.shadowed = roots[..i].contains(&roots[i]);
+        }
         let colliders: Vec<ColliderAt> = model
             .colliders
             .iter()
@@ -752,7 +758,7 @@ fn blend(a: &Frame, b: &Frame, s: f32) -> Frame {
 
 impl Chain {
     fn on(&self, frame: &Frame, index: usize) -> bool {
-        frame.enabled.get(index).copied().unwrap_or(true) && self.lineage.iter().all(|&n| frame.active.get(n).copied().unwrap_or(true))
+        !self.shadowed && frame.enabled.get(index).copied().unwrap_or(true) && self.lineage.iter().all(|&n| frame.active.get(n).copied().unwrap_or(true))
     }
 
     fn parent_world(&self, frame: &Frame) -> Transform {

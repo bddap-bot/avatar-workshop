@@ -6,6 +6,7 @@ import collections
 import csv
 import json
 import math
+import re
 import statistics
 import sys
 from pathlib import Path
@@ -26,6 +27,12 @@ def rows(path):
         return [r for r in csv.reader(f, delimiter="\t", quoting=csv.QUOTE_NONE)]
 
 
+def canonical(path):
+    """A path with VRCFury's per-build object numbers (`[VF12]`) dropped, so an export and a recording of different builds
+    name the same objects alike."""
+    return re.sub(r"\[VF\d+\]", "[VF]", path)
+
+
 def plain(name):
     return " ".join(name.split())
 
@@ -35,7 +42,7 @@ def tips(path):
     if not path.exists():
         return out
     for frame, tip, x, y, z in rows(path):
-        out.setdefault(tip, {})[int(frame)] = np.array([float(x), float(y), float(z)])
+        out.setdefault(canonical(tip), {})[int(frame)] = np.array([float(x), float(y), float(z)])
     return out
 
 
@@ -57,7 +64,7 @@ def main(reference, runtime):
     by_label = {s["label"]: s for s in steps.values()}
     window = range(by_label["motion"]["start"], by_label["settle"]["start"] + by_label["settle"]["frames"])
 
-    lengths = {r[0]: float(r[1]) for r in rows(reference / "chains.tsv")[1:]}
+    lengths = {canonical(r[0]): float(r[1]) for r in rows(reference / "chains.tsv")[1:]}
     ref_tips, run_tips = tips(reference / "tips.tsv"), tips(runtime / "tips.tsv")
     per_tip = {}
     for tip, length in lengths.items():
