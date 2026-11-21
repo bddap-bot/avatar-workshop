@@ -21,6 +21,9 @@ pub struct Run {
     pub parameters: String,
     pub states: String,
     pub output: String,
+    /// What each frame fed the core, for a runtime to feed its own: `frame dt root`, then `set name value builtin`,
+    /// `head pose` and `pose node pose` lines, each value the hex of its f32 bits.
+    pub script: String,
 }
 
 fn log(out: &mut String, last: &mut BTreeMap<String, String>, frame: usize, key: String, value: String) {
@@ -33,6 +36,12 @@ fn log(out: &mut String, last: &mut BTreeMap<String, String>, frame: usize, key:
 fn pose(t: &Transform) -> String {
     let (p, q, s) = (t.translation, t.rotation, t.scale);
     [p.x, p.y, p.z, q.x, q.y, q.z, q.w, s.x, s.y, s.z].iter().map(|v| format!("{v:?}")).collect::<Vec<_>>().join(",")
+}
+
+/// A pose's ten values as the hex of their bits, so a reader gets exactly them.
+fn bits(t: &Transform) -> String {
+    let (p, q, s) = (t.translation, t.rotation, t.scale);
+    [p.x, p.y, p.z, q.x, q.y, q.z, q.w, s.x, s.y, s.z].iter().map(|v| format!("{:08x}", v.to_bits())).collect::<Vec<_>>().join(",")
 }
 
 fn output(out: &Output, frame: usize, file: &mut String, last: &mut BTreeMap<String, String>) {
@@ -82,22 +91,29 @@ pub fn run(avatar: &Avatar, dir: &Path, frames: Option<usize>) -> Run {
     let mut root = Transform::IDENTITY;
     let mut poses: Vec<(usize, Transform)> = vec![];
     for f in first..end {
+        let dt: f32 = if f == first { 0.0 } else { 1.0 / 60.0 };
         for (n, v) in script.get(&f).into_iter().flatten() {
-            if builtin.contains(n.as_str()) {
+            let b = builtin.contains(n.as_str());
+            if b {
                 ev.set_builtin(n, *v);
             } else {
                 ev.set(n, *v);
             }
+            writeln!(run.script, "{f}\tset\t{n}\t{:08x}\t{}", v.to_bits(), b as u8).unwrap();
         }
         if let Some(head) = tracked[0] {
-            let h = ev.output().space[head];
-            ev.set_head(Transform { scale: glam::Vec3::ONE, ..h });
+            let h = Transform { scale: glam::Vec3::ONE, ..ev.output().space[head] };
+            ev.set_head(h);
+            writeln!(run.script, "{f}\thead\t{}", bits(&h)).unwrap();
         }
         if let Some(t) = track.get(&f) {
             root = t[0];
             poses = tracked.iter().zip(&t[1..]).filter_map(|(n, p)| n.map(|n| (n, *p))).collect();
         }
-        let dt = if f == first { 0.0 } else { 1.0 / 60.0 };
+        for (n, p) in &poses {
+            writeln!(run.script, "{f}\tpose\t{n}\t{}", bits(p)).unwrap();
+        }
+        writeln!(run.script, "{f}\tframe\t{:08x}\t{}", dt.to_bits(), bits(&root)).unwrap();
         ev.evaluate(&Input { dt, root, poses: &poses, held: &[], senders: &[], hands: &[] });
         for (tip, p) in tips(avatar, &nodes, &names, &ev, ev.output()) {
             writeln!(run.tips, "{f}\t{tip}\t{:?}\t{:?}\t{:?}", p.x, p.y, p.z).unwrap();
@@ -120,7 +136,7 @@ pub fn run(avatar: &Avatar, dir: &Path, frames: Option<usize>) -> Run {
 impl Run {
     pub fn write(&self, out: &Path) {
         std::fs::create_dir_all(out).unwrap();
-        for (file, s) in [("tips.tsv", &self.tips), ("params.tsv", &self.parameters), ("states.tsv", &self.states), ("output.tsv", &self.output)] {
+        for (file, s) in [("tips.tsv", &self.tips), ("params.tsv", &self.parameters), ("states.tsv", &self.states), ("output.tsv", &self.output), ("script.tsv", &self.script)] {
             std::fs::write(out.join(file), s).unwrap();
         }
     }

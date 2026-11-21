@@ -13,6 +13,3 @@ avatar-core = { path = "../avatar-core" }
 godot = { version = "0.5.5", features = ["api-4-6", "experimental-threads"] }
 glam = "0.34"
 serde_json = "1"
-
-[profile.release]
-lto = "thin"

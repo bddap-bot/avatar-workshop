@@ -6,7 +6,8 @@
 //! core at 60 Hz through its frame evaluation and writes to OUT: `tips.tsv`, every PhysBone tip each frame in metres
 //! from the root along Unity's axes; and as change logs `params.tsv`, the animator's parameters, `states.tsv`, each
 //! layer's state, and `output.tsv`, the frame output (node local poses, active and renderer enabled flags, bound
-//! blendshapes, material properties and slots). Two runs write the same bytes.
+//! blendshapes, material properties and slots); and `script.tsv`, what each frame fed the core, so another runtime
+//! can feed its own the same. Two runs write the same bytes.
 
 #[path = "../tests/reference/mod.rs"]
 mod reference;

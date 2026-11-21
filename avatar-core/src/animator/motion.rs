@@ -748,7 +748,7 @@ pub fn weights_cartesian(points: &[Vec2], p: Vec2) -> Vec<f32> {
 }
 
 fn signed_angle(a: Vec2, b: Vec2) -> f32 {
-    (a.x * b.y - a.y * b.x).atan2(a.dot(b))
+    libm::atan2f(a.x * b.y - a.y * b.x, a.dot(b))
 }
 
 /// Gradient band interpolation in polar space, as Unity's freeform directional blend computes it: a pair with a
@@ -814,7 +814,7 @@ pub fn weights_simple_directional(points: &[Vec2], p: Vec2) -> Vec<f32> {
         }
         return w;
     }
-    let angle = |q: Vec2| q.y.atan2(q.x);
+    let angle = |q: Vec2| libm::atan2f(q.y, q.x);
     let pa = angle(p);
     let mut sorted = dirs.clone();
     sorted.sort_by(|&a, &b| angle(points[a]).total_cmp(&angle(points[b])));

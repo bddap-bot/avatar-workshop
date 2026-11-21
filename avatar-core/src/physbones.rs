@@ -1049,13 +1049,13 @@ fn limit(direction: Vec3, local_rest: Vec3, frame: Quat, limit: LimitAt) -> Vec3
         LimitAt::None => unreachable!(),
         LimitAt::Angle { max, .. } => cone(d, max),
         LimitAt::Hinge { max, .. } => {
-            let angle = d.z.atan2(d.y).clamp(-max, max);
-            Vec3::new(0.0, angle.cos(), angle.sin())
+            let angle = libm::atan2f(d.z, d.y).clamp(-max, max);
+            Vec3::new(0.0, libm::cosf(angle), libm::sinf(angle))
         }
         LimitAt::Polar { max_x, max_z, .. } => {
-            let pitch = d.z.atan2(d.y).clamp(-max_x, max_x);
-            let yaw = d.x.atan2(d.y.hypot(d.z)).clamp(-max_z, max_z);
-            Vec3::new(yaw.sin(), yaw.cos() * pitch.cos(), yaw.cos() * pitch.sin())
+            let pitch = libm::atan2f(d.z, d.y).clamp(-max_x, max_x);
+            let yaw = libm::atan2f(d.x, libm::hypotf(d.y, d.z)).clamp(-max_z, max_z);
+            Vec3::new(libm::sinf(yaw), libm::cosf(yaw) * libm::cosf(pitch), libm::cosf(yaw) * libm::sinf(pitch))
         }
     };
     rotation * limited

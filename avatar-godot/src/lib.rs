@@ -96,6 +96,10 @@ fn from_godot(t: Transform3D) -> Transform {
     Transform { translation: Vec3::new(t.origin.x, t.origin.y, t.origin.z), rotation, scale: s }
 }
 
+fn parts(position: Vector3, rotation: Quaternion, scale: Vector3) -> Transform {
+    Transform { translation: Vec3::new(position.x, position.y, position.z), rotation: Quat::from_xyzw(rotation.x, rotation.y, rotation.z, rotation.w), scale: Vec3::new(scale.x, scale.y, scale.z) }
+}
+
 fn to_godot(t: &Transform) -> Transform3D {
     let (p, q, s) = (t.translation, t.rotation, t.scale);
     let basis = Basis::from_quaternion(Quaternion::new(q.x, q.y, q.z, q.w)) * Basis::from_scale(Vector3::new(s.x, s.y, s.z));
@@ -200,6 +204,12 @@ impl AvatarEvaluator {
         self.evaluator.set_head(from_godot(head))
     }
 
+    /// `set_head` from the parts of its pose, as given: no basis decomposed.
+    #[func]
+    fn set_head_parts(&mut self, position: Vector3, rotation: Quaternion) {
+        self.evaluator.set_head(parts(position, rotation, Vector3::ONE))
+    }
+
     /// Sets a node's pose in the avatar's root space for the next `evaluate`, after animation and before dynamics.
     #[func]
     fn pose(&mut self, node: i32, at: Transform3D) {
@@ -207,13 +217,30 @@ impl AvatarEvaluator {
         self.poses.push((n, from_godot(at)));
     }
 
+    /// `pose` from the parts of its pose, as given.
+    #[func]
+    fn pose_parts(&mut self, node: i32, position: Vector3, rotation: Quaternion, scale: Vector3) {
+        let Some(n) = self.node(node) else { return };
+        self.poses.push((n, parts(position, rotation, scale)));
+    }
+
+    /// `evaluate` with the root from the parts of its pose, as given.
+    #[func]
+    fn evaluate_parts(&mut self, dt: f32, position: Vector3, rotation: Quaternion, hands: VarArray) {
+        self.frame(dt, parts(position, rotation, Vector3::ONE), hands)
+    }
+
     /// Evaluates a frame `dt` seconds after the last, the avatar root at `root` in the world, with the poses set
     /// since the last frame and the other avatars' `hands`.
     #[func]
     fn evaluate(&mut self, dt: f32, root: Transform3D, hands: VarArray) {
+        self.frame(dt, from_godot(root), hands)
+    }
+
+    fn frame(&mut self, dt: f32, root: Transform, hands: VarArray) {
         let poses = std::mem::take(&mut self.poses);
         let others: Vec<HandCollider> = hands.iter_shared().filter_map(|h| h.try_to::<Gd<AvatarHands>>().ok()).flat_map(|h| h.bind().hands.clone()).collect();
-        self.evaluator.evaluate(&Input { dt, root: from_godot(root), poses: &poses, held: &[], senders: &[], hands: &others });
+        self.evaluator.evaluate(&Input { dt, root, poses: &poses, held: &[], senders: &[], hands: &others });
     }
 
     /// This avatar's hand and finger colliders after the last frame, named `player` for the avatars around it.
@@ -258,6 +285,12 @@ impl AvatarEvaluator {
                 m.set_surface_override_material(*slot as i32, mat);
             }
         }
+    }
+
+    /// A node's parent, -1 for one at the top: the core holds a top node at the avatar's root.
+    #[func]
+    fn parent(&self, node: i32) -> i32 {
+        self.node(node).and_then(|n| self.evaluator.parents()[n]).map_or(-1, |p| p as i32)
     }
 
     /// Whether renderer `r`, in the model's order, draws after the last frame.

@@ -1,5 +1,4 @@
 .godot/
-/avatar-core/target/
+/target/
 __pycache__*
-/avatar-godot/target/
 /addons/avatar_workshop/bin/

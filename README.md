@@ -130,7 +130,7 @@ replay, with the SDK's PhysBone output in place of the core's (`Input::held`); a
 `cargo run --release --example run -- RECORDING AVATAR.glb OUT [--frames N]` writes the core's reference run
 of a model under a recording's scripted input: each frame the parameters `inputs.tsv` sets and the root, head and
 hands of `track.tsv`, at 60 Hz. `OUT/tips.tsv` holds every PhysBone tip each frame, and `params.tsv`,
-`states.tsv` and `output.tsv` the animator's parameters, each layer's state and the frame output as change logs.
+`states.tsv` and `output.tsv` the animator's parameters, each layer's state and the frame output as change logs. `script.tsv` is what each frame fed the core (`set`, `head`, `pose` and `frame` lines, in the order it applied them, each value the hex of its f32 bits), so another runtime can feed its own the same and compare.
 Two runs write the same bytes; `cargo test --test evaluate` checks that on the fixture's recording.
 
 ## Godot extension
@@ -148,10 +148,11 @@ host; another target is `cargo build --release --target <triple>` in `avatar-god
   instantiates it with its own evaluator, `{root, evaluator}`, for each avatar wearing the model. `pack` takes the `GLTFState` a host's glTF document extensions read, and returns the glTF textures by index, as menu icons name them. Both are safe off the
   main thread; the root is outside the tree.
 - `AvatarEvaluator` drives `Evaluator`: `set_parameter`, `set_builtin`, `set_eyes`, `set_head`, `pose(node,
-  root_space)` for the bones the host moves, `evaluate(dt, root, hands)` with other avatars' `hands(player)`,
+  root_space)` for the bones the host moves, `evaluate(dt, root, hands)` with other avatars' `hands(player)` (and
+  `pose_parts`, `set_head_parts` and `evaluate_parts`, which take a pose's position, rotation and scale as given),
   `grab`, `hold`, `release`, then `apply()` writes node poses, renderer visibility (each renderer alone, its node and every ancestor active), blendshapes and
   material slots onto the bound scene; call it each frame once the scene is in the tree, since Godot resets a renderer's visibility as it enters. `bind` gives each renderer its own slots. `shown`, `space`, `local`,
-  `parameters`, `saved`, `states`, `physbone_bones` and `materials` (the animated material properties, which a
+  `parameters`, `saved`, `states`, `physbone_bones`, `parent` (a top node, -1, is the core's avatar root) and `materials` (the animated material properties, which a
   host's material renderer applies) read the last frame. A node or PhysBone index out of range is refused
   with an error.
 

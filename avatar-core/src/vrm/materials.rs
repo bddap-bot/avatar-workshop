@@ -15,7 +15,7 @@ use crate::model::{
 type Properties = BTreeMap<String, MaterialProperty>;
 
 pub(super) fn to_srgb(c: [f32; 4]) -> [f32; 4] {
-    let encode = |x: f32| if x <= 0.003_130_8 { 12.92 * x } else { 1.055 * x.max(0.0).powf(1.0 / 2.4) - 0.055 };
+    let encode = |x: f32| if x <= 0.003_130_8 { 12.92 * x } else { 1.055 * libm::powf(x.max(0.0), 1.0 / 2.4) - 0.055 };
     [encode(c[0]), encode(c[1]), encode(c[2]), c[3]]
 }
 

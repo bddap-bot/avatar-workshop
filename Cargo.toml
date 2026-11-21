@@ -1,0 +1,9 @@
+[workspace]
+members = ["avatar-core", "avatar-godot"]
+resolver = "2"
+
+[profile.test]
+opt-level = 3
+
+[profile.release]
+lto = "thin"

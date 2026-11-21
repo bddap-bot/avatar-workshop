@@ -72,8 +72,8 @@ const GIMBAL: f32 = 0.999998;
 fn to_euler(q: Quat) -> Vec3 {
     let m = glam::Mat3::from_quat(q);
     let (m00, m02, m10, m11, m12, m20, m22) = (m.x_axis.x, m.z_axis.x, m.x_axis.y, m.y_axis.y, m.z_axis.y, m.x_axis.z, m.z_axis.z);
-    let x = (-m12).clamp(-1.0, 1.0).asin();
-    let (y, z) = if m12.abs() < GIMBAL { (m02.atan2(m22), m10.atan2(m11)) } else { ((-m20).atan2(m00), 0.0) };
+    let x = libm::asinf((-m12).clamp(-1.0, 1.0));
+    let (y, z) = if m12.abs() < GIMBAL { (libm::atan2f(m02, m22), libm::atan2f(m10, m11)) } else { (libm::atan2f(-m20, m00), 0.0) };
     Vec3::new(x.to_degrees(), y.to_degrees(), z.to_degrees())
 }
 
@@ -391,8 +391,8 @@ impl Constraints {
             ConstraintKind::Scale { scale } => {
                 let rest = Vec3::from(scale.at_rest);
                 let s = if total > 0.0 {
-                    let log: Vec3 = sources.iter().map(|(t, w, _)| t.scale.abs().max(Vec3::splat(f32::MIN_POSITIVE)).ln() * *w).sum();
-                    let s = (log / total).exp();
+                    let log: Vec3 = sources.iter().map(|(t, w, _)| t.scale.abs().max(Vec3::splat(f32::MIN_POSITIVE)).map(libm::logf) * *w).sum();
+                    let s = (log / total).map(libm::expf);
                     let s = (if local_space { s } else { s / parent.scale }) * Vec3::from(scale.offset);
                     rest.lerp(s, weight)
                 } else {
