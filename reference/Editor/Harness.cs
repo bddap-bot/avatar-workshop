@@ -1128,9 +1128,11 @@ namespace AvatarWorkshop.Reference
                     if (p.type == AnimatorControllerParameterType.Float && pl.IsParameterControlledByCurve(p.nameHash)) v[$"curve:{i}:{p.name}"] = F(pl.GetFloat(p.nameHash));
                 }
             }
-            if (humanKeys.Length > 0)
+            // The emulator can attach a frame before its graph first plays; that frame's animator has not run.
+            if (humanKeys.Length > 0 && humanRuns[0] == humanSeen && mixer.GetTime() > 0)
+                throw new Exception($"the animator's output stream held no humanoid values at frame {frame}");
+            if (humanKeys.Length > 0 && humanRuns[0] != humanSeen)
             {
-                if (humanRuns[0] == humanSeen) throw new Exception($"the animator's output stream held no humanoid values at frame {frame}");
                 humanSeen = humanRuns[0];
                 for (int i = 0; i < humanKeys.Length; i++) v[humanKeys[i]] = humanHeld[i] ? F(humanValues[i]) : "-";
             }
