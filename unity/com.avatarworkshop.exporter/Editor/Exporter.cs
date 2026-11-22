@@ -11,6 +11,37 @@ namespace AvatarWorkshop.Exporter
 {
     public static partial class Exporter
     {
+        // The pose the VRChat client computes automatic descriptor colliders on, as measured on test avatars: Unity's
+        // muscle values for a T-pose with the arms' Down-Up at zero, the body at height one and unturned. Each humanoid
+        // bone's local transform in it, `nodes` left as they were; null when Unity cannot pose the avatar.
+        public static Dictionary<HumanBodyBones, (Vector3 position, Quaternion rotation)> ColliderPose(Animator animator, IEnumerable<Transform> nodes)
+        {
+            var saved = nodes.Select(t => (t, t.localPosition, t.localRotation, t.localScale)).ToList();
+            try
+            {
+                var muscles = new float[HumanTrait.MuscleCount];
+                foreach (var side in new[] { "Left ", "Right " })
+                    foreach (var (name, value) in new[] { ("Upper Leg Front-Back", 0.6001087f), ("Lower Leg Stretch", 0.9999163f), ("Arm Front-Back", 0.3000543f), ("Forearm Stretch", 0.9999163f) })
+                        muscles[Array.IndexOf(HumanTrait.MuscleName, side + name)] = value;
+                var pose = new HumanPose { bodyPosition = Vector3.up, bodyRotation = Quaternion.identity, muscles = muscles };
+                using (var handler = new HumanPoseHandler(animator.avatar, animator.transform)) handler.SetHumanPose(ref pose);
+                var o = new Dictionary<HumanBodyBones, (Vector3, Quaternion)>();
+                for (int i = 0; i < (int)HumanBodyBones.LastBone; i++)
+                    if (animator.GetBoneTransform((HumanBodyBones)i) is Transform t)
+                        o[(HumanBodyBones)i] = (t.localPosition, t.localRotation);
+                return o;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[aw] collider pose: " + e.Message);
+                return null;
+            }
+            finally
+            {
+                foreach (var (t, p, r, sc) in saved) { t.localPosition = p; t.localRotation = r; t.localScale = sc; }
+            }
+        }
+
         // AnimationUtility lists a clip's bindings in an order that differs from one editor process to the next.
         public static IEnumerable<UnityEditor.EditorCurveBinding> Ordered(IEnumerable<UnityEditor.EditorCurveBinding> bindings) =>
             bindings.OrderBy(b => b.path, StringComparer.Ordinal).ThenBy(b => b.type.FullName, StringComparer.Ordinal)

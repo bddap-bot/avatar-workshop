@@ -1,8 +1,8 @@
-0	5	300	-	rest	GestureLeft=0,GestureRight=0,GestureLeftWeight=0,GestureRightWeight=0,Viseme=0,Voice=0,Grounded=1,Seated=0,AFK=0,VelocityX=0,VelocityY=0,VelocityZ=0,AngularY=0,Upright=1,TrackingType=3,VRMode=1,InStation=0,IsOnFriendsList=0
-1	305	445	-	self sweep	
-2	750	120	-	self away	
-3	870	445	-	other sweep	
-4	1315	120	-	other away	
-5	1435	445	-	both sweep	
-6	1880	120	-	both away	
-7	2000	60	-	final	
+0	0	300	-	rest	GestureLeft=0,GestureRight=0,GestureLeftWeight=0,GestureRightWeight=0,Viseme=0,Voice=0,Grounded=1,Seated=0,AFK=0,VelocityX=0,VelocityY=0,VelocityZ=0,AngularY=0,Upright=1,TrackingType=3,VRMode=1,InStation=0,IsOnFriendsList=0
+1	300	445	-	self sweep	
+2	745	120	-	self away	
+3	865	445	-	other sweep	
+4	1310	120	-	other away	
+5	1430	445	-	both sweep	
+6	1875	120	-	both away	
+7	1995	60	-	final	

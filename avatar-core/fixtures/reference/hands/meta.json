@@ -1,6 +1,7 @@
 {
+  "frames": 2055,
   "hands": true,
-  "placed_hand_colliders": 0,
+  "harness": "9aae61a6430a26294b0a75e767a762010d6d8a12-dirty",
   "outside_hands": [
     {
       "transform": "OtherHand",
@@ -20,6 +21,8 @@
       "player": 1000
     }
   ],
+  "placed_hand_colliders": 0,
+  "rate": 60,
   "standard_senders": [
     {
       "slot": "handLeft",
@@ -70,9 +73,42 @@
       "copies": 1
     }
   ],
-  "harness": "f29b0e9496bd4afa00f8fa5ed1a582e693467dd5-dirty",
+  "tips": 6,
   "unity": "2022.3.22f1",
-  "rate": 60,
-  "frames": 2055,
-  "tips": 6
+  "wearer_hands": [
+    {
+      "slot": "handLeft",
+      "transform": "Armature/Hips/Spine/Chest/LeftShoulder/LeftUpperArm/LeftLowerArm/LeftHand",
+      "radius": 0.05,
+      "height": 0.15,
+      "position": [
+        -0.05,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0.707106769,
+        0.707106769
+      ]
+    },
+    {
+      "slot": "fingerIndexLeft",
+      "transform": "Armature/Hips/Spine/Chest/LeftShoulder/LeftUpperArm/LeftLowerArm/LeftHand",
+      "radius": 0.015,
+      "height": 0.13,
+      "position": [
+        -0.05,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0.7071068,
+        0.7071068
+      ]
+    }
+  ]
 }

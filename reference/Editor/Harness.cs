@@ -335,6 +335,8 @@ namespace AvatarWorkshop.Reference
         // In the root's space.
         Vector3? handAt;
         readonly List<VRCPhysBoneColliderBase> outsideHands = new List<VRCPhysBoneColliderBase>();
+        List<(string slot, VRCPhysBoneCollider collider)> wearerHands;
+        HashSet<VRCPhysBoneColliderBase> builtColliders;
         int placedHandColliders;
         Transform[] tracked = new Transform[0];
         Vector2 armSwing;
@@ -419,6 +421,7 @@ namespace AvatarWorkshop.Reference
             if (exported) throw new Exception($"the build preprocess ran twice on {avatarName}");
             exported = true;
             builtSenders = new HashSet<ContactSender>(avatar.GetComponentsInChildren<ContactSender>(true));
+            builtColliders = new HashSet<VRCPhysBoneColliderBase>(avatar.GetComponentsInChildren<VRCPhysBoneColliderBase>(true));
             Directory.CreateDirectory(output);
             var name = avatar.name;
             avatar.name = avatarName;
@@ -755,7 +758,7 @@ namespace AvatarWorkshop.Reference
                 Tips(pb, physBones);
             StandardSenders(descriptor);
             if (dynamicsProbe) CreateOutsideSenders();
-            if (handsProbe) CreateOutsideHands(descriptor);
+            if (handsProbe) CreateOutsideHands();
             Inputs(physBones);
 
             Directory.CreateDirectory(output);
@@ -780,6 +783,9 @@ namespace AvatarWorkshop.Reference
             File.WriteAllText(Path.Combine(output, "coverage.json"), Json(coverage) + "\n");
             var missing = Coverage.Required.Where(k => coverage[k] == 0).ToList();
             if (fixture && missing.Count > 0) throw new Exception("fixture lacks " + string.Join(", ", missing));
+            placedHandColliders = WearerHands.EmulatorColliders(descriptor, root, builtColliders);
+            if (placedHandColliders != 0) throw new Exception($"the emulator put {placedHandColliders} PhysBone colliders on the descriptor's hand and finger bones");
+            wearerHands = WearerHands.Stand(descriptor, root);
             if (Cased)
             {
                 var (name, listed, compositions) = human ? ("composition", Coverage.Compositions, Coverage.CountCompositions(descriptor))
@@ -804,7 +810,7 @@ namespace AvatarWorkshop.Reference
             }
             if (handsProbe)
             {
-                var settings = Fixture.CountHands(root.gameObject, outsideHands);
+                var settings = Fixture.CountHands(root.gameObject, wearerHands, outsideHands);
                 File.WriteAllText(Path.Combine(output, "compositions.json"), Json(settings) + "\n");
                 var absent = Fixture.HandSettings.Where(k => settings[k] == 0).ToList();
                 if (absent.Count > 0) throw new Exception($"the hand collider probe lacks {string.Join(", ", absent)}");
@@ -842,6 +848,12 @@ namespace AvatarWorkshop.Reference
                 ["dynamics"] = dynamicsProbe,
                 ["hands"] = handsProbe,
                 ["placed_hand_colliders"] = placedHandColliders,
+                ["wearer_hands"] = wearerHands.Select(x => new Dictionary<string, object>
+                {
+                    ["slot"] = x.slot, ["transform"] = PathOf(x.collider.GetRootTransform()), ["radius"] = x.collider.radius, ["height"] = x.collider.height,
+                    ["position"] = new[] { x.collider.position.x, x.collider.position.y, x.collider.position.z },
+                    ["rotation"] = new[] { x.collider.rotation.x, x.collider.rotation.y, x.collider.rotation.z, x.collider.rotation.w },
+                }).ToList(),
                 ["outside_hands"] = outsideHands.Select(c => new Dictionary<string, object>
                 {
                     ["transform"] = PathOf(c.GetRootTransform()), ["radius"] = c.radius, ["height"] = c.height,
@@ -1205,9 +1217,8 @@ namespace AvatarWorkshop.Reference
             }
         }
 
-        // Another player's hand: a global PhysBone collider outside the avatar, with a player id of its own. The stand-ins
-        // rest on the emulator leaving no PhysBone collider on the descriptor's hand and finger collider bones.
-        void CreateOutsideHands(VRCAvatarDescriptor descriptor)
+        // Another player's hand: a global PhysBone collider outside the avatar, with a player id of its own.
+        void CreateOutsideHands()
         {
             var go = new GameObject(Fixture.OtherHand.name);
             var c = go.AddComponent<VRCPhysBoneCollider>();
@@ -1218,13 +1229,6 @@ namespace AvatarWorkshop.Reference
             c.playerId = Fixture.OtherPlayer;
             go.transform.SetPositionAndRotation(root.position + root.rotation * Fixture.Parked, root.rotation);
             outsideHands.Add(c);
-            foreach (var (slot, config) in AvatarWorkshop.Exporter.Exporter.DescriptorColliders(descriptor))
-            {
-                if (!(slot.StartsWith("hand") || slot.StartsWith("finger")) || config.state == VRCAvatarDescriptor.ColliderConfig.State.Disabled || config.transform == null) continue;
-                var bone = slot.StartsWith("finger") ? config.transform.parent : config.transform;
-                placedHandColliders += bone.GetComponents<VRCPhysBoneColliderBase>().Length;
-            }
-            if (placedHandColliders != 0) throw new Exception($"the emulator put {placedHandColliders} PhysBone colliders on the descriptor's hand and finger bones");
         }
 
         void MoveHand(VRCPhysBoneColliderBase c, Vector3 local) => c.transform.SetPositionAndRotation(root.position + root.rotation * local, root.rotation);

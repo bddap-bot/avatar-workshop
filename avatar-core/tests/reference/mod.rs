@@ -548,3 +548,60 @@ pub fn parameters(dir: &Path) -> BTreeMap<String, BTreeMap<usize, f32>> {
 pub fn at(log: &BTreeMap<usize, f32>, frame: usize) -> f32 {
     log.range(..=frame).next_back().map_or(0.0, |(_, v)| *v)
 }
+
+/// Where a recording's stand-ins for the wearer's hand and finger colliders (`wearer_hands` in `meta.json`) differ
+/// from the hand colliders the core puts on the avatar, one line each, and how many stand-ins it holds; a recording
+/// without them differs by that line.
+pub fn wearer_hand_mismatches(dir: &Path, avatar: &Avatar) -> (usize, Vec<String>) {
+    let Ok(meta) = std::fs::read_to_string(dir.join("meta.json")) else { return (0, vec!["no meta.json".into()]) };
+    let meta: serde_json::Value = serde_json::from_str(&meta).unwrap();
+    let Some(stood) = meta.get("wearer_hands").and_then(|h| h.as_array()) else { return (0, vec!["no wearer_hands".into()]) };
+    let nodes = Nodes::read(avatar).unwrap();
+    let names = paths(avatar, &nodes);
+    let m = &avatar.model;
+    let core: Vec<_> = avatar_core::contacts::standard_senders(&m.descriptor, &m.humanoid, &nodes)
+        .into_iter()
+        .filter(|s| s.collision_tags.first().is_some_and(|t| t == "Hand" || t.starts_with("Finger")))
+        .collect();
+    let mut out = vec![];
+    for c in &core {
+        let tag = &c.collision_tags[1];
+        if !stood.iter().any(|h| h["slot"].as_str().is_some_and(|s| slot_tag(s) == *tag)) {
+            out.push(format!("{tag}: no stand-in where the core puts a collider"));
+        }
+    }
+    let floats = |v: &serde_json::Value| -> Vec<f32> { v.as_array().unwrap().iter().map(|x| x.as_f64().unwrap() as f32).collect() };
+    for h in stood {
+        let slot = h["slot"].as_str().unwrap();
+        let tag = slot_tag(slot);
+        let Some(c) = core.iter().find(|s| s.collision_tags.get(1) == Some(&tag)) else {
+            out.push(format!("{slot}: the core puts no collider there"));
+            continue;
+        };
+        let avatar_core::model::ContactShape::Capsule { radius, height } = c.shape else { unreachable!("hand colliders are capsules") };
+        let (p, q) = (floats(&h["position"]), floats(&h["rotation"]));
+        let position = Vec3::new(-p[0], p[1], p[2]);
+        let axis = Quat::from_xyzw(q[0], -q[1], -q[2], q[3]).normalize() * Vec3::Y;
+        let core_axis = Quat::from_array(c.rotation).normalize() * Vec3::Y;
+        let node = names[c.node.0 as usize].as_deref().unwrap_or("");
+        let off = [
+            ("node", (node != canonical(h["transform"].as_str().unwrap())) as u8 as f32, 0.0),
+            ("radius", (h["radius"].as_f64().unwrap() as f32 - radius).abs(), 1e-4),
+            ("height", (h["height"].as_f64().unwrap() as f32 - height).abs(), 1e-4),
+            ("position", position.distance(Vec3::from(c.position)), 1e-4),
+            ("axis", 1.0 - axis.dot(core_axis).abs(), 1e-5),
+        ];
+        for (what, by, bound) in off {
+            if by > bound {
+                out.push(format!("{slot}: {what} off by {by}"));
+            }
+        }
+    }
+    (stood.len(), out)
+}
+
+/// A descriptor collider slot's side tag, as the client tags its standard sender: `fingerIndexLeft` is `FingerIndexL`.
+fn slot_tag(slot: &str) -> String {
+    let (part, side) = slot.strip_suffix("Left").map(|p| (p, "L")).or_else(|| slot.strip_suffix("Right").map(|p| (p, "R"))).unwrap();
+    format!("{}{}{side}", part[..1].to_uppercase(), &part[1..])
+}

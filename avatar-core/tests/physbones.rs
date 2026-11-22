@@ -330,6 +330,18 @@ fn hands_push_only_chains_their_filter_admits() {
     }
 }
 
+/// The recordings' stand-ins for the wearer's hand and finger colliders sit where the core puts them: the probe's and
+/// the fixture's custom hand and index finger (the fixture's automatic fingers have no finger bones to stand on).
+#[test]
+fn wearer_hand_stand_ins_sit_where_the_core_puts_hands() {
+    for (dir, model, count) in [("fixtures/reference/hands", "fixtures/unity-hands.glb", 2), ("fixtures/reference/fixture-animator", "fixtures/unity-synthetic.glb", 2)] {
+        let avatar = avatar_core::read(&std::fs::read(path(model)).unwrap()).unwrap();
+        let (stood, off) = reference::wearer_hand_mismatches(&path(dir), &avatar);
+        assert!(off.is_empty(), "{dir}: {off:#?}");
+        assert_eq!(stood, count, "{dir}");
+    }
+}
+
 /// The hand collider probe: the wearer's hand, another player's and both sweep through one chain per collision filter
 /// setting. Over every frame each tip's RMS error is within 5% of its chain's length of the recording, M5's bar, and
 /// no frame's error passes 7% (measured: 6.6%, on three-frame runs where a chain swings back over the hand); each

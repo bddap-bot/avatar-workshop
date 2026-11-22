@@ -8,10 +8,8 @@ using VRC.SDK3.Dynamics.PhysBone.Components;
 namespace AvatarWorkshop.Reference
 {
     // The hand collider probe: the fixture's body with one chain per collision filter setting hanging in a row before it,
-    // which the wearer's left hand and another player's hand sweep through. The SDK's editor simulation puts no PhysBone
-    // collider on the descriptor's hands (the emulator extracts its senders only), so global PhysBone colliders, which
-    // collide with every chain whose filter admits their player as the client's hand colliders do, stand on the wearer's
-    // hand and index finger where the client puts their colliders, and on the other player's hand.
+    // which the wearer's left hand and another player's hand sweep through, each a global PhysBone collider standing for
+    // the client's hand colliders (`WearerHands` and the harness's outside hand).
     public static partial class Fixture
     {
         public static readonly (string name, VRCPhysBoneBase.AdvancedBool allow, bool self, bool others)[] HandFilters =
@@ -24,7 +22,6 @@ namespace AvatarWorkshop.Reference
             ("Nobody", VRCPhysBoneBase.AdvancedBool.Other, false, false),
         };
 
-        public const string StandIn = "HandColliderStandIn";
         public const float HandRowSpacing = 0.25f, HandRowTop = 1.1f, HandRowDepth = 0.35f, HandBone = 0.1f;
         public static float HandRowHalf => (HandFilters.Length - 1) * HandRowSpacing / 2 + 0.3f;
         // The sweeps cross the chains' third bones.
@@ -41,11 +38,6 @@ namespace AvatarWorkshop.Reference
             d.collider_fingerIndexR = d.collider_fingerMiddleR = d.collider_fingerRingR = d.collider_fingerLittleR = off;
             d.collider_handL = new VRCAvatarDescriptor.ColliderConfig { state = custom, transform = t["LeftHand"], radius = 0.05f, height = 0.15f, position = new Vector3(-0.05f, 0, 0), rotation = Quaternion.Euler(0, 0, 90) };
             d.collider_fingerIndexL = new VRCAvatarDescriptor.ColliderConfig { state = custom, transform = t["LeftHandTip"], radius = 0.015f, height = 0.1f, position = Vector3.zero, rotation = Quaternion.identity };
-
-            var hand = d.collider_handL;
-            Global(t["LeftHand"], "hand", hand.radius, hand.height, hand.position, hand.rotation, root);
-            var (radius, height, position, rotation) = FingerCapsule(d.collider_fingerIndexL, t["LeftHandTip"]);
-            Global(t["LeftHand"], "finger", radius, height, position, rotation, root);
 
             var row = new GameObject("HandRow").transform;
             row.SetParent(root, false);
@@ -69,34 +61,10 @@ namespace AvatarWorkshop.Reference
             }
         }
 
-        // A global collider on its own child of `bone`, so the descriptor's bones carry only what the emulator puts there.
-        static void Global(Transform bone, string part, float radius, float height, Vector3 position, Quaternion rotation, Transform root)
-        {
-            var go = new GameObject($"{StandIn} {part}");
-            go.transform.SetParent(bone, false);
-            var c = go.AddComponent<VRCPhysBoneCollider>();
-            c.rootTransform = bone;
-            c.shapeType = VRCPhysBoneColliderBase.ShapeType.Capsule;
-            c.radius = radius; c.height = height; c.position = position; c.rotation = rotation;
-            c.globalCollision = VRCPhysBoneBase.AdvancedBool.True;
-        }
-
-        // Where the client puts a finger's collider, in its bone's parent's space: from the parent's origin through the
-        // bone, run on in the bone's own space to the collider's height (avatar-core's `finger_capsule`).
-        public static (float radius, float height, Vector3 position, Quaternion rotation) FingerCapsule(VRCAvatarDescriptor.ColliderConfig c, Transform bone)
-        {
-            var t = bone.localPosition;
-            var reach = t.normalized * Mathf.Max(c.height - t.magnitude, 0);
-            var end = t + bone.localRotation * Vector3.Scale(bone.localScale, reach);
-            var s = bone.localScale;
-            var radius = c.radius * Mathf.Max(Mathf.Abs(s.x), Mathf.Abs(s.y), Mathf.Abs(s.z));
-            return (radius, end.magnitude + 2 * radius, end * 0.5f, Quaternion.FromToRotation(Vector3.up, end.sqrMagnitude > 0 ? end.normalized : Vector3.up));
-        }
-
         public static readonly string[] HandSettings =
             HandFilters.Select(f => "chain." + f.name).Concat(new[] { "hand.wearer.hand", "hand.wearer.finger", "hand.other" }).ToArray();
 
-        public static SortedDictionary<string, int> CountHands(GameObject root, IEnumerable<VRCPhysBoneColliderBase> outside)
+        public static SortedDictionary<string, int> CountHands(GameObject root, IEnumerable<(string slot, VRCPhysBoneCollider collider)> wearer, IEnumerable<VRCPhysBoneColliderBase> outside)
         {
             var c = new SortedDictionary<string, int>(System.StringComparer.Ordinal);
             foreach (var k in HandSettings) c[k] = 0;
@@ -106,9 +74,7 @@ namespace AvatarWorkshop.Reference
                 if (spec.name != null && pb.allowCollision == spec.allow && pb.collisionFilter.allowSelf == spec.self && pb.collisionFilter.allowOthers == spec.others && pb.radius > 0)
                     c["chain." + spec.name]++;
             }
-            foreach (var x in root.GetComponentsInChildren<VRCPhysBoneColliderBase>(true))
-                if (x.globalCollision == VRCPhysBoneBase.AdvancedBool.True && x.name.StartsWith(StandIn))
-                    c["hand.wearer." + x.name.Substring(StandIn.Length + 1)]++;
+            foreach (var (slot, _) in wearer) c["hand.wearer." + (slot.StartsWith("finger") ? "finger" : "hand")]++;
             foreach (var x in outside)
                 if (x.globalCollision == VRCPhysBoneBase.AdvancedBool.True) c["hand.other"]++;
             return c;

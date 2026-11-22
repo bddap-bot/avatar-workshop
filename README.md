@@ -666,13 +666,22 @@ player id, a sphere standing for another avatar's part and a capsule carrying a 
 and at 3 m/s, their poses in `poses.tsv`. A recording fails if `compositions.json` counts zero for a setting
 `Coverage.DynamicsSettings` lists.
 
+Every recording stands in for the wearer's hand colliders. The SDK's editor simulation puts no PhysBone collider on
+the descriptor's hands (the emulator extracts its senders only; a recording fails if it left any on those bones,
+`placed_hand_colliders` in `meta.json`), while the client pushes every chain whose filter admits the wearer with the
+wearer's hand and finger colliders. So when recording starts, a global PhysBone collider stands on each enabled hand
+and finger collider where the core puts it (`reference/Editor/WearerHands.cs`), listed as `wearer_hands` in
+`meta.json`. An automatic collider is computed as the core computes it, from the skeleton in the humanoid's collider
+pose (the muscle pose the exporter writes as each bone's `colliderPose`). That the client's PhysBone hand colliders
+sit where the core puts them is assumed, not measured here. A global collider collides with every chain whose filter
+admits its player, as the client's hand colliders do; the hand collider probe below measures that filtering.
+`cargo test --test physbones` checks that the checked-in recordings' stand-ins sit where the core puts its hand
+colliders.
+
 The hand collider probe is the fixture's body with six chains of three 0.1 m segments hanging in a row in front of it, one per
 collision filter setting: allow collision on, off (its filter allowing both), and filtered to self only, others only,
-both and nobody. Its descriptor's only enabled colliders are the left hand's and the left index finger's, custom. The
-SDK's editor simulation puts no PhysBone collider on the descriptor's hands (the emulator extracts its senders only;
-a recording fails if it left any on those bones, `placed_hand_colliders` in `meta.json`), so global PhysBone colliders stand in for
-them: two on the left hand, where the core puts the hand's and the finger's colliders (their standard senders' places;
-that the client's PhysBone hand colliders sit there too is assumed, not measured here), and one outside the avatar
+both and nobody. Its descriptor's only enabled colliders are the left hand's and the left index finger's, custom, so
+the wearer's stand-ins (above) are two on the left hand, and one global PhysBone collider outside the avatar stands
 with another player id, for another player's hand (`outside_hands` in `meta.json`, its poses in `poses.tsv`). After a
 300-frame rest the wearer's left hand, placed after animation, sweeps along the row through the chains' third bones
 and back at 0.5 m/s, then the other player's hand does, then both from opposite ends, each followed by 120 frames away.
