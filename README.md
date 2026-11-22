@@ -42,12 +42,13 @@ enabled flag. A chain runs while its component is enabled and active in the hier
 
 The semantics were measured against the SDK's own simulation through the reference harness, not taken from its
 binaries. Simplified integration blends velocity toward pull by spring; advanced keeps momentum and pull,
-both scaled down by stiffness, and carries each bone with its parent's movement by stiffness. Version 1.1 gravity
+both scaled down by stiffness, and carries each bone with its parent's movement by a share that grows with stiffness,
+about one and a half times it at low stiffness and nearing all of it as stiffness nears 1. Version 1.1 gravity
 turns the rest direction toward down; version 1.0 gravity is a force that joins the pull, so each integration
 scales it as it scales pull. Falloff takes away its share of gravity times how closely the bone keeps its animated
 tilt from horizontal.
 Under version 1.1 stretch motion moves a bone's length away from its rest length, each step, by its share of the way to
-where the motion carries it, that share scaled down by stiffness under advanced integration, and back toward rest at
+where the motion carries it, that share scaled down by most of stiffness under advanced integration, and back toward rest at
 once; with none, only a grab stretches or squishes it.
 Immobile all-motion follows the root's parent, world only the avatar's position, and node, a type VRChat lacks,
 that node. Curves are read by depth along the chain. A chain whose root's parent, immobile node or collider is a

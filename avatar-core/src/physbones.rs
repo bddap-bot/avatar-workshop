@@ -945,7 +945,7 @@ impl Chain {
         };
         let carried = match self.integration {
             IntegrationType::Simplified => 0.0,
-            IntegrationType::Advanced => (q.stiffness * STIFFNESS_CARRY).min(1.0),
+            IntegrationType::Advanced => advanced_carry(q.stiffness),
         };
         let carry = parent.translation - self.settled[p].translation;
         let bone = &mut self.bones[i];
@@ -973,7 +973,7 @@ impl Chain {
             (Some(_), ..) => 1.0,
             (None, PhysBoneVersion::V1_0, _) => 0.0,
             (None, PhysBoneVersion::V1_1, IntegrationType::Simplified) => q.stretch_motion,
-            (None, PhysBoneVersion::V1_1, IntegrationType::Advanced) => q.stretch_motion * (1.0 - q.stiffness),
+            (None, PhysBoneVersion::V1_1, IntegrationType::Advanced) => q.stretch_motion * (1.0 - q.stiffness * STRETCH_STIFFNESS_SHARE),
         };
         let length = if share > 0.0 {
             let want = offset.length().clamp(rest_length * low, rest_length * high) / rest_length - 1.0;
@@ -1073,9 +1073,17 @@ impl Chain {
     }
 }
 
-/// Advanced integration carries a bone along with its parent's movement by this much per unit of stiffness,
-/// measured against the reference traces.
-const STIFFNESS_CARRY: f32 = 1.45;
+/// Advanced integration carries a bone along with its parent's movement by `CARRY_PER_STIFFNESS` times stiffness at low
+/// stiffness, nearing all of it as stiffness nears 1; measured against the reference traces at stiffness 0.1 to 0.8.
+fn advanced_carry(stiffness: f32) -> f32 {
+    (stiffness * CARRY_PER_STIFFNESS).min(1.0 - (1.0 - stiffness).powf(CARRY_EXPONENT))
+}
+const CARRY_PER_STIFFNESS: f32 = 1.45;
+/// How fast advanced integration's carry nears all of the parent's movement as stiffness rises.
+const CARRY_EXPONENT: f32 = 1.6;
+/// The share of stiffness that advanced integration takes from stretch motion's share, measured against the reference
+/// traces at stiffness 0.3 and 0.7.
+const STRETCH_STIFFNESS_SHARE: f32 = 0.8;
 /// A collider sphere touching a bone's segment at its parent's end moves the bone this share of the push that frees
 /// that point, and touching it at the bone's own end all of it, measured against the reference traces.
 const SEGMENT_PUSH_AT_PARENT: f32 = 0.35;
