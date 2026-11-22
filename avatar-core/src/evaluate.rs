@@ -9,12 +9,13 @@ use crate::animator::Animator;
 use crate::constraints::{Constraints, Scene};
 use crate::contacts::{Contacts, Sender};
 use crate::humanoid::{muscle_names, Body, Human};
-use crate::physbones::{Error, Frame, HandCollider, Nodes, PhysBones, Toucher, Transform};
+use crate::physbones::{Error, Frame, HandCollider, Nodes, PhysBones, Toucher, Transform, STEP};
 use crate::Avatar;
 
 /// What the host gives each frame.
 pub struct Input<'a> {
-    /// Seconds since the last frame. The animator does not advance on a frame with none.
+    /// Seconds since the last frame, by which PhysBones and contacts advance, and under [`Evaluator::evaluate`] the
+    /// animator too, which does not on a frame with none.
     pub dt: f32,
     /// The avatar root in the world. Its scale is not read: the root node's local scale is the avatar's.
     pub root: Transform,
@@ -290,8 +291,14 @@ impl Evaluator {
 
     /// Evaluates a frame, the core's animator posing the avatar.
     pub fn evaluate(&mut self, input: &Input) -> &Output {
-        if input.dt > 0.0 {
-            self.animator.step(input.dt);
+        self.evaluate_clocked(input, input.dt)
+    }
+
+    /// [`Evaluator::evaluate`] with the animator advancing `animator_dt` seconds while PhysBones and contacts advance
+    /// the input's `dt`: a replay of an emulator whose graph first plays frames after the SDK's dynamics first step.
+    pub fn evaluate_clocked(&mut self, input: &Input, animator_dt: f32) -> &Output {
+        if animator_dt > 0.0 {
+            self.animator.step(animator_dt);
         }
         let values = self.animator.values();
         let mut locals = self.nodes.rest.clone();
@@ -336,6 +343,7 @@ impl Evaluator {
             let o = &self.output;
             let file = Frame { root: input.root, nodes: o.space.clone(), locals: o.locals.clone(), active: active.clone(), enabled: physbones.clone(), hands: vec![] };
             self.physbones.advance(0.0, &file);
+            self.physbones.advance(STEP, &file);
         }
         self.dynamics(input, locals, active, &physbones);
         let values = self.animator.values();

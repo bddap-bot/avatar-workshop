@@ -1,6 +1,7 @@
 //! The core's reference run of a model under a recording's scripted input: each frame the harness's parameter
-//! inputs (`inputs.tsv`) and its root (`track.tsv`), each frame stepped through [`Evaluator::evaluate`] by the
-//! change in the emulator's graph time (`time.tsv`, which starts at 0), the body
+//! inputs (`inputs.tsv`) and its root (`track.tsv`), each frame stepped through [`Evaluator::evaluate_clocked`] by the
+//! harness's fixed frame time, its animator by the change in the emulator's graph time (`time.tsv`, which starts at 0
+//! and may first advance frames after the dynamics do), the body
 //! standing in the recorded pose (`poses.tsv`): the humanoid trunk and limbs, which VRChat's IK places and the core
 //! takes from its host, posed where the recording holds them, their scale included, while fingers, eyes and jaw stay
 //! the animator's. It writes, per frame, every PhysBone tip, and as change logs the animator's parameters and states
@@ -18,13 +19,17 @@ use avatar_core::Avatar;
 
 use super::{animator::{graph_times, inputs}, canonical, floats, paths, rows, text, tips, unity};
 
+/// The harness's frame time (`Time.captureDeltaTime`), on which the SDK's PhysBones and contacts step from the frame
+/// the emulator attaches.
+const FRAME: f32 = 1.0 / 60.0;
+
 #[derive(Default, PartialEq, Eq, Debug)]
 pub struct Run {
     pub tips: String,
     pub parameters: String,
     pub states: String,
     pub output: String,
-    /// What each frame fed the core, for a runtime to feed its own: `frame dt root`, then `set name value builtin`,
+    /// What each frame fed the core, for a runtime to feed its own: `frame dt animator_dt root`, then `set name value builtin`,
     /// `head pose` and `pose node pose` lines, each value the hex of its f32 bits.
     pub script: String,
 }
@@ -102,7 +107,7 @@ pub fn run(avatar: &Avatar, dir: &Path, frames: Option<usize>) -> Run {
     for f in first..end {
         let at = |f: usize| *time.get(&f).unwrap_or_else(|| panic!("time.tsv holds no graph time for frame {f}"));
         let now = at(f);
-        let dt = (now - if f <= *time.keys().next().unwrap() { 0.0 } else { at(f - 1) }) as f32;
+        let animator_dt = (now - if f <= *time.keys().next().unwrap() { 0.0 } else { at(f - 1) }) as f32;
         for (n, v) in script.get(&f).into_iter().flatten() {
             let b = builtin.contains(n.as_str());
             if b {
@@ -129,8 +134,8 @@ pub fn run(avatar: &Avatar, dir: &Path, frames: Option<usize>) -> Run {
         for (n, p) in &poses {
             writeln!(run.script, "{f}\tpose\t{n}\t{}", bits(p)).unwrap();
         }
-        writeln!(run.script, "{f}\tframe\t{:08x}\t{}", dt.to_bits(), bits(&root)).unwrap();
-        ev.evaluate(&Input { dt, root, poses: &poses, held: &[], senders: &[], hands: &[] });
+        writeln!(run.script, "{f}\tframe\t{:08x}\t{:08x}\t{}", FRAME.to_bits(), animator_dt.to_bits(), bits(&root)).unwrap();
+        ev.evaluate_clocked(&Input { dt: FRAME, root, poses: &poses, held: &[], senders: &[], hands: &[] }, animator_dt);
         for (tip, p) in tips(avatar, &nodes, &names, &ev, ev.output()) {
             writeln!(run.tips, "{f}\t{tip}\t{:?}\t{:?}\t{:?}", p.x, p.y, p.z).unwrap();
         }

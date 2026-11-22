@@ -54,6 +54,26 @@ fn a_grab_reaches_the_animator_after_its_frame() {
     assert_eq!(ev.animator().get(&key), Some(1.0));
 }
 
+/// The animator and the dynamics keep their own clocks: a frame on which the animator does not advance still steps the
+/// PhysBones by the input's `dt`, and the animator's state is the same as with no time passed.
+#[test]
+fn physbones_step_on_a_frame_the_animator_does_not_advance() {
+    let avatar = fixture();
+    let run = |dt: f32, animator_dt: f32| {
+        let mut ev = Evaluator::new(&avatar).unwrap();
+        ev.evaluate_clocked(&input(dt), animator_dt);
+        let states: Vec<_> = ev.animator().states().iter().map(|s| (s.current.clone(), s.current_time)).collect();
+        (ev.output().locals.clone(), states)
+    };
+    let still = run(0.0, 0.0);
+    let stepped = run(1.0 / 60.0, 0.0);
+    let animated = run(1.0 / 60.0, 1.0 / 60.0);
+    assert_eq!(still.1, stepped.1, "the animator advanced on a frame it was given no time");
+    assert_ne!(still.1, animated.1, "the animator's states show no time passing");
+    let moved = still.0.iter().zip(&stepped.0).filter(|(a, b)| a != b).count();
+    assert!(moved > 0, "no PhysBone stepped on a frame with dynamics time");
+}
+
 /// The root's motion in the world swings a chain in the avatar's root space, and the output carries it.
 #[test]
 fn moving_the_root_swings_a_chain() {

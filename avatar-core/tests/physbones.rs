@@ -369,7 +369,9 @@ fn hands_push_each_chain_their_filter_admits() {
 
 /// The core's reference run, fed only the recording's script and its body pose, meets the 5% bar on the fixture's
 /// recording, and its tips start the motion where the recording's do: each within 5% of its chain's length, the
-/// median within 1%. On the recording's first frame, the one the SDK's PhysBones start on, the same.
+/// median within 1%. On the recording's first frame, the one the SDK's PhysBones start on, the same, and every tip
+/// within 1% but those of a chain whose authored stretch motion lies strictly between none and full, whose length rule
+/// no probe yet measures.
 #[test]
 fn the_scripted_run_meets_the_bar_on_the_fixture() {
     let dir = path("fixtures/reference/fixture-animator");
@@ -399,6 +401,15 @@ fn the_scripted_run_meets_the_bar_on_the_fixture() {
         let far: Vec<_> = start.iter().filter(|(e, _)| *e > 0.05).collect();
         assert!(far.is_empty(), "tips over 5% of their chain length from the recording's at {label}: {far:?}");
     }
+    let names = reference::paths(&avatar, &avatar_core::physbones::Nodes::read(&avatar).unwrap());
+    let partial = |tip: &str| {
+        let root = tip.split('|').next().unwrap();
+        avatar.model.physbones.iter().any(|p| names[p.root.0 as usize].as_deref() == Some(root) && p.stretch_motion.value > 0.0 && p.stretch_motion.value < 1.0)
+    };
+    let held: Vec<_> = errors(&dir, &trace, first..first + 1).into_iter().filter(|(_, tip)| !partial(tip)).collect();
+    assert!(held.len() >= 10 && held.iter().all(|(_, tip)| trace.tips[0].contains_key(tip)), "{} tips held to 1%, each from the run", held.len());
+    let off: Vec<_> = held.iter().filter(|(e, _)| *e > 0.01).collect();
+    assert!(off.is_empty(), "tips over 1% of their chain length from the recording's at the first frame: {off:?}");
 }
 
 /// Two components on one root: VRChat poses the bones by the first alone, as the second, which would hold them still,
