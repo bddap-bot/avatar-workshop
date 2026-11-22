@@ -43,13 +43,17 @@ enabled flag. A chain runs while its component is enabled and active in the hier
 The semantics were measured against the SDK's own simulation through the reference harness, not taken from its
 binaries. Simplified integration blends velocity toward pull by spring; advanced keeps momentum and pull,
 both scaled down by stiffness, and carries each bone with its parent's movement by stiffness. Version 1.1 gravity
-turns the rest direction toward down by the gravity value less its falloff; version 1.0 gravity is a force.
+turns the rest direction toward down; version 1.0 gravity is a force that joins the pull, so each integration
+scales it as it scales pull. Falloff takes away its share of gravity times how closely the bone keeps its animated
+tilt from horizontal.
 Immobile all-motion follows the root's parent, world only the avatar's position, and node, a type VRChat lacks,
 that node. Curves are read by depth along the chain. A chain whose root's parent, immobile node or collider is a
 descendant of another chain's bones steps after that chain and reads its simulated pose. Gravity is not clamped
 to the ±1 VRChat's inspector allows. Bones collide as spheres of their radius, times the world scale of the
-root's parent, at their ends, and bones of radius 0 pass through spheres and capsules but not planes; a bone a
-collider pushes is put back at a length its stretch allows.
+root's parent, at their ends, except with a sphere outside which they stay and that does not treat bones as
+spheres: that meets the bone's segment, and moves its end by a share of the push freeing the nearest point, from
+0.35 where it touches at the parent's end to all of it at the bone's own. Bones of radius 0 pass through spheres
+and capsules but not planes; a bone a collider pushes is put back at a length its stretch allows.
 
 `cargo test --test physbones` replays recordings in `avatar-core/fixtures/reference/` (the probe, the
 fixture's motion and its grabs, trimmed to what the replays read) and checks each field's probe, the fixture's
@@ -278,8 +282,9 @@ non-default value, each radial at 0, 0.25, 0.5, 0.75 and 1, each puppet axis to 
 its submenus), then the built-in parameters stepped (gestures, visemes, locomotion, tracking and
 state flags). `UNITY` names the editor command. With no `SCENE`, it generates the fixture into
 `PROJECT`'s `Assets/AWFixture` and records it, so point it at a scratch project. With `SCENE` `probe`, it generates and
-records the probe there: the fixture's body with one three-bone chain per PhysBone field value (`Fixture.Probes` lists
-them), so each field's effect has a reference trace of its own. The probe rests 15 s before its motion, so even its lightly damped chains start it settled. With `SCENE` `human`, it generates and records the
+records the probe there: the fixture's body with one three-bone chain per PhysBone field value, and chains bent as the
+fixture's tail, one per field it combines (`Fixture.Probes` lists them), so each field's effect has a reference trace of
+its own. The probe rests 15 s before its motion, so even its lightly damped chains start it settled. With `SCENE` `human`, it generates and records the
 composition probe (`reference/Editor/HumanProbe.cs`), with `SCENE` `blend` the blend duration probe (`reference/Editor/BlendProbe.cs`), with `SCENE` `layering` the write-defaults layering probe (`reference/Editor/LayeringProbe.cs`), with `SCENE` `sampletime` the clip sample-time probe (`reference/Editor/SampleTimeProbe.cs`), with `SCENE` `rotation` the rotation probe (`reference/Editor/RotationProbe.cs`), with `SCENE` `dense` the dense clip probe (`reference/Editor/DenseProbe.cs`), with `SCENE` `crossfade` the crossfade probe (`reference/Editor/CrossfadeProbe.cs`), with `SCENE` `generic` the generic probe (`reference/Editor/GenericProbe.cs`), with `SCENE` `gridhold` the frame grid, fill and hold probe (`reference/Editor/GridHoldProbe.cs`), with `SCENE` `gridrule` the frame-grid rule probe (`reference/Editor/RuleProbe.cs`), with `SCENE` `genericrig` the generic-rig playable probe (`reference/Editor/RigProbe.cs`), with `SCENE` `generichold` the generic-rig hold probe (`reference/Editor/HoldProbe.cs`), with `SCENE` `genericweight` the generic-rig playable-weight probe (also `reference/Editor/HoldProbe.cs`) with `SCENE` `loopdrift` the Loop Pose drift probe (`reference/Editor/LoopDriftProbe.cs`) and with `SCENE` `feet` the Feet height basis probe (`reference/Editor/FeetProbe.cs`), all described below, in place of the motion, menu and built-in steps. With `SCENE` `dynamics` it records the dynamics probe (`reference/Editor/DynamicsProbe.cs`), below, whose contact passes follow the motion in place of the menu and built-in steps. With `SCENE` `hands` it records the hand collider probe (`reference/Editor/HandsProbe.cs`), also below, whose hand sweeps replace the motion, menu and built-in steps. With `SCENE` `curves` it records the curve probe (`reference/Editor/CurveProbe.cs`), also below, which plays no avatar and refuses `AVATAR` and `AW_STEPS`. With `SCENE` `writedefaults`, it generates and records the write-defaults fixture: the fixture's body under animator controllers built from the environment variable `AW_WD`, which lists each layer's controller, weight, transition time and states, and for each state whether it writes defaults and what it animates (`reference/Editor/WriteDefaults.cs` gives the grammar; `AW_WD='T:de|dHat=1;K:fSmile=50'` is a write-defaults-on toggle of the hat beside a layer that keeps none). The environment variable `AW_STEPS` (`Name=value,...;...`, each step setting those animator parameters and held `AW_STEP_FRAMES` frames, 20 unless set, with a render on its last) replaces the motion, menu and built-in steps after the rest; the write-defaults fixture, which has no menu, requires it, and the composition, blend duration, layering, clip sample-time, rotation, dense clip, crossfade, generic, frame grid, fill and hold, frame-grid rule, generic-rig playable, generic-rig hold, generic-rig playable-weight, Loop Pose drift, Feet height basis, dynamics and hand collider probes refuse it. It restores
 `PROJECT`'s package manifest on exit and refuses an `OUT` that holds something other than an earlier recording.
 Recordings started on one machine take turns in the order they were asked for, each waiting for those asked

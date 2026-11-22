@@ -368,7 +368,8 @@ fn hands_push_each_chain_their_filter_admits() {
 }
 
 /// The core's reference run, fed only the recording's script and its body pose, meets the 5% bar on the fixture's
-/// recording, and its tips start the motion where the recording's do: the median tip within 1% of its chain's length.
+/// recording, and its tips start the motion where the recording's do: each within 5% of its chain's length, the
+/// median within 1%.
 #[test]
 fn the_scripted_run_meets_the_bar_on_the_fixture() {
     let dir = path("fixtures/reference/fixture-animator");
@@ -391,6 +392,7 @@ fn the_scripted_run_meets_the_bar_on_the_fixture() {
     for (e, tip) in &start {
         eprintln!("start {e:.4} {tip}");
     }
+    assert!(median(&start) <= 0.01, "median start {}", median(&start));
     let far: Vec<_> = start.iter().filter(|(e, _)| *e > 0.05).collect();
     assert!(far.is_empty(), "tips over 5% of their chain length from the recording's at the motion's start: {far:?}");
 }

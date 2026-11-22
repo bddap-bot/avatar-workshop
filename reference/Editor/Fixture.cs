@@ -578,9 +578,7 @@ namespace AvatarWorkshop.Reference
                 ("CapsuleBonesAsSpheres", Vector3.forward, p => { p.radius = 0.03f; Collide(p, VRCPhysBoneColliderBase.ShapeType.Capsule, 0.04f, 0.3f, new Vector3(0, -0.09f, 0.18f), Quaternion.Euler(0, 0, 90), spheres: true); }),
                 ("Plane", Vector3.forward, p => Collide(p, VRCPhysBoneColliderBase.ShapeType.Plane, 0, 0, new Vector3(0, -0.02f, 0), Quaternion.Euler(-10, 0, 0))),
             };
-            // Each bent probe is a chain shaped as the fixture's tail, its bones unrotated and bending from back to down,
-            // with the tail's version 1.0 unless set otherwise and pull 0.2, spring 0.4, gravity 0.4; each changes the fields
-            // its name says. Its root sits 0.3 m above the head, after the straight probes in their row.
+            // Bent probes take the fixture tail's shape and base fields, one field each, to isolate what the tail combines.
             var bent = new (string name, Action<VRCPhysBone> set)[]
             {
                 ("BentGravity", p => { }),
