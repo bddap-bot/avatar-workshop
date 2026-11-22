@@ -183,6 +183,8 @@ struct Bone {
     params: Params,
     position: Vec3,
     previous: Vec3,
+    /// The bone's length over its rest length, less one, after the last step.
+    strain: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -405,6 +407,7 @@ fn chain(pb: &model::PhysBone, roots: &[usize], nodes: &Nodes) -> Chain {
         params: params(pb, 0.0),
         position: Vec3::ZERO,
         previous: Vec3::ZERO,
+        strain: 0.0,
     };
     let mut bones = vec![fresh(Some(root), None)];
     let mut depth = vec![0.0f32];
@@ -823,6 +826,7 @@ impl Chain {
         for (b, r) in self.bones.iter_mut().zip(&self.rest) {
             b.position = r.translation;
             b.previous = r.translation;
+            b.strain = 0.0;
         }
         self.world = self.rest.clone();
         self.settled = self.rest.clone();
@@ -873,6 +877,7 @@ impl Chain {
                 if driving.len() != 1 || driving[0] != i {
                     let local = self.local(frame, i);
                     self.bones[i].position = self.world[p].point(local.translation);
+                    self.bones[i].strain = 0.0;
                 }
                 self.world[i] = self.base(frame, i);
             }
@@ -906,6 +911,7 @@ impl Chain {
         for (&b, x) in path.iter().zip(at).skip(1) {
             self.bones[b].position = x;
             self.bones[b].previous = x;
+            self.bones[b].strain = 0.0;
             self.held[b] = true;
         }
     }
@@ -923,6 +929,7 @@ impl Chain {
         if rest_length <= f32::EPSILON {
             self.bones[i].position = origin;
             self.bones[i].previous = origin;
+            self.bones[i].strain = 0.0;
             return;
         }
         let rest_direction = rest / rest_length;
@@ -962,13 +969,25 @@ impl Chain {
             PhysBoneVersion::V1_1 => (1.0 - q.max_squish, 1.0 + q.max_stretch),
         };
         let offset = bone.position - origin;
-        let free = self.grab.is_some() || (self.version == PhysBoneVersion::V1_1 && q.stretch_motion > 0.0);
-        let length = if free { offset.length().clamp(rest_length * low, rest_length * high) } else { rest_length };
+        let share = match (self.grab, self.version, self.integration) {
+            (Some(_), ..) => 1.0,
+            (None, PhysBoneVersion::V1_0, _) => 0.0,
+            (None, PhysBoneVersion::V1_1, IntegrationType::Simplified) => q.stretch_motion,
+            (None, PhysBoneVersion::V1_1, IntegrationType::Advanced) => q.stretch_motion * (1.0 - q.stiffness),
+        };
+        let length = if share > 0.0 {
+            let want = offset.length().clamp(rest_length * low, rest_length * high) / rest_length - 1.0;
+            let from = if want * bone.strain > 0.0 { bone.strain } else { 0.0 };
+            rest_length * (1.0 + if want.abs() > from.abs() { from + (want - from) * share } else { want })
+        } else {
+            rest_length
+        };
         let direction = limit(offset.normalize_or(rest_direction), local.translation, parent.rotation, q.limit);
         bone.position = origin + direction * length;
+        bone.strain = length / rest_length - 1.0;
         let keep = |at: Vec3| {
             let pushed = at - origin;
-            let kept = if free { pushed.length().clamp(rest_length * low, rest_length * high) } else { rest_length };
+            let kept = if share > 0.0 { pushed.length().clamp(rest_length * low, rest_length * high) } else { rest_length };
             origin + pushed.normalize_or(direction) * kept
         };
         for (collider, place) in places {

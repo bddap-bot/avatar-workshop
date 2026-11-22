@@ -598,19 +598,43 @@ namespace AvatarWorkshop.Reference
                     p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 60; p.maxAngleXCurve = Ramp(0.5f, 1); p.limitRotation = new Vector3(10, 0, 0);
                 }),
             };
+            // A row of its own, so the probes above keep their places and their recordings.
+            var partial = new (string name, Vector3 dir, Action<VRCPhysBone> set)[]
+            {
+                ("Stretch50Motion25", Vector3.forward, p => { p.gravity = 1; p.maxStretch = 0.5f; p.stretchMotion = 0.25f; }),
+                ("Stretch50Motion50", Vector3.forward, p => { p.gravity = 1; p.maxStretch = 0.5f; p.stretchMotion = 0.5f; }),
+                ("Stretch50Motion75", Vector3.forward, p => { p.gravity = 1; p.maxStretch = 0.5f; p.stretchMotion = 0.75f; }),
+                ("Stretch50Motion50Spring60", Vector3.forward, p => { p.gravity = 1; p.spring = 0.6f; p.maxStretch = 0.5f; p.stretchMotion = 0.5f; }),
+                ("Stretch50Motion50Level", Vector3.forward, p => { p.maxStretch = 0.5f; p.stretchMotion = 0.5f; }),
+                ("Stretch50Motion50LevelRight", Vector3.right, p => { p.maxStretch = 0.5f; p.stretchMotion = 0.5f; }),
+                ("Stretch50Motion100Level", Vector3.forward, p => { p.maxStretch = 0.5f; p.stretchMotion = 1; }),
+                ("Stretch50Motion50Sphere", Vector3.forward, p => { p.maxStretch = 0.5f; p.stretchMotion = 0.5f; Collide(p, VRCPhysBoneColliderBase.ShapeType.Sphere, 0.06f, 0, new Vector3(0, -0.07f, 0.22f), Quaternion.identity); }),
+                ("Squish50Motion50", Vector3.forward, p => { p.gravity = 1; p.maxSquish = 0.5f; p.stretchMotion = 0.5f; }),
+                ("Stretch50Advanced", Vector3.forward, p => { Advanced(p); p.spring = 0.5f; p.stiffness = 0.3f; p.gravity = 1; p.maxStretch = 0.5f; }),
+                ("Stretch50Motion50Advanced", Vector3.forward, p => { Advanced(p); p.spring = 0.5f; p.stiffness = 0.3f; p.gravity = 1; p.maxStretch = 0.5f; p.stretchMotion = 0.5f; }),
+                ("Stretch50Motion100Advanced", Vector3.forward, p => { Advanced(p); p.spring = 0.5f; p.stiffness = 0.3f; p.gravity = 1; p.maxStretch = 0.5f; p.stretchMotion = 1; }),
+                ("Stretch50Motion50Stiff70Advanced", Vector3.forward, p => { Advanced(p); p.spring = 0.5f; p.stiffness = 0.7f; p.gravity = 1; p.maxStretch = 0.5f; p.stretchMotion = 0.5f; }),
+                ("Stretch50Motion50LevelAdvanced", Vector3.forward, p => { Advanced(p); p.spring = 0.5f; p.stiffness = 0.3f; p.maxStretch = 0.5f; p.stretchMotion = 0.5f; }),
+                ("Stretch50Motion50LevelRightAdvanced", Vector3.right, p => { Advanced(p); p.spring = 0.5f; p.stiffness = 0.3f; p.maxStretch = 0.5f; p.stretchMotion = 0.5f; }),
+                ("Stretch50Motion100LevelAdvanced", Vector3.forward, p => { Advanced(p); p.spring = 0.5f; p.stiffness = 0.3f; p.maxStretch = 0.5f; p.stretchMotion = 1; }),
+                ("Stretch50Motion50LevelStiff70Advanced", Vector3.forward, p => { Advanced(p); p.spring = 0.5f; p.stiffness = 0.7f; p.maxStretch = 0.5f; p.stretchMotion = 0.5f; }),
+                ("Stretch30Squish40Motion50Advanced", Vector3.forward, p => { Advanced(p); p.spring = 0.6f; p.stiffness = 0.3f; p.gravity = 0.15f; p.maxStretch = 0.3f; p.maxSquish = 0.4f; p.stretchMotion = 0.5f; }),
+            };
             var tail = new[] { new Vector3(0, -0.05f, -0.12f), new Vector3(0, -0.08f, -0.1f), new Vector3(0, -0.1f, -0.06f), new Vector3(0, -0.1f, 0) };
             var all = probes.Select(p => (p.name, p.dir, p.set, bones: (Vector3[])null))
-                .Concat(bent.Select(b => (b.name, Vector3.up, b.set, bones: tail)))
+                .Concat(bent.Select(b => (b.name, dir: Vector3.up, b.set, bones: tail)))
+                .Select((p, i) => (p.name, p.dir, p.set, p.bones, at: new Vector3((i - probes.Length / 2) * 0.05f, 0.3f, 0)))
+                .Concat(partial.Select((p, j) => (p.name, p.dir, p.set, bones: (Vector3[])null, at: new Vector3((j - partial.Length / 2) * 0.05f, 0.3f, -0.15f))))
                 .ToArray();
             for (int i = 0; i < all.Length; i++)
             {
-                var (name, dir, set, bones) = all[i];
+                var (name, dir, set, bones, at) = all[i];
                 var parent = t["Head"];
                 for (int k = 0; k <= (bones?.Length ?? 3); k++)
                 {
                     var go = new GameObject(k == 0 ? name : $"{name}.{k}");
                     go.transform.SetParent(parent, false);
-                    go.transform.localPosition = k == 0 ? new Vector3((i - probes.Length / 2) * 0.05f, 0.3f, 0) : bones?[k - 1] ?? Vector3.up * 0.1f;
+                    go.transform.localPosition = k == 0 ? at : bones?[k - 1] ?? Vector3.up * 0.1f;
                     if (k == 0) go.transform.localRotation = Quaternion.FromToRotation(Vector3.up, dir);
                     parent = go.transform;
                 }

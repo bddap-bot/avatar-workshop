@@ -54,6 +54,24 @@ const PROBES: &[(&str, &str, f32)] = &[
     ("Stretch50", "max stretch without stretch motion", 0.01),
     ("Stretch50Motion100", "max stretch with stretch motion", 0.075),
     ("Squish50Motion100", "max squish", 0.05),
+    ("Stretch50Motion25", "max stretch with partial stretch motion", 0.04),
+    ("Stretch50Motion50", "max stretch with partial stretch motion", 0.05),
+    ("Stretch50Motion75", "max stretch with partial stretch motion", 0.05),
+    ("Stretch50Motion50Spring60", "partial stretch motion with spring", 0.04),
+    ("Stretch50Motion50Level", "partial stretch motion, level", 0.05),
+    ("Stretch50Motion50LevelRight", "partial stretch motion, level, across the motion", 0.045),
+    ("Stretch50Motion100Level", "full stretch motion, level", 0.05),
+    ("Stretch50Motion50Sphere", "partial stretch motion against a sphere collider", 0.05),
+    ("Squish50Motion50", "max squish with partial stretch motion", 0.015),
+    ("Stretch50Advanced", "max stretch without stretch motion, advanced integration", 0.01),
+    ("Stretch50Motion50Advanced", "partial stretch motion, advanced integration", 0.02),
+    ("Stretch50Motion100Advanced", "full stretch motion, advanced integration", 0.025),
+    ("Stretch50Motion50Stiff70Advanced", "partial stretch motion, advanced integration, high stiffness: the carry holds it at rest length", 0.26),
+    ("Stretch50Motion50LevelAdvanced", "partial stretch motion, level, advanced integration", 0.035),
+    ("Stretch50Motion50LevelRightAdvanced", "partial stretch motion, level, across the motion, advanced integration", 0.035),
+    ("Stretch50Motion100LevelAdvanced", "full stretch motion, level, advanced integration", 0.045),
+    ("Stretch50Motion50LevelStiff70Advanced", "partial stretch motion, level, advanced integration, high stiffness: the carry holds it at rest length", 0.28),
+    ("Stretch30Squish40Motion50Advanced", "stretch and squish with partial stretch motion, advanced integration", 0.05),
     ("Endpoint", "endpoint position", 0.01),
     ("Sphere", "sphere collider, bone radius 0", 0.01),
     ("SphereInside", "inside-bounds sphere collider", 0.01),
@@ -370,8 +388,7 @@ fn hands_push_each_chain_their_filter_admits() {
 /// The core's reference run, fed only the recording's script and its body pose, meets the 5% bar on the fixture's
 /// recording, and its tips start the motion where the recording's do: each within 5% of its chain's length, the
 /// median within 1%. On the recording's first frame, the one the SDK's PhysBones start on, the same, and every tip
-/// within 1% but those of a chain whose authored stretch motion lies strictly between none and full, whose length rule
-/// no probe yet measures.
+/// within 1%.
 #[test]
 fn the_scripted_run_meets_the_bar_on_the_fixture() {
     let dir = path("fixtures/reference/fixture-animator");
@@ -401,12 +418,7 @@ fn the_scripted_run_meets_the_bar_on_the_fixture() {
         let far: Vec<_> = start.iter().filter(|(e, _)| *e > 0.05).collect();
         assert!(far.is_empty(), "tips over 5% of their chain length from the recording's at {label}: {far:?}");
     }
-    let names = reference::paths(&avatar, &avatar_core::physbones::Nodes::read(&avatar).unwrap());
-    let partial = |tip: &str| {
-        let root = tip.split('|').next().unwrap();
-        avatar.model.physbones.iter().any(|p| names[p.root.0 as usize].as_deref() == Some(root) && p.stretch_motion.value > 0.0 && p.stretch_motion.value < 1.0)
-    };
-    let held: Vec<_> = errors(&dir, &trace, first..first + 1).into_iter().filter(|(_, tip)| !partial(tip)).collect();
+    let held = errors(&dir, &trace, first..first + 1);
     assert!(held.len() >= 10 && held.iter().all(|(_, tip)| trace.tips[0].contains_key(tip)), "{} tips held to 1%, each from the run", held.len());
     let off: Vec<_> = held.iter().filter(|(e, _)| *e > 0.01).collect();
     assert!(off.is_empty(), "tips over 1% of their chain length from the recording's at the first frame: {off:?}");
