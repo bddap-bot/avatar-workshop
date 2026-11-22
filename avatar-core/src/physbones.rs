@@ -229,6 +229,7 @@ struct ColliderAt {
     shape: ColliderShape,
     position: Vec3,
     rotation: Quat,
+    bones_as_spheres: bool,
 }
 
 /// Who touches a PhysBone, for its collision, grab and pose filters.
@@ -478,6 +479,7 @@ impl PhysBones {
                 shape: c.shape.clone(),
                 position: Vec3::from(c.position),
                 rotation: unit(Quat::from_array(c.rotation)),
+                bones_as_spheres: c.bones_as_spheres,
             })
             .collect();
         let hands = standard_hands(&model.descriptor, &model.humanoid, &nodes)
@@ -919,7 +921,8 @@ impl Chain {
         }
         let rest_direction = rest / rest_length;
         let q = self.bones[i].params;
-        let gravity = q.gravity * (1.0 - q.gravity_falloff);
+        let animated = (self.rest[i].translation - self.rest[p].translation).normalize_or(rest_direction);
+        let gravity = q.gravity * (1.0 - q.gravity_falloff * same_tilt((self.bones[i].position - origin).normalize_or(rest_direction), animated));
         let target = match self.version {
             PhysBoneVersion::V1_0 => origin + rest,
             PhysBoneVersion::V1_1 => {
@@ -939,14 +942,15 @@ impl Chain {
         bone.previous += (moved.point(bone.previous) - bone.previous) * q.immobile;
         let velocity = bone.position - bone.previous;
         bone.previous = bone.position;
-        let pull = (target - bone.position) * q.pull;
+        let pull = (target - bone.position) * q.pull
+            + match self.version {
+                PhysBoneVersion::V1_0 => Vec3::NEG_Y * (gravity * rest_length),
+                PhysBoneVersion::V1_1 => Vec3::ZERO,
+            };
         bone.position += match self.integration {
             IntegrationType::Simplified => velocity * q.spring + pull * (1.0 - q.spring),
             IntegrationType::Advanced => (velocity * q.spring + pull) * (1.0 - q.stiffness),
         };
-        if self.version == PhysBoneVersion::V1_0 {
-            bone.position += Vec3::NEG_Y * (gravity * rest_length * GRAVITY_1_0);
-        }
         let (low, high) = match self.version {
             PhysBoneVersion::V1_0 => (1.0, 1.0 + q.max_stretch),
             PhysBoneVersion::V1_1 => (1.0 - q.max_squish, 1.0 + q.max_stretch),
@@ -962,7 +966,13 @@ impl Chain {
             origin + pushed.normalize_or(direction) * kept
         };
         for (collider, place) in places {
-            bone.position = keep(collide(bone.position, q.radius * scale, collider, place));
+            bone.position = keep(match collider.shape {
+                ColliderShape::Sphere { radius, inside_bounds: false } if !collider.bones_as_spheres => {
+                    let at = place.point(collider.position);
+                    touch_segment(origin, bone.position, q.radius * scale, &Touch { owner: Toucher::Wearer, a: at, b: at, radius: radius * place.scale.x.abs() })
+                }
+                _ => collide(bone.position, q.radius * scale, collider, place),
+            });
         }
         for touch in touches {
             bone.position = keep(touch_bone(origin, bone.position, q.radius * scale, touch));
@@ -1041,8 +1051,16 @@ impl Chain {
 /// Advanced integration carries a bone along with its parent's movement by this much per unit of stiffness,
 /// measured against the reference traces.
 const STIFFNESS_CARRY: f32 = 1.45;
-/// Version 1.0 gravity moves a bone this many of its own lengths each step at gravity 1, measured likewise.
-const GRAVITY_1_0: f32 = 0.5;
+/// A bone whose segment touches a sphere at its parent's end moves this fraction of the push that frees that
+/// point, and one touching it at its own end all of it, measured against the reference traces.
+const SEGMENT_PUSH_AT_PARENT: f32 = 0.35;
+
+/// How much of gravity's falloff applies: the cosine between `bone`'s and `rest`'s tilts from horizontal, 1 while the
+/// bone keeps its rest tilt whichever way it turns about the vertical.
+fn same_tilt(bone: Vec3, rest: Vec3) -> f32 {
+    let level = |d: Vec3| (d.x * d.x + d.z * d.z).sqrt();
+    level(bone) * level(rest) + bone.y * rest.y
+}
 
 /// Keeps `direction`, the bone toward its child in the parent's frame `frame`, within the limit. The limit's
 /// axis is the child's rest direction, turned by the limit rotation (Unity's X, then Y, then Z); a hinge swings
@@ -1076,8 +1094,9 @@ fn limit(direction: Vec3, local_rest: Vec3, frame: Quat, limit: LimitAt) -> Vec3
 }
 
 /// Pushes a bone's end at `position` out of the collider, or keeps it inside an inside-bounds one; the caller then
-/// puts it back at a length its stretch allows, as VRM's spring bones do. Bones collide as spheres of their radius at their ends, and one of radius 0 passes through spheres and capsules: both as
-/// the reference traces show, whatever the collider's bones-as-spheres setting.
+/// puts it back at a length its stretch allows, as VRM's spring bones do. A bone collides with a capsule or plane, or with
+/// a sphere set to treat bones as spheres, as a sphere of its radius at its end, and one of radius 0 passes through
+/// spheres and capsules: as the reference traces show. Other spheres meet the bone's whole segment (`touch_segment`).
 fn collide(position: Vec3, radius: f32, collider: &ColliderAt, place: &Transform) -> Vec3 {
     let center = place.point(collider.position);
     let axis = (place.rotation * collider.rotation) * Vec3::Y;
@@ -1102,6 +1121,16 @@ fn collide(position: Vec3, radius: f32, collider: &ColliderAt, place: &Transform
         return position;
     }
     core + d.normalize_or(axis.any_orthonormal_vector()) * reach
+}
+
+/// Pushes a bone's end at `position` by the share of `touch_bone`'s push its contact's place along the segment gives:
+/// [`SEGMENT_PUSH_AT_PARENT`] at `origin`, all of it at the end.
+fn touch_segment(origin: Vec3, position: Vec3, radius: f32, sphere: &Touch) -> Vec3 {
+    let (on_bone, _) = closest_on_segments(origin, position, sphere.a, sphere.b);
+    let segment = position - origin;
+    let along = if segment.length_squared() > 0.0 { ((on_bone - origin).dot(segment) / segment.length_squared()).clamp(0.0, 1.0) } else { 1.0 };
+    let share = SEGMENT_PUSH_AT_PARENT + (1.0 - SEGMENT_PUSH_AT_PARENT) * along;
+    position + (touch_bone(origin, position, radius, sphere) - position) * share
 }
 
 /// Pushes a bone's end at `position` so its segment from `origin`, its parent's end, clears a hand: the end moves as far

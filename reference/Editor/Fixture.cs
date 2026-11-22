@@ -578,15 +578,40 @@ namespace AvatarWorkshop.Reference
                 ("CapsuleBonesAsSpheres", Vector3.forward, p => { p.radius = 0.03f; Collide(p, VRCPhysBoneColliderBase.ShapeType.Capsule, 0.04f, 0.3f, new Vector3(0, -0.09f, 0.18f), Quaternion.Euler(0, 0, 90), spheres: true); }),
                 ("Plane", Vector3.forward, p => Collide(p, VRCPhysBoneColliderBase.ShapeType.Plane, 0, 0, new Vector3(0, -0.02f, 0), Quaternion.Euler(-10, 0, 0))),
             };
-            for (int i = 0; i < probes.Length; i++)
+            // Each bent probe is a chain shaped as the fixture's tail, its bones unrotated and bending from back to down,
+            // with the tail's version 1.0 unless set otherwise and pull 0.2, spring 0.4, gravity 0.4; each changes the fields
+            // its name says. Its root sits 0.3 m above the head, after the straight probes in their row.
+            var bent = new (string name, Action<VRCPhysBone> set)[]
             {
-                var (name, dir, set) = probes[i];
+                ("BentGravity", p => { }),
+                ("BentGravity11", p => p.version = VRCPhysBoneBase.Version.Version_1_1),
+                ("BentGravityCurve", p => p.gravityCurve = Ramp(0.5f, 1)),
+                ("BentPullCurve", p => p.pullCurve = Ramp(1, 0.5f)),
+                ("BentFalloff", p => p.gravityFalloff = 0.5f),
+                ("BentFalloff11", p => { p.version = VRCPhysBoneBase.Version.Version_1_1; p.gravityFalloff = 0.5f; }),
+                ("BentAngle", p => { p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 30; }),
+                ("BentAngleRotated", p => { p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 30; p.limitRotation = new Vector3(10, 0, 0); }),
+                ("BentAngle11", p => { p.version = VRCPhysBoneBase.Version.Version_1_1; p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 30; }),
+                ("BentRootInside", p => { p.radius = 0.03f; Collide(p, VRCPhysBoneColliderBase.ShapeType.Sphere, 0.12f, 0, new Vector3(0, -0.03f, 0.08f), Quaternion.identity); p.gravity = 0.4f; }),
+                ("BentTail", p => {
+                    p.pullCurve = Ramp(1, 0.5f); p.stiffness = 0.2f; p.gravityCurve = Ramp(0.5f, 1); p.gravityFalloff = 0.5f;
+                    p.immobile = 0.3f; p.immobileCurve = Ramp(1, 0);
+                    p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 60; p.maxAngleXCurve = Ramp(0.5f, 1); p.limitRotation = new Vector3(10, 0, 0);
+                }),
+            };
+            var tail = new[] { new Vector3(0, -0.05f, -0.12f), new Vector3(0, -0.08f, -0.1f), new Vector3(0, -0.1f, -0.06f), new Vector3(0, -0.1f, 0) };
+            var all = probes.Select(p => (p.name, p.dir, p.set, bones: (Vector3[])null))
+                .Concat(bent.Select(b => (b.name, Vector3.up, b.set, bones: tail)))
+                .ToArray();
+            for (int i = 0; i < all.Length; i++)
+            {
+                var (name, dir, set, bones) = all[i];
                 var parent = t["Head"];
-                for (int k = 0; k < 4; k++)
+                for (int k = 0; k <= (bones?.Length ?? 3); k++)
                 {
                     var go = new GameObject(k == 0 ? name : $"{name}.{k}");
                     go.transform.SetParent(parent, false);
-                    go.transform.localPosition = k == 0 ? new Vector3((i - probes.Length / 2) * 0.05f, 0.3f, 0) : Vector3.up * 0.1f;
+                    go.transform.localPosition = k == 0 ? new Vector3((i - probes.Length / 2) * 0.05f, 0.3f, 0) : bones?[k - 1] ?? Vector3.up * 0.1f;
                     if (k == 0) go.transform.localRotation = Quaternion.FromToRotation(Vector3.up, dir);
                     parent = go.transform;
                 }
@@ -599,6 +624,7 @@ namespace AvatarWorkshop.Reference
                 pb.allowCollision = VRCPhysBoneBase.AdvancedBool.True;
                 pb.allowGrabbing = VRCPhysBoneBase.AdvancedBool.False;
                 pb.allowPosing = VRCPhysBoneBase.AdvancedBool.False;
+                if (bones != null) { pb.version = VRCPhysBoneBase.Version.Version_1_0; pb.spring = 0.4f; pb.gravity = 0.4f; }
                 set(pb);
             }
         }

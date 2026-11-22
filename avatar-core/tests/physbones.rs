@@ -39,9 +39,9 @@ const PROBES: &[(&str, &str, f32)] = &[
     ("Gravity30", "gravity, version 1.1", 0.01),
     ("Gravity100", "gravity, version 1.1", 0.01),
     ("Gravity50Down", "gravity along the rest direction", 0.01),
-    ("Gravity50Falloff50", "gravity falloff", 0.18),
-    ("Gravity50Falloff100", "gravity falloff", 0.045),
-    ("Gravity50Version10", "gravity, version 1.0", 0.25),
+    ("Gravity50Falloff50", "gravity falloff", 0.05),
+    ("Gravity50Falloff100", "gravity falloff", 0.015),
+    ("Gravity50Version10", "gravity, version 1.0", 0.02),
     ("Gravity50Advanced", "gravity, advanced integration", 0.015),
     ("Immobile50", "immobile, all motion", 0.01),
     ("Immobile100", "immobile, all motion", 0.01),
@@ -61,6 +61,17 @@ const PROBES: &[(&str, &str, f32)] = &[
     ("CapsuleRadius", "capsule collider, bone radius", 0.04),
     ("CapsuleBonesAsSpheres", "capsule collider treating bones as spheres", 0.025),
     ("Plane", "rotated plane collider", 0.27),
+    ("BentGravity", "a bent version 1.0 chain: gravity", 0.015),
+    ("BentGravity11", "a bent chain: gravity, version 1.1", 0.01),
+    ("BentGravityCurve", "a bent chain: gravity curve", 0.015),
+    ("BentPullCurve", "a bent chain: pull curve", 0.015),
+    ("BentFalloff", "a bent chain: gravity falloff", 0.05),
+    ("BentFalloff11", "a bent chain: gravity falloff, version 1.1", 0.04),
+    ("BentAngle", "a bent chain: angle limit", 0.01),
+    ("BentAngleRotated", "a bent chain: angle limit with rotation", 0.025),
+    ("BentAngle11", "a bent chain: angle limit, version 1.1", 0.01),
+    ("BentRootInside", "a bent chain: its root inside a sphere collider", 0.05),
+    ("BentTail", "a bent chain: the fixture tail's fields but its colliders", 0.025),
 ];
 
 #[test]
@@ -380,7 +391,8 @@ fn the_scripted_run_meets_the_bar_on_the_fixture() {
     for (e, tip) in &start {
         eprintln!("start {e:.4} {tip}");
     }
-    assert!(median(&start) <= 0.01, "median start {}", median(&start));
+    let far: Vec<_> = start.iter().filter(|(e, _)| *e > 0.05).collect();
+    assert!(far.is_empty(), "tips over 5% of their chain length from the recording's at the motion's start: {far:?}");
 }
 
 /// Two components on one root: VRChat poses the bones by the first alone, as the second, which would hold them still,

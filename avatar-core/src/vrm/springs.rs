@@ -4,10 +4,10 @@
 //! metres along `r`, its rest axis turned by its parent's current rotation, and by `gravityPower · dt` metres along
 //! `gravityDir`, then puts it back at its bone's length `L`. A version 1.0 PhysBone with advanced integration and
 //! no stiffness moves a bone end `p`, taken from its parent's position, to `p + spring · v + pull · (L·r - p)` and
-//! then `gravity · L / 2` down before the same projection, which is `(1 - pull)` times
+//! `gravity · L` down before the same projection, which is `(1 - pull)` times
 //! `p + spring / (1 - pull) · v + pull / (1 - pull) · L·r`. With `a = stiffness · dt / L` the two steps are equal
 //! before collision for `pull = a / (1 + a)`, `spring = (1 - dragForce)(1 - pull)` and
-//! `gravity = 2 · gravityPower · dt · (1 - pull) / L`, `dt` being the PhysBone step and `gravityPower` scaled by how
+//! `gravity = gravityPower · dt · (1 - pull) / L`, `dt` being the PhysBone step and `gravityPower` scaled by how
 //! far `gravityDir` points down. A chain's lengths vary, so these ride on curves over its depth; a VRM 0.x tree
 //! takes the mean length at each depth, and on a short bone gravity runs past the ±1 range VRChat authors use,
 //! which the core takes as it is. A spring with a center is fully immobile against that node, so its tails keep
@@ -87,7 +87,7 @@ fn physbone(root: NodeIndex, ignore: Vec<NodeIndex>, endpoint: Vec3, per_depth: 
         pull: by(&|(s, l)| pull(s, *l)),
         spring: by(&|(s, l)| (1.0 - s.drag).clamp(0.0, 1.0) * (1.0 - pull(s, *l))),
         stiffness: constant(0.0),
-        gravity: by(&|(s, l)| 2.0 * per_length(s.gravity, *l) * (1.0 - pull(s, *l))),
+        gravity: by(&|(s, l)| per_length(s.gravity, *l) * (1.0 - pull(s, *l))),
         gravity_falloff: constant(0.0),
         immobile_type: center.map_or(ImmobileType::AllMotion, ImmobileType::Node),
         immobile: constant(if center.is_some() { 1.0 } else { 0.0 }),
@@ -215,6 +215,7 @@ fn v1(doc: &mut Doc, ext: Option<&Value>) -> Result<(Vec<PhysBone>, Vec<Collider
 
 /// A VRM 1.0 collider shape, or a VRM 0.x sphere, whose offsets the caller has put in glTF axes.
 /// Its radius, in world units in VRM, is divided by `scale`, the node's world scale, which the core multiplies it by.
+/// A VRM joint collides as a sphere at its tail, so the collider treats bones as spheres.
 fn collider(node: NodeIndex, shape: &Value, scale: f32) -> Result<Collider, Error> {
     let at = |s: &Value, k: &str| floats::<3>(s.get(k)).map_or(Vec3::ZERO, Vec3::from);
     let inside = |s: &Value| s.get("inside").and_then(Value::as_bool) == Some(true);
@@ -224,7 +225,7 @@ fn collider(node: NodeIndex, shape: &Value, scale: f32) -> Result<Collider, Erro
             shape: ColliderShape::Sphere { radius: number(s.get("radius"), 0.0) / scale, inside_bounds: inside(s) },
             position: at(s, "offset").to_array(),
             rotation: Quat::IDENTITY.to_array(),
-            bones_as_spheres: false,
+            bones_as_spheres: true,
         });
     }
     if let Some(s) = shape.get("capsule") {
@@ -235,7 +236,7 @@ fn collider(node: NodeIndex, shape: &Value, scale: f32) -> Result<Collider, Erro
             shape: ColliderShape::Capsule { radius, height: axis.length() + 2.0 * radius, inside_bounds: inside(s) },
             position: ((a + b) / 2.0).to_array(),
             rotation: Quat::from_rotation_arc(Vec3::Y, axis.normalize_or(Vec3::Y)).to_array(),
-            bones_as_spheres: false,
+            bones_as_spheres: true,
         });
     }
     if let Some(s) = shape.get("plane") {
@@ -245,7 +246,7 @@ fn collider(node: NodeIndex, shape: &Value, scale: f32) -> Result<Collider, Erro
             shape: ColliderShape::Plane {},
             position: at(s, "offset").to_array(),
             rotation: Quat::from_rotation_arc(Vec3::Y, normal).to_array(),
-            bones_as_spheres: false,
+            bones_as_spheres: true,
         });
     }
     Err(malformed(format!("spring collider on node {} has no sphere, capsule or plane", node.0)))
