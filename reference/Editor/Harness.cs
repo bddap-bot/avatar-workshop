@@ -322,7 +322,6 @@ namespace AvatarWorkshop.Reference
         readonly CultureInfo inv = CultureInfo.InvariantCulture;
 
         int frame = -1;
-        int warmup;
         LyumaAv3Runtime runtime;
         Transform root;
         Vector3 rootPos;
@@ -453,12 +452,6 @@ namespace AvatarWorkshop.Reference
                 DynamicParameters();
                 HumanStream();
                 ClockLayers();
-                return;
-            }
-            if (root == null)
-            {
-                warmup++;
-                if (warmup < 5) return;
                 Setup();
             }
             if (stepIndex < 0 || stepFrame >= steps[stepIndex].Frames)
@@ -575,7 +568,7 @@ namespace AvatarWorkshop.Reference
         // Each humanoid bone's local pose as the animator left it, before the scripted arm swing and the SDK's dynamics.
         public void Humanoid()
         {
-            if (root == null || stepIndex < 0 || Finished) return;
+            if (root == null || Finished) return;
             var f = frame.ToString(inv);
             foreach (var (t, bone) in humanBones)
             {
@@ -587,7 +580,7 @@ namespace AvatarWorkshop.Reference
 
         public void Pose()
         {
-            if (root == null || stepIndex < 0 || Finished) return;
+            if (root == null || Finished) return;
             if (handAt is Vector3 at && leftHand != null) leftHand.position = root.TransformPoint(at);
             if (armSwing == Vector2.zero) return;
             foreach (var (bone, sign) in new[] { (leftArm, -1f), (rightArm, 1f) })
@@ -600,7 +593,7 @@ namespace AvatarWorkshop.Reference
 
         public void Drivers()
         {
-            if (root == null || stepIndex < 0 || Finished) return;
+            if (root == null || Finished) return;
             var f = frame.ToString(inv);
             void Write(string space, string path, string pose) => WritePose(posesOut, lastPoses, f, space, path, pose);
             foreach (var (slot, sender) in standardSenders)
@@ -622,7 +615,7 @@ namespace AvatarWorkshop.Reference
 
         public void Constrained()
         {
-            if (root == null || stepIndex < 0 || Finished) return;
+            if (root == null || Finished) return;
             var f = frame.ToString(inv);
             foreach (var (t, path) in targets)
             {
@@ -669,7 +662,6 @@ namespace AvatarWorkshop.Reference
             timeOut.Write($"{f}\t{mixer.GetTime().ToString("R", inv)}\n");
             if (dynamicsFrame != frame) throw new Exception($"no animator values of the contact and PhysBone parameters were taken before the animator ran at frame {f}");
             Clocks(f);
-            if (root == null || stepIndex < 0) return;
             if (posedFrame != frame) throw new Exception($"no driver poses were taken before the SDK's dynamics at frame {f}");
             if (humanBones.Length > 0 && humanFrame != frame) throw new Exception($"no humanoid bone poses were taken after animation at frame {f}");
             if (constrainedFrame != frame) throw new Exception($"no constrained poses were taken after the SDK's dynamics at frame {f}");

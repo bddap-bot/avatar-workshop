@@ -276,7 +276,8 @@ the SDK and the emulator are installed there, never copied here.
 `reference/run.sh PROJECT OUT [SCENE] [AVATAR]` adds the package and the exporter to `PROJECT`, opens `SCENE`,
 converts legacy DynamicBones as the exporter does, enters play mode in batch mode (the emulator runs the SDK's
 build preprocess, so build-tool output is what is recorded, and the exporter writes the model from that same
-build) and drives the avatar at a fixed 60 Hz step with one scripted input: rest, six seconds of
+build) and, from the frame Av3Emulator attaches its runtime to the avatar, records it and drives it at a fixed
+60 Hz step with one scripted input: rest, six seconds of
 root and arm motion, settling, a quiet hold as long as the avatar's longest particle lifetime (so what the
 motion emitted is gone), every expression-menu control swept from a rendered base (each toggle and button to its
 non-default value, each radial at 0, 0.25, 0.5, 0.75 and 1, each puppet axis to its extremes, inside
