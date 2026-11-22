@@ -369,7 +369,7 @@ fn hands_push_each_chain_their_filter_admits() {
 
 /// The core's reference run, fed only the recording's script and its body pose, meets the 5% bar on the fixture's
 /// recording, and its tips start the motion where the recording's do: each within 5% of its chain's length, the
-/// median within 1%.
+/// median within 1%. On the recording's first frame, the one the SDK's PhysBones start on, the same.
 #[test]
 fn the_scripted_run_meets_the_bar_on_the_fixture() {
     let dir = path("fixtures/reference/fixture-animator");
@@ -388,13 +388,17 @@ fn the_scripted_run_meets_the_bar_on_the_fixture() {
     }
     assert_eq!(motion.len(), reference::rows(&dir.join("chains.tsv")).len() - 1);
     assert!(median(&motion) <= 0.05, "median {}", median(&motion));
-    let start = errors(&dir, &trace, window.start..window.start + 1);
-    for (e, tip) in &start {
-        eprintln!("start {e:.4} {tip}");
+    let first = *trace.frames.first().unwrap() as usize;
+    assert_eq!(first, 0, "the recording starts on the frame the emulator attaches");
+    for (at, label) in [(window.start, "the motion's start"), (first, "the first frame")] {
+        let start = errors(&dir, &trace, at..at + 1);
+        for (e, tip) in &start {
+            eprintln!("{label} {e:.4} {tip}");
+        }
+        assert!(median(&start) <= 0.01, "median at {label} {}", median(&start));
+        let far: Vec<_> = start.iter().filter(|(e, _)| *e > 0.05).collect();
+        assert!(far.is_empty(), "tips over 5% of their chain length from the recording's at {label}: {far:?}");
     }
-    assert!(median(&start) <= 0.01, "median start {}", median(&start));
-    let far: Vec<_> = start.iter().filter(|(e, _)| *e > 0.05).collect();
-    assert!(far.is_empty(), "tips over 5% of their chain length from the recording's at the motion's start: {far:?}");
 }
 
 /// Two components on one root: VRChat poses the bones by the first alone, as the second, which would hold them still,

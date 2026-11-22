@@ -332,6 +332,11 @@ impl Evaluator {
         for (i, f) in &self.fields {
             set_field(&mut self.constraints, &mut self.contacts, f, values[*i]);
         }
+        if !self.physbones.started() {
+            let o = &self.output;
+            let file = Frame { root: input.root, nodes: o.space.clone(), locals: o.locals.clone(), active: active.clone(), enabled: physbones.clone(), hands: vec![] };
+            self.physbones.advance(0.0, &file);
+        }
         self.dynamics(input, locals, active, &physbones);
         let values = self.animator.values();
         for (i, r) in &self.renderer_enabled {

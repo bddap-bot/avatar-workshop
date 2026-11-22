@@ -18,7 +18,7 @@ use avatar_core::humanoid::{muscle_names, Body, Human};
 use super::{canonical, paths, text};
 
 /// The emulator's playable-graph time after each frame's evaluation, from the frame the graph exists.
-fn graph_times(dir: &Path) -> BTreeMap<usize, f64> {
+pub fn graph_times(dir: &Path) -> BTreeMap<usize, f64> {
     text(&dir.join("time.tsv"))
         .lines()
         .map(|l| {

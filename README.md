@@ -125,17 +125,20 @@ the seconds since the last frame, the avatar root in the world, the root-space p
 (tracked or IK-solved, in any order) and the senders outside the avatar. The frame runs the animator (not on a
 frame with no time passed), applies its node transforms and the humanoid bones its human stream poses, active flags, PhysBone enabled flags and constraint and
 contact fields over the rest pose, places the host's poses, solves the constraints before PhysBones, advances
-PhysBones (a stopped chain leaves its bones to animation), solves the constraints after them, advances contacts,
+PhysBones (a stopped chain leaves its bones to animation; on the first `evaluate` every chain starts at the rest
+pose, as the SDK's chains do when the avatar loads, and that frame's time steps them toward its pose), solves the
+constraints after them, advances contacts,
 and sets each receiver's and PhysBone's parameters on the animator for the next frame, where a host's own `set`
 before then wins. `output()` is the frame: every node's local pose and root-space pose, active flags, each
 renderer's enabled flag, and the blendshape weights, material properties and slots the animator binds. The
 reference replays drive it with what the recording's animation left (`evaluate_animated`) and, for the dynamics
-replay, with the SDK's PhysBone output in place of the core's (`Input::held`); a runtime uses neither.
+replay, with the SDK's PhysBone output in place of the core's (`Input::held`); a runtime uses neither. Its chains
+start at the first frame it is given, which for a recording begun after the avatar loaded is not the rest pose.
 
 `cargo run --release --example run -- RECORDING AVATAR.glb OUT [--frames N]` writes the core's reference run
 of a model under a recording's scripted input: each frame the parameters `inputs.tsv` sets, the root of `track.tsv`,
 and the humanoid trunk and limbs as `poses.tsv` holds them, every one from the first frame, as a host gives the pose
-its IK solved (fingers, eyes and jaw stay the animator's), at 60 Hz. `OUT/tips.tsv` holds every PhysBone tip each frame, and `params.tsv`,
+its IK solved (fingers, eyes and jaw stay the animator's), each frame stepped by the change in the emulator's graph time (`time.tsv`, which starts at 0). `OUT/tips.tsv` holds every PhysBone tip each frame, and `params.tsv`,
 `states.tsv` and `output.tsv` the animator's parameters, each layer's state and the frame output as change logs. `script.tsv` is what each frame fed the core (`set`, `head`, `pose` and `frame` lines, in the order it applied them, each value the hex of its f32 bits), so another runtime can feed its own the same and compare.
 Two runs write the same bytes; `cargo test --test evaluate` checks that on the fixture's recording.
 

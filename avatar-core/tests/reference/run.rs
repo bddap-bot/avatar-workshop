@@ -1,5 +1,6 @@
 //! The core's reference run of a model under a recording's scripted input: each frame the harness's parameter
-//! inputs (`inputs.tsv`) and its root (`track.tsv`), stepped at 60 Hz through [`Evaluator::evaluate`], the body
+//! inputs (`inputs.tsv`) and its root (`track.tsv`), each frame stepped through [`Evaluator::evaluate`] by the
+//! change in the emulator's graph time (`time.tsv`, which starts at 0), the body
 //! standing in the recorded pose (`poses.tsv`): the humanoid trunk and limbs, which VRChat's IK places and the core
 //! takes from its host, posed where the recording holds them, their scale included, while fingers, eyes and jaw stay
 //! the animator's. It writes, per frame, every PhysBone tip, and as change logs the animator's parameters and states
@@ -15,7 +16,7 @@ use avatar_core::model::HumanBodyBone;
 use avatar_core::physbones::{Nodes, Transform};
 use avatar_core::Avatar;
 
-use super::{animator::inputs, canonical, floats, paths, rows, text, tips, unity};
+use super::{animator::{graph_times, inputs}, canonical, floats, paths, rows, text, tips, unity};
 
 #[derive(Default, PartialEq, Eq, Debug)]
 pub struct Run {
@@ -95,10 +96,13 @@ pub fn run(avatar: &Avatar, dir: &Path, frames: Option<usize>) -> Run {
     let mut ev = Evaluator::new(avatar).unwrap();
     let mut run = Run::default();
     let (mut params, mut states, mut outputs) = (BTreeMap::new(), BTreeMap::new(), BTreeMap::new());
+    let time = graph_times(dir);
     let mut root = Transform::IDENTITY;
     let mut poses: Vec<(usize, Transform)> = vec![];
     for f in first..end {
-        let dt: f32 = if f == first { 0.0 } else { 1.0 / 60.0 };
+        let at = |f: usize| *time.get(&f).unwrap_or_else(|| panic!("time.tsv holds no graph time for frame {f}"));
+        let now = at(f);
+        let dt = (now - if f <= *time.keys().next().unwrap() { 0.0 } else { at(f - 1) }) as f32;
         for (n, v) in script.get(&f).into_iter().flatten() {
             let b = builtin.contains(n.as_str());
             if b {

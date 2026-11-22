@@ -538,6 +538,11 @@ impl PhysBones {
         self.chains[physbone].bones.iter().filter_map(|b| b.node)
     }
 
+    /// Whether a [`PhysBones::advance`] has started the simulation, its chains at that frame's pose.
+    pub(crate) fn started(&self) -> bool {
+        self.last.is_some()
+    }
+
     /// Whether `physbone` simulated in the last [`PhysBones::advance`]; a stopped chain leaves its bones to animation.
     pub fn running(&self, physbone: usize) -> bool {
         self.chains[physbone].running
