@@ -115,6 +115,12 @@ namespace AvatarWorkshop.Reference
         public static readonly float[] MapHeights = { 0.005f, 0.01f, 0.015f, 0.02f, 0.025f, 0.029f };
         public static readonly int[] MapAngles = { -45, -20, 0, 10, 20, 30, 45, 60 };
 
+        // Bones crossing the axis at an angle: where the collider's point nearest a bone's end is farther from the bone
+        // than the axis is, a push found from that point alone and one at the segments' nearest points part.
+        public static readonly float[] CrossHeights = { 0.005f, 0.015f, 0.025f, 0.029f };
+        public static readonly int[] CrossAngles = { 15, 30, 45, 60, 75 };
+        public static readonly float[] CrossAts = { 0.1f, 0.3f, 0.7f };
+
         public static readonly float[] AlongHeights = { 0.01f, 0.025f };
         public static readonly float[] AlongOffsets = { -0.05f, -0.03f, -0.01f, 0.01f };
         public static readonly (string name, Vector3 bone)[] AlongWays =
@@ -136,13 +142,19 @@ namespace AvatarWorkshop.Reference
                 0.04f * new Vector3(Mathf.Cos(a * Mathf.Deg2Rad), Mathf.Sin(a * Mathf.Deg2Rad), 0),
                 (System.Action<VRCPhysBone>)(pb => { pb.pull = 0; pb.spring = 0; }),
                 1)));
+            var cross = relation != ReachVaried[0] ? Enumerable.Empty<(string, Vector3, Vector3, System.Action<VRCPhysBone>, int)>() : CrossHeights.SelectMany(h => CrossAngles.SelectMany(a => CrossAts.Select(f =>
+            {
+                var bone = 0.04f * new Vector3(Mathf.Cos(a * Mathf.Deg2Rad), 0, Mathf.Sin(a * Mathf.Deg2Rad));
+                return ($"{relation}CrossH{Mathf.RoundToInt(h * 1000)}A{a}F{Mathf.RoundToInt(f * 10)}", new Vector3(0, h, 0) - f * bone, bone,
+                    (System.Action<VRCPhysBone>)(pb => { pb.pull = 0; pb.spring = 0; }), 1);
+            })));
             var along = relation != ReachVaried[1] ? Enumerable.Empty<(string, Vector3, Vector3, System.Action<VRCPhysBone>, int)>() : AlongHeights.SelectMany(h => AlongOffsets.SelectMany(z => AlongWays.Select(w => (
                 $"{relation}AlongH{Mathf.RoundToInt(h * 1000)}Z{(z < 0 ? "m" : "")}{Mathf.RoundToInt(Mathf.Abs(z) * 1000)}{w.name}",
                 new Vector3(0, h, z),
                 w.bone,
                 (System.Action<VRCPhysBone>)(pb => { pb.pull = 0; pb.spring = 0; }),
                 1))));
-            return chains.Concat(varied).Concat(map).Concat(along);
+            return chains.Concat(varied).Concat(map).Concat(cross).Concat(along);
         }
 
         // The runs hang from the avatar's root, which the body's first pose leaves where it is.

@@ -469,7 +469,9 @@ fn a_second_component_on_a_root_poses_nothing() {
 /// own, crossed by chains hanging from that bone, its parent, a further ancestor or its child, which lead out across the
 /// collider's middle or from a root within its reach, under varied settings and directions: over the rest before the
 /// sweeps, the tip of each is within 5% of its chain's length of the recording's (RMS), and the core pushes the chains
-/// the SDK pushes. The chains at spring 0.9 are held to their measured 8%: the core's simplified swing at high spring
+/// the SDK pushes. A bone crossing the finger collider's axis at an angle is pushed only when its point nearest the
+/// collider's point nearest its end is within reach: one crossing 2.9 cm above the axis, within reach of it, is not.
+/// The chains at spring 0.9 are held to their measured 8%: the core's simplified swing at high spring
 /// misses the SDK's with no collider at all, as the probe scene's `Spring60` and `Spring95` show.
 #[test]
 fn wearer_hands_push_chains_from_whichever_bone_they_hang() {
@@ -488,7 +490,8 @@ fn wearer_hands_push_chains_from_whichever_bone_they_hang() {
             assert_eq!(reaches.iter().filter(|(t, _)| t.split('|').next().unwrap().ends_with(&format!("/{relation}{shape}"))).count(), 1, "{relation}{shape}");
         }
     }
-    assert_eq!(reaches.len(), 176, "chains behind the body");
+    assert_eq!(reaches.len(), 236, "chains behind the body");
+    assert_eq!(reaches.iter().filter(|(t, _)| t.split('|').next().unwrap().contains("/FingerOwnCross")).count(), 60, "chains crossing the finger collider's axis at an angle");
     let mut failed = vec![];
     for (tip, length) in reaches {
         let chain = tip.split('|').next().unwrap().rsplit('/').next().unwrap();
@@ -499,7 +502,9 @@ fn wearer_hands_push_chains_from_whichever_bone_they_hang() {
         let (by_sdk, by_core) = (pushed(&|f| recorded[tip][&f]), pushed(&|f| ours[&f][tip]));
         eprintln!("{chain:<34} RMS {rms:.4}; largest distance from its first tip: recording {by_sdk:.4}, core {by_core:.4}, of its length");
         let bound = if chain.contains("SpringHigh") { 0.08 } else { 0.05 };
-        if rms > bound || (by_sdk > 0.05) != (by_core > 0.05) || (chain.ends_with("Across") && by_sdk <= 0.05) {
+        let must_push = chain.ends_with("Across") || chain.contains("CrossH5A") || chain.contains("CrossH15A");
+        let must_not_push = chain.ends_with("CrossH29A45F3");
+        if rms > bound || (by_sdk > 0.05) != (by_core > 0.05) || (must_push && by_sdk <= 0.05) || (must_not_push && by_sdk > 0.0) {
             failed.push(format!("{chain}: RMS {rms:.4}, pushed {by_sdk:.4} in the recording, {by_core:.4} in the core"));
         }
     }

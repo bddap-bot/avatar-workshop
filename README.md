@@ -693,7 +693,9 @@ integration at stiffness 0.2 and 0.6, world immobile 1, radius 0.005 and 0.015, 
 down and along the collider's axis, and one combining low pull, high spring, advanced integration, world immobile
 and a small radius (`Fixture.ReachVariants`). Chains of one 0.04 m bone with neither pull nor spring, which move only
 by the push, map it: around the right index finger's collider from roots 0.5 to 2.9 cm above the axis at angles from
-45° below level to 60° above (`Fixture.MapHeights`, `Fixture.MapAngles`), and around the right hand's along its axis,
+45° below level to 60° above (`Fixture.MapHeights`, `Fixture.MapAngles`), chains level over its axis at 0.5 to 2.9 cm
+above it, turned 15° to 75° from square to it and crossing it 0.1, 0.3 or 0.7 of the way from the root
+(`Fixture.CrossHeights`, `Fixture.CrossAngles`, `Fixture.CrossAts`), and around the right hand's along its axis,
 forward, back and rising 20°, from roots 1 and 2.5 cm above it, 3 and 1 cm before its start and 1 cm either side of
 its middle (`Fixture.AlongHeights`, `Fixture.AlongOffsets`, `Fixture.AlongWays`). The checked-in `tips.tsv.gz` keeps
 the tips of the chains behind the body only for frames before the self sweep, the frames its tests read, and every
