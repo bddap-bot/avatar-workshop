@@ -994,13 +994,17 @@ impl Chain {
             bone.position = keep(match collider.shape {
                 ColliderShape::Sphere { radius, .. } if collider.meets_segment => {
                     let at = place.point(collider.position);
-                    touch_bone(origin, bone.position, q.radius * scale, (at, at, radius * place.scale.x.abs()), SEGMENT_PUSH_AT_PARENT)
+                    touch_bone(origin, bone.position, q.radius * scale, (at, radius * place.scale.x.abs()))
                 }
                 _ => collide(bone.position, q.radius * scale, collider, place),
             });
         }
         for touch in touches {
-            bone.position = keep(touch_bone(origin, bone.position, q.radius * scale, (touch.a, touch.b, touch.radius), 1.0));
+            let before = bone.position;
+            bone.position = keep(touch_hand(origin, bone.position, q.radius * scale, (touch.a, touch.b, touch.radius)));
+            if matches!(self.integration, IntegrationType::Simplified) {
+                bone.previous += (bone.position - before) * HAND_PUSH_OUT_OF_VELOCITY;
+            }
         }
     }
 
@@ -1087,6 +1091,9 @@ const STRETCH_STIFFNESS_SHARE: f32 = 0.8;
 /// A collider sphere touching a bone's segment at its parent's end moves the bone this share of the push that frees
 /// that point, and touching it at the bone's own end all of it, measured against the reference traces.
 const SEGMENT_PUSH_AT_PARENT: f32 = 0.35;
+/// The share of a hand's push that simplified integration leaves out of the bone's next velocity, measured against the
+/// hand probe's chains at pull 0.05 to 0.6 and spring 0.3; advanced integration keeps all of it in.
+const HAND_PUSH_OUT_OF_VELOCITY: f32 = 0.8;
 
 /// How much of gravity's falloff applies: the cosine between `bone`'s and `animated`'s tilts from horizontal, 1 while
 /// the bone keeps its animated tilt whichever way it turns about the vertical. Past a quarter turn it is 0, so falloff
@@ -1157,13 +1164,11 @@ fn collide(position: Vec3, radius: f32, collider: &ColliderAt, place: &Transform
     core + d.normalize_or(axis.any_orthonormal_vector()) * reach
 }
 
-/// Pushes a bone's end at `position` so its segment from `origin`, its parent's end, clears the capsule `(a, b, r)`: the
-/// end moves by the push that frees the segment's nearest point, times a share from `at_parent`, for a contact at
-/// `origin`, to 1 at the end. A hand's share is 1 throughout, which leaves a contact near the parent partly inside:
-/// the hand probe's traces show this, and an end sphere alone, or a push scaled to free that point, misses them by
-/// several times as much. A collider sphere's is [`SEGMENT_PUSH_AT_PARENT`], from its own probes.
-fn touch_bone(origin: Vec3, position: Vec3, radius: f32, (a, b, r): (Vec3, Vec3, f32), at_parent: f32) -> Vec3 {
-    let (on_bone, core) = closest_on_segments(origin, position, a, b);
+/// Pushes a bone's end at `position` so its segment from `origin`, its parent's end, clears the sphere `(at, r)`: the
+/// end moves by the push that frees the segment's nearest point, times a share from [`SEGMENT_PUSH_AT_PARENT`], for a
+/// contact at `origin`, to 1 at the end, from the sphere probes.
+fn touch_bone(origin: Vec3, position: Vec3, radius: f32, (at, r): (Vec3, f32)) -> Vec3 {
+    let (on_bone, core) = closest_on_segments(origin, position, at, at);
     let d = on_bone - core;
     let reach = r + radius;
     if radius <= 0.0 || d.length() >= reach {
@@ -1171,6 +1176,27 @@ fn touch_bone(origin: Vec3, position: Vec3, radius: f32, (a, b, r): (Vec3, Vec3,
     }
     let segment = position - origin;
     let along = if segment.length_squared() > 0.0 { ((on_bone - origin).dot(segment) / segment.length_squared()).clamp(0.0, 1.0) } else { 1.0 };
-    let share = at_parent + (1.0 - at_parent) * along;
-    position + (core + d.normalize_or((b - a).any_orthonormal_vector()) * reach - on_bone) * share
+    let share = SEGMENT_PUSH_AT_PARENT + (1.0 - SEGMENT_PUSH_AT_PARENT) * along;
+    position + (core + d.normalize_or(segment.normalize_or(Vec3::Y).any_orthonormal_vector()) * reach - on_bone) * share
+}
+
+/// Pushes a bone's end at `position` by all of the push that takes one point of its segment from `origin` out of the
+/// hand's capsule `(a, b, r)`: the point nearest the capsule's point nearest the end, but no nearer `origin` than the
+/// bone's radius. The hand probe's one-bone chains, which move only by the push, stop where that point leaves the
+/// reach, at every height and angle around the capsule, and along its axis past either end.
+fn touch_hand(origin: Vec3, position: Vec3, radius: f32, (a, b, r): (Vec3, Vec3, f32)) -> Vec3 {
+    let segment = position - origin;
+    let length = segment.length();
+    if radius <= 0.0 || length <= 0.0 {
+        return position;
+    }
+    let (_, core) = closest_on_segments(position, position, a, b);
+    let along = ((core - origin).dot(segment) / (length * length)).clamp((radius / length).min(1.0), 1.0);
+    let on_bone = origin + segment * along;
+    let d = on_bone - core;
+    let reach = r + radius;
+    if d.length() >= reach {
+        return position;
+    }
+    position + core + d.normalize_or((b - a).normalize_or(Vec3::Y).any_orthonormal_vector()) * reach - on_bone
 }

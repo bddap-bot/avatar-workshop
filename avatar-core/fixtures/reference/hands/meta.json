@@ -1,6 +1,6 @@
 {
   "avatar": "AWHands",
-  "harness": "da176960afc703ba529def4404904daf0fab88e0-dirty",
+  "harness": "1a949d4c011d6df0ce04c39f03915b6aabece007-dirty",
   "fixture": false,
   "human": false,
   "blend": false,
@@ -341,12 +341,12 @@
   "rate": 60,
   "steps": 8,
   "frames": 2055,
-  "tips": 26,
-  "physbones": 26,
+  "tips": 182,
+  "physbones": 182,
   "contacts": 7,
   "constraints": 0,
   "drivers": 32,
-  "bones": 104,
+  "bones": 584,
   "packages": {
     "com.vrchat.avatars": "3.10.5",
     "com.vrchat.base": "3.10.5",

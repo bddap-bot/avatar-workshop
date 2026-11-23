@@ -85,6 +85,66 @@ namespace AvatarWorkshop.Reference
 
         public const float ReachBone = 0.05f, ReachRadius = 0.02f, ReachHeight = 0.08f;
 
+        public static readonly (string suffix, System.Action<VRCPhysBone> set, Vector3? bone)[] ReachVariants =
+        {
+            ("PullLow", pb => pb.pull = 0.05f, null),
+            ("PullHigh", pb => pb.pull = 0.6f, null),
+            ("SpringNone", pb => pb.spring = 0, null),
+            ("SpringHigh", pb => pb.spring = 0.9f, null),
+            ("Advanced", pb => pb.integrationType = VRCPhysBoneBase.IntegrationType.Advanced, null),
+            ("AdvancedStiff", pb => { pb.integrationType = VRCPhysBoneBase.IntegrationType.Advanced; pb.stiffness = 0.6f; }, null),
+            ("Immobile", pb => { pb.immobileType = VRCPhysBoneBase.ImmobileType.World; pb.immobile = 1; }, null),
+            ("RadiusSmall", pb => pb.radius = 0.005f, null),
+            ("RadiusLarge", pb => pb.radius = 0.015f, null),
+            ("Up", _ => { }, new Vector3(0, 0.04f, 0)),
+            ("Diagonal", _ => { }, new Vector3(0.02828f, 0.02828f, 0)),
+            ("Down", _ => { }, new Vector3(0.02828f, -0.02828f, 0)),
+            ("Along", _ => { }, new Vector3(0, 0, 0.04f)),
+            ("Like", pb =>
+            {
+                pb.pull = 0.05f; pb.spring = 0.8f; pb.radius = 0.005f;
+                pb.integrationType = VRCPhysBoneBase.IntegrationType.Advanced;
+                pb.immobileType = VRCPhysBoneBase.ImmobileType.World; pb.immobile = 1;
+            }, null),
+        };
+
+        public static readonly string[] ReachVaried = { "FingerOwn", "HandOwn" };
+
+        // One-bone chains with neither pull nor spring around the collider on the chains' own bone, so each step moves a
+        // bone only by the push: roots at heights above the axis up to its reach, leading out at angles from level.
+        public static readonly float[] MapHeights = { 0.005f, 0.01f, 0.015f, 0.02f, 0.025f, 0.029f };
+        public static readonly int[] MapAngles = { -45, -20, 0, 10, 20, 30, 45, 60 };
+
+        public static readonly float[] AlongHeights = { 0.01f, 0.025f };
+        public static readonly float[] AlongOffsets = { -0.05f, -0.03f, -0.01f, 0.01f };
+        public static readonly (string name, Vector3 bone)[] AlongWays =
+        {
+            ("Forward", new Vector3(0, 0, 0.04f)),
+            ("Back", new Vector3(0, 0, -0.04f)),
+            ("Rising", 0.04f * new Vector3(0, Mathf.Sin(20 * Mathf.Deg2Rad), Mathf.Cos(20 * Mathf.Deg2Rad))),
+        };
+
+        static IEnumerable<(string name, Vector3 root, Vector3 bone, System.Action<VRCPhysBone> set, int bones)> ReachChainsOf(string relation)
+        {
+            System.Action<VRCPhysBone> none = _ => { };
+            var chains = ReachChains.Select(c => (relation + c.suffix, c.root, c.bone, none, 3));
+            if (!ReachVaried.Contains(relation)) return chains;
+            var varied = ReachChains.Where(c => c.suffix != "Across").SelectMany(c => ReachVariants.Select(v => (relation + c.suffix + v.suffix, c.root, v.bone ?? c.bone, v.set, 3)));
+            var map = relation != ReachVaried[0] ? Enumerable.Empty<(string, Vector3, Vector3, System.Action<VRCPhysBone>, int)>() : MapHeights.SelectMany(h => MapAngles.Select(a => (
+                $"{relation}MapH{Mathf.RoundToInt(h * 1000)}A{(a < 0 ? "m" : "")}{Mathf.Abs(a)}",
+                new Vector3(0, h, 0),
+                0.04f * new Vector3(Mathf.Cos(a * Mathf.Deg2Rad), Mathf.Sin(a * Mathf.Deg2Rad), 0),
+                (System.Action<VRCPhysBone>)(pb => { pb.pull = 0; pb.spring = 0; }),
+                1)));
+            var along = relation != ReachVaried[1] ? Enumerable.Empty<(string, Vector3, Vector3, System.Action<VRCPhysBone>, int)>() : AlongHeights.SelectMany(h => AlongOffsets.SelectMany(z => AlongWays.Select(w => (
+                $"{relation}AlongH{Mathf.RoundToInt(h * 1000)}Z{(z < 0 ? "m" : "")}{Mathf.RoundToInt(Mathf.Abs(z) * 1000)}{w.name}",
+                new Vector3(0, h, z),
+                w.bone,
+                (System.Action<VRCPhysBone>)(pb => { pb.pull = 0; pb.spring = 0; }),
+                1))));
+            return chains.Concat(varied).Concat(map).Concat(along);
+        }
+
         // The runs hang from the avatar's root, which the body's first pose leaves where it is.
         static void HandsReaches(VRCAvatarDescriptor d, Transform root)
         {
@@ -115,13 +175,13 @@ namespace AvatarWorkshop.Reference
                     default: throw new System.ArgumentException(slot);
                 }
                 var middle = stands.TransformPoint(new Vector3(0, 0, finger ? -ReachHeight / 2 : -ReachHeight / 2 + ReachRadius));
-                foreach (var (suffix, at, bone) in ReachChains)
+                foreach (var (chainName, at, bone, set, bones) in ReachChainsOf(name))
                 {
                     var p = run[2 - up];
                     GameObject chain = null;
-                    for (int k = 0; k < 4; k++)
+                    for (int k = 0; k <= bones; k++)
                     {
-                        var go = new GameObject(k == 0 ? name + suffix : $"{name}{suffix}.{k}");
+                        var go = new GameObject(k == 0 ? chainName : $"{chainName}.{k}");
                         go.transform.SetParent(p, false);
                         if (k == 0) go.transform.position = middle + at;
                         else go.transform.localPosition = bone;
@@ -133,12 +193,13 @@ namespace AvatarWorkshop.Reference
                     pb.allowCollision = VRCPhysBoneBase.AdvancedBool.True;
                     pb.allowGrabbing = VRCPhysBoneBase.AdvancedBool.False;
                     pb.allowPosing = VRCPhysBoneBase.AdvancedBool.False;
+                    set(pb);
                 }
             }
         }
 
         public static readonly string[] HandSettings =
-            HandFilters.Select(f => "chain." + f.name).Concat(Reaches.SelectMany(r => ReachChains.Select(c => "reach." + r.name + c.suffix))).Concat(new[] { "hand.wearer.hand", "hand.wearer.finger", "hand.other" }).ToArray();
+            HandFilters.Select(f => "chain." + f.name).Concat(Reaches.SelectMany(r => ReachChainsOf(r.name).Select(c => "reach." + c.name))).Concat(new[] { "hand.wearer.hand", "hand.wearer.finger", "hand.other" }).ToArray();
 
         public static SortedDictionary<string, int> CountHands(GameObject root, IEnumerable<(string slot, VRCPhysBoneCollider collider)> wearer, IEnumerable<VRCPhysBoneColliderBase> outside)
         {

@@ -686,7 +686,18 @@ the third bone of a straight run of four of its own behind the body, hanging fro
 (`Fixture.Reaches`). Four level chains of three 0.04 m segments cross each of those five colliders' axes, hanging from
 the bone it stands on, from that bone's parent, from a further ancestor or from its child, one per collider: one across
 its middle 1 cm above the axis, and three leading out of it from a root 1 cm or 1.5 cm above the axis, inside the
-collider, or 2.5 cm above it, outside the collider but within the chain's radius of it (`Fixture.ReachChains`). One
+collider, or 2.5 cm above it, outside the collider but within the chain's radius of it (`Fixture.ReachChains`). Around
+the right index finger's and the right hand's colliders, each of the three that lead out from a root within reach is
+repeated with one of its fixed settings or its direction varied: pull 0.05 and 0.6, spring 0 and 0.9, advanced
+integration at stiffness 0.2 and 0.6, world immobile 1, radius 0.005 and 0.015, leading up, diagonally up, diagonally
+down and along the collider's axis, and one combining low pull, high spring, advanced integration, world immobile
+and a small radius (`Fixture.ReachVariants`). Chains of one 0.04 m bone with neither pull nor spring, which move only
+by the push, map it: around the right index finger's collider from roots 0.5 to 2.9 cm above the axis at angles from
+45° below level to 60° above (`Fixture.MapHeights`, `Fixture.MapAngles`), and around the right hand's along its axis,
+forward, back and rising 20°, from roots 1 and 2.5 cm above it, 3 and 1 cm before its start and 1 cm either side of
+its middle (`Fixture.AlongHeights`, `Fixture.AlongOffsets`, `Fixture.AlongWays`). The checked-in `tips.tsv.gz` keeps
+the tips of the chains behind the body only for frames before the self sweep, the frames its tests read, and every
+frame of the row's. One
 global PhysBone collider outside the avatar stands with another player id, for another player's hand (`outside_hands`
 in `meta.json`, its poses in `poses.tsv`). After a 300-frame rest the wearer's left hand, placed after animation,
 sweeps along the row through the chains' third bones and back at 0.5 m/s, then the other player's hand does, then both

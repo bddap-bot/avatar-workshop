@@ -116,7 +116,10 @@ natively, as a Godot extension, or compiled to WebAssembly. A runtime does not r
   finger colliders push each chain whose collision filter admits their owner, beside the chain's own colliders: the
   wearer's are the descriptor's hand and finger colliders, capsules placed as their standard senders are; other
   avatars' are host input, each avatar's evaluator giving its own as another's. A hand meets each bone's segment
-  from its parent, where a chain's own colliders meet its end alone. Of two components on one root, the first in
+  from its parent, where a chain's own colliders but spheres meet its end alone: at the segment's point nearest the hand's
+  point nearest the bone's end, but no nearer the parent than the bone's radius, and the bone's end moves by all of
+  the push that frees that point. Under simplified integration 0.8 of that push stays out of the bone's next
+  velocity; under advanced integration none does. Of two components on one root, the first in
   the model poses the bones and the second does nothing, as the SDK's simulation of corpus 2 shows.
 - Constraints and contacts: all six constraint kinds; contacts between the avatar, other avatars and hands, driving
   receiver parameters.
