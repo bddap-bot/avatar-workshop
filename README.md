@@ -680,11 +680,17 @@ colliders.
 
 The hand collider probe is the fixture's body with six chains of three 0.1 m segments hanging in a row in front of it, one per
 collision filter setting: allow collision on, off (its filter allowing both), and filtered to self only, others only,
-both and nobody. Its descriptor's only enabled colliders are the left hand's and the left index finger's, custom, so
-the wearer's stand-ins (above) are two on the left hand, and one global PhysBone collider outside the avatar stands
-with another player id, for another player's hand (`outside_hands` in `meta.json`, its poses in `poses.tsv`). After a
-300-frame rest the wearer's left hand, placed after animation, sweeps along the row through the chains' third bones
-and back at 0.5 m/s, then the other player's hand does, then both from opposite ends, each followed by 120 frames away.
+both and nobody. Its descriptor's enabled colliders are custom: the left hand's and the left index finger's, so two of
+the wearer's stand-ins (above) are on the left hand, and the right hand's and the four right fingers', each standing on
+the third bone of a straight run of four of its own behind the body, hanging from the avatar root
+(`Fixture.Reaches`). Four level chains of three 0.04 m segments cross each of those five colliders' axes, hanging from
+the bone it stands on, from that bone's parent, from a further ancestor or from its child, one per collider: one across
+its middle 1 cm above the axis, and three leading out of it from a root 1 cm or 1.5 cm above the axis, inside the
+collider, or 2.5 cm above it, outside the collider but within the chain's radius of it (`Fixture.ReachChains`). One
+global PhysBone collider outside the avatar stands with another player id, for another player's hand (`outside_hands`
+in `meta.json`, its poses in `poses.tsv`). After a 300-frame rest the wearer's left hand, placed after animation,
+sweeps along the row through the chains' third bones and back at 0.5 m/s, then the other player's hand does, then both
+from opposite ends, each followed by 120 frames away.
 A recording fails if `compositions.json` counts zero for a setting `Fixture.HandSettings` lists.
 
 The curve probe plays no avatar. It builds one clip per curve, its only curve on a transform's X position, and

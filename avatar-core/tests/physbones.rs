@@ -330,11 +330,12 @@ fn hands_push_only_chains_their_filter_admits() {
     }
 }
 
-/// The recordings' stand-ins for the wearer's hand and finger colliders sit where the core puts them: the probe's and
-/// the fixture's custom hand and index finger (the fixture's automatic fingers have no finger bones to stand on).
+/// The recordings' stand-ins for the wearer's hand and finger colliders sit where the core puts them: the probe's
+/// custom hands and fingers, and the fixture's custom hand and index finger (the fixture's automatic fingers have no
+/// finger bones to stand on).
 #[test]
 fn wearer_hand_stand_ins_sit_where_the_core_puts_hands() {
-    for (dir, model, count) in [("fixtures/reference/hands", "fixtures/unity-hands.glb", 2), ("fixtures/reference/fixture-animator", "fixtures/unity-synthetic.glb", 2)] {
+    for (dir, model, count) in [("fixtures/reference/hands", "fixtures/unity-hands.glb", 7), ("fixtures/reference/fixture-animator", "fixtures/unity-synthetic.glb", 2)] {
         let avatar = avatar_core::read(&std::fs::read(path(model)).unwrap()).unwrap();
         let (stood, off) = reference::wearer_hand_mismatches(&path(dir), &avatar);
         assert!(off.is_empty(), "{dir}: {off:#?}");
@@ -462,4 +463,41 @@ fn a_second_component_on_a_root_poses_nothing() {
     let shadowed = doubled.model.physbones.len() - 1;
     let node = pb.bones(tail).last().unwrap();
     assert!(!pb.grab(shadowed, node, glam::Vec3::ZERO, avatar_core::physbones::Toucher::Wearer));
+}
+
+/// Behind the hand collider probe's body, each of the wearer's right hand and finger colliders stands on a bone of its
+/// own, crossed by chains hanging from that bone, its parent, a further ancestor or its child: the SDK pushes every
+/// one, from whichever bone it hangs, and so does the core. Over the rest before the sweeps, the tip of each chain
+/// across a collider's middle is within 5% of its chain's length of the recording's (RMS). The chains leading out from
+/// a root within the collider's reach are pushed in both, by less in the recording.
+#[test]
+fn wearer_hands_push_chains_from_whichever_bone_they_hang() {
+    let dir = path("fixtures/reference/hands");
+    let end = reference::step(&dir, "self sweep");
+    let trace = replay("fixtures/reference/hands", "fixtures/unity-hands.glb", 0..end).run(60.0);
+    let ours: BTreeMap<usize, &BTreeMap<String, glam::Vec3>> = trace.frames.iter().map(|f| f.round() as usize).zip(&trace.tips).collect();
+    let lengths: BTreeMap<String, f32> = reference::rows(&dir.join("chains.tsv"))[1..].iter().map(|r| (r[0].clone(), r[1].parse().unwrap())).collect();
+    let mut recorded = BTreeMap::<String, BTreeMap<usize, glam::Vec3>>::new();
+    for r in reference::rows(&dir.join("tips.tsv")) {
+        recorded.entry(r[1].clone()).or_default().insert(r[0].parse().unwrap(), glam::Vec3::new(r[2].parse().unwrap(), r[3].parse().unwrap(), r[4].parse().unwrap()));
+    }
+    let mut failed = vec![];
+    for relation in ["FingerOwn", "FingerParent", "FingerAncestor", "FingerChild", "HandOwn"] {
+        for (shape, compared) in [("Across", true), ("Inside", false), ("Mid", false), ("Rim", false)] {
+            let chain = format!("{relation}{shape}");
+            let tips: Vec<(&String, &f32)> = lengths.iter().filter(|(t, _)| t.split('|').next().unwrap().ends_with(&format!("/{chain}"))).collect();
+            assert_eq!(tips.len(), 1, "{chain}");
+            let (tip, length) = tips[0];
+            let frames: Vec<usize> = (0..end).filter(|f| ours.contains_key(f) && recorded[tip].contains_key(f)).collect();
+            assert_eq!(frames.len(), end, "{chain}: every frame of the rest compared");
+            let rms = (frames.iter().map(|f| (ours[f][tip].distance(recorded[tip][f]) / length).powi(2)).sum::<f32>() / end as f32).sqrt();
+            let pushed = |at: &dyn Fn(usize) -> glam::Vec3| frames.iter().map(|&f| at(f).distance(at(0)) / length).fold(0.0f32, f32::max);
+            let (by_sdk, by_core) = (pushed(&|f| recorded[tip][&f]), pushed(&|f| ours[&f][tip]));
+            eprintln!("{chain:<22} RMS {rms:.4}; largest distance from its first tip: recording {by_sdk:.4}, core {by_core:.4}, of its length");
+            if by_sdk <= 0.05 || by_core <= 0.05 || if compared { rms > 0.05 } else { by_sdk >= by_core } {
+                failed.push(format!("{chain}: RMS {rms:.4}, pushed {by_sdk:.4} in the recording, {by_core:.4} in the core"));
+            }
+        }
+    }
+    assert!(failed.is_empty(), "{failed:#?}");
 }

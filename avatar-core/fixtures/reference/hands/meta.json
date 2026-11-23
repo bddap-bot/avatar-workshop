@@ -1,7 +1,146 @@
 {
-  "frames": 2055,
+  "avatar": "AWHands",
+  "harness": "da176960afc703ba529def4404904daf0fab88e0-dirty",
+  "fixture": false,
+  "human": false,
+  "blend": false,
+  "layering": false,
+  "sample_time": false,
+  "rotation": false,
+  "dense": false,
+  "crossfade": false,
+  "generic": false,
+  "gridhold": false,
+  "gridrule": false,
+  "genericrig": false,
+  "generichold": false,
+  "genericweight": false,
+  "loopdrift": false,
+  "feet": false,
+  "dynamics": false,
   "hands": true,
-  "harness": "9aae61a6430a26294b0a75e767a762010d6d8a12-dirty",
+  "placed_hand_colliders": 0,
+  "wearer_hands": [
+    {
+      "slot": "handLeft",
+      "transform": "Armature/Hips/Spine/Chest/LeftShoulder/LeftUpperArm/LeftLowerArm/LeftHand",
+      "radius": 0.05,
+      "height": 0.15,
+      "position": [
+        -0.05,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0.707106769,
+        0.707106769
+      ]
+    },
+    {
+      "slot": "handRight",
+      "transform": "HandOwnRun.0/HandOwnRun.1/HandOwnRun.2",
+      "radius": 0.02,
+      "height": 0.08,
+      "position": [
+        0,
+        0,
+        -0.02
+      ],
+      "rotation": [
+        0.707106769,
+        0,
+        0,
+        0.707106769
+      ]
+    },
+    {
+      "slot": "fingerIndexLeft",
+      "transform": "Armature/Hips/Spine/Chest/LeftShoulder/LeftUpperArm/LeftLowerArm/LeftHand",
+      "radius": 0.015,
+      "height": 0.13,
+      "position": [
+        -0.05,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0.7071068,
+        0.7071068
+      ]
+    },
+    {
+      "slot": "fingerIndexRight",
+      "transform": "FingerOwnRun.0/FingerOwnRun.1/FingerOwnRun.2",
+      "radius": 0.02,
+      "height": 0.12,
+      "position": [
+        0,
+        0,
+        -0.04
+      ],
+      "rotation": [
+        -0.7071068,
+        0,
+        0,
+        0.7071068
+      ]
+    },
+    {
+      "slot": "fingerMiddleRight",
+      "transform": "FingerParentRun.0/FingerParentRun.1/FingerParentRun.2",
+      "radius": 0.02,
+      "height": 0.12,
+      "position": [
+        0,
+        0,
+        -0.04
+      ],
+      "rotation": [
+        -0.7071068,
+        0,
+        0,
+        0.7071068
+      ]
+    },
+    {
+      "slot": "fingerRingRight",
+      "transform": "FingerAncestorRun.0/FingerAncestorRun.1/FingerAncestorRun.2",
+      "radius": 0.02,
+      "height": 0.12,
+      "position": [
+        0,
+        0,
+        -0.04
+      ],
+      "rotation": [
+        -0.7071068,
+        0,
+        0,
+        0.7071068
+      ]
+    },
+    {
+      "slot": "fingerLittleRight",
+      "transform": "FingerChildRun.0/FingerChildRun.1/FingerChildRun.2",
+      "radius": 0.02,
+      "height": 0.12,
+      "position": [
+        0,
+        0,
+        -0.04
+      ],
+      "rotation": [
+        -0.7071068,
+        0,
+        0,
+        0.7071068
+      ]
+    }
+  ],
   "outside_hands": [
     {
       "transform": "OtherHand",
@@ -21,8 +160,7 @@
       "player": 1000
     }
   ],
-  "placed_hand_colliders": 0,
-  "rate": 60,
+  "outside_senders": [],
   "standard_senders": [
     {
       "slot": "handLeft",
@@ -44,6 +182,30 @@
       "tags": [
         "Hand",
         "HandL"
+      ],
+      "local_only": false,
+      "copies": 1
+    },
+    {
+      "slot": "handRight",
+      "transform": "HandOwnRun.0/HandOwnRun.1/HandOwnRun.2",
+      "shape": "capsule",
+      "radius": 0.02,
+      "height": 0.08,
+      "position": [
+        0,
+        0,
+        -0.02
+      ],
+      "rotation": [
+        0.707106769,
+        0,
+        0,
+        0.707106769
+      ],
+      "tags": [
+        "Hand",
+        "HandR"
       ],
       "local_only": false,
       "copies": 1
@@ -71,44 +233,124 @@
       ],
       "local_only": false,
       "copies": 1
-    }
-  ],
-  "tips": 6,
-  "unity": "2022.3.22f1",
-  "wearer_hands": [
-    {
-      "slot": "handLeft",
-      "transform": "Armature/Hips/Spine/Chest/LeftShoulder/LeftUpperArm/LeftLowerArm/LeftHand",
-      "radius": 0.05,
-      "height": 0.15,
-      "position": [
-        -0.05,
-        0,
-        0
-      ],
-      "rotation": [
-        0,
-        0,
-        0.707106769,
-        0.707106769
-      ]
     },
     {
-      "slot": "fingerIndexLeft",
-      "transform": "Armature/Hips/Spine/Chest/LeftShoulder/LeftUpperArm/LeftLowerArm/LeftHand",
-      "radius": 0.015,
-      "height": 0.13,
+      "slot": "fingerIndexRight",
+      "transform": "FingerOwnRun.0/FingerOwnRun.1/FingerOwnRun.2",
+      "shape": "capsule",
+      "radius": 0.02,
+      "height": 0.08,
       "position": [
-        -0.05,
         0,
-        0
+        0,
+        -0.05
       ],
       "rotation": [
         0,
         0,
-        0.7071068,
-        0.7071068
-      ]
+        0,
+        1
+      ],
+      "tags": [
+        "FingerIndex",
+        "FingerIndexR"
+      ],
+      "local_only": false,
+      "copies": 1
+    },
+    {
+      "slot": "fingerMiddleRight",
+      "transform": "FingerParentRun.0/FingerParentRun.1/FingerParentRun.2",
+      "shape": "capsule",
+      "radius": 0.02,
+      "height": 0.08,
+      "position": [
+        0,
+        0,
+        -0.05
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "tags": [
+        "FingerMiddle",
+        "FingerMiddleR"
+      ],
+      "local_only": false,
+      "copies": 1
+    },
+    {
+      "slot": "fingerRingRight",
+      "transform": "FingerAncestorRun.0/FingerAncestorRun.1/FingerAncestorRun.2",
+      "shape": "capsule",
+      "radius": 0.02,
+      "height": 0.08,
+      "position": [
+        0,
+        0,
+        -0.05
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "tags": [
+        "FingerRing",
+        "FingerRingR"
+      ],
+      "local_only": false,
+      "copies": 1
+    },
+    {
+      "slot": "fingerLittleRight",
+      "transform": "FingerChildRun.0/FingerChildRun.1/FingerChildRun.2",
+      "shape": "capsule",
+      "radius": 0.02,
+      "height": 0.08,
+      "position": [
+        0,
+        0,
+        -0.05
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "tags": [
+        "FingerLittle",
+        "FingerLittleR"
+      ],
+      "local_only": false,
+      "copies": 1
     }
-  ]
+  ],
+  "root_scale": [
+    1,
+    1,
+    1
+  ],
+  "unity": "2022.3.22f1",
+  "dynamic_bones_migrated": false,
+  "rate": 60,
+  "steps": 8,
+  "frames": 2055,
+  "tips": 26,
+  "physbones": 26,
+  "contacts": 7,
+  "constraints": 0,
+  "drivers": 32,
+  "bones": 104,
+  "packages": {
+    "com.vrchat.avatars": "3.10.5",
+    "com.vrchat.base": "3.10.5",
+    "lyuma.av3emulator": "3.4.13",
+    "com.avatar-workshop.reference": "0.1.0"
+  }
 }
