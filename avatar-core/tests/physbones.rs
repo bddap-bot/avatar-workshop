@@ -20,7 +20,7 @@ fn replay(recording: &str, model: &str, frames: std::ops::Range<usize>) -> Repla
 
 /// Each probe, the fields it isolates, and the largest tip RMS error over chain length any of its bones may
 /// show (each measured, with a margin). The error grows where the motion is chaotic: a chain this lightly
-/// damped turns a small difference into a different swing, as the high-spring probe's flailing does.
+/// damped turns a small difference into a different swing, as the plane probe's bouncing does.
 const PROBES: &[(&str, &str, f32)] = &[
     ("Base", "pull 0.2 and spring 0.2, simplified", 0.02),
     ("Pull05", "pull", 0.025),
@@ -28,8 +28,8 @@ const PROBES: &[(&str, &str, f32)] = &[
     ("Pull90", "pull", 0.015),
     ("PullCurve", "a curve along the chain", 0.01),
     ("Spring0", "spring", 0.01),
-    ("Spring60", "spring", 0.09),
-    ("Spring95", "spring", 0.85),
+    ("Spring60", "spring", 0.015),
+    ("Spring95", "spring", 0.09),
     ("Version10", "version 1.0", 0.01),
     ("Momentum20Stiff0", "advanced integration: momentum", 0.05),
     ("Momentum20Stiff50", "advanced integration: stiffness", 0.11),
@@ -471,8 +471,6 @@ fn a_second_component_on_a_root_poses_nothing() {
 /// sweeps, the tip of each is within 5% of its chain's length of the recording's (RMS), and the core pushes the chains
 /// the SDK pushes. A bone crossing the finger collider's axis at an angle is pushed only when its point nearest the
 /// collider's point nearest its end is within reach: one crossing 2.9 cm above the axis, within reach of it, is not.
-/// The chains at spring 0.9 are held to their measured 8%: the core's simplified swing at high spring
-/// misses the SDK's with no collider at all, as the probe scene's `Spring60` and `Spring95` show.
 #[test]
 fn wearer_hands_push_chains_from_whichever_bone_they_hang() {
     let dir = path("fixtures/reference/hands");
@@ -501,10 +499,9 @@ fn wearer_hands_push_chains_from_whichever_bone_they_hang() {
         let pushed = |at: &dyn Fn(usize) -> glam::Vec3| frames.iter().map(|&f| at(f).distance(at(0)) / length).fold(0.0f32, f32::max);
         let (by_sdk, by_core) = (pushed(&|f| recorded[tip][&f]), pushed(&|f| ours[&f][tip]));
         eprintln!("{chain:<34} RMS {rms:.4}; largest distance from its first tip: recording {by_sdk:.4}, core {by_core:.4}, of its length");
-        let bound = if chain.contains("SpringHigh") { 0.08 } else { 0.05 };
         let must_push = chain.ends_with("Across") || chain.contains("CrossH5A") || chain.contains("CrossH15A");
         let must_not_push = chain.ends_with("CrossH29A45F3");
-        if rms > bound || (by_sdk > 0.05) != (by_core > 0.05) || (must_push && by_sdk <= 0.05) || (must_not_push && by_sdk > 0.0) {
+        if rms > 0.05 || (by_sdk > 0.05) != (by_core > 0.05) || (must_push && by_sdk <= 0.05) || (must_not_push && by_sdk > 0.0) {
             failed.push(format!("{chain}: RMS {rms:.4}, pushed {by_sdk:.4} in the recording, {by_core:.4} in the core"));
         }
     }

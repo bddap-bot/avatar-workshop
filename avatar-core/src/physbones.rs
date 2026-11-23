@@ -955,15 +955,20 @@ impl Chain {
         bone.previous += (moved.point(bone.previous) - bone.previous) * q.immobile;
         let velocity = bone.position - bone.previous;
         bone.previous = bone.position;
-        let pull = (target - bone.position) * q.pull
-            + match self.version {
-                PhysBoneVersion::V1_0 => Vec3::NEG_Y * (gravity * rest_length),
-                PhysBoneVersion::V1_1 => Vec3::ZERO,
-            };
+        let weight = match self.version {
+            PhysBoneVersion::V1_0 => Vec3::NEG_Y * (gravity * rest_length),
+            PhysBoneVersion::V1_1 => Vec3::ZERO,
+        };
+        let pull = (target - bone.position) * q.pull + weight;
+        let start = bone.position;
         bone.position += match self.integration {
             IntegrationType::Simplified => velocity * q.spring + pull * (1.0 - q.spring),
             IntegrationType::Advanced => (velocity * q.spring + pull) * (1.0 - q.stiffness),
         };
+        // Simplified integration's next velocity is this step's own move: keeping the return to the bone's length and
+        // limits in it, as advanced integration does, misses the SDK's traces at spring 0.6 to 0.95 several times over.
+        // Version 1.0 gravity along the bone leaves it too, or the bent gravity probes miss by over half as much again.
+        let mut momentum = bone.position - start;
         let (low, high) = match self.version {
             PhysBoneVersion::V1_0 => (1.0, 1.0 + q.max_stretch),
             PhysBoneVersion::V1_1 => (1.0 - q.max_squish, 1.0 + q.max_stretch),
@@ -975,8 +980,9 @@ impl Chain {
             (None, PhysBoneVersion::V1_1, IntegrationType::Simplified) => q.stretch_motion,
             (None, PhysBoneVersion::V1_1, IntegrationType::Advanced) => q.stretch_motion * (1.0 - q.stiffness * STRETCH_STIFFNESS_SHARE),
         };
+        let clamped = if share > 0.0 { offset.length().clamp(rest_length * low, rest_length * high) } else { rest_length };
         let length = if share > 0.0 {
-            let want = offset.length().clamp(rest_length * low, rest_length * high) / rest_length - 1.0;
+            let want = clamped / rest_length - 1.0;
             let from = if want * bone.strain > 0.0 { bone.strain } else { 0.0 };
             rest_length * (1.0 + if want.abs() > from.abs() { from + (want - from) * share } else { want })
         } else {
@@ -985,26 +991,30 @@ impl Chain {
         let direction = limit(offset.normalize_or(rest_direction), local.translation, parent.rotation, q.limit);
         bone.position = origin + direction * length;
         bone.strain = length / rest_length - 1.0;
+        momentum += direction * (length - clamped - (weight * (1.0 - q.spring)).dot(direction));
         let keep = |at: Vec3| {
             let pushed = at - origin;
             let kept = if share > 0.0 { pushed.length().clamp(rest_length * low, rest_length * high) } else { rest_length };
             origin + pushed.normalize_or(direction) * kept
         };
         for (collider, place) in places {
-            bone.position = keep(match collider.shape {
+            let pushed = match collider.shape {
                 ColliderShape::Sphere { radius, .. } if collider.meets_segment => {
                     let at = place.point(collider.position);
                     touch_bone(origin, bone.position, q.radius * scale, (at, radius * place.scale.x.abs()))
                 }
                 _ => collide(bone.position, q.radius * scale, collider, place),
-            });
+            };
+            momentum += pushed - bone.position;
+            bone.position = keep(pushed);
         }
         for touch in touches {
-            let before = bone.position;
-            bone.position = keep(touch_hand(origin, bone.position, q.radius * scale, (touch.a, touch.b, touch.radius)));
-            if matches!(self.integration, IntegrationType::Simplified) {
-                bone.previous += (bone.position - before) * HAND_PUSH_OUT_OF_VELOCITY;
-            }
+            let pushed = touch_hand(origin, bone.position, q.radius * scale, (touch.a, touch.b, touch.radius));
+            momentum += (pushed - bone.position) * (1.0 - HAND_PUSH_OUT_OF_VELOCITY);
+            bone.position = keep(pushed);
+        }
+        if matches!(self.integration, IntegrationType::Simplified) {
+            bone.previous = bone.position - momentum;
         }
     }
 
@@ -1092,7 +1102,7 @@ const STRETCH_STIFFNESS_SHARE: f32 = 0.8;
 /// that point, and touching it at the bone's own end all of it, measured against the reference traces.
 const SEGMENT_PUSH_AT_PARENT: f32 = 0.35;
 /// The share of a hand's push that simplified integration leaves out of the bone's next velocity, measured against the
-/// hand probe's chains at pull 0.05 to 0.6 and spring 0.3; advanced integration keeps all of it in.
+/// hand probe's chains at pull 0.05 to 0.6 and spring 0.3 and 0.9; advanced integration keeps all of it in.
 const HAND_PUSH_OUT_OF_VELOCITY: f32 = 0.8;
 
 /// How much of gravity's falloff applies: the cosine between `bone`'s and `animated`'s tilts from horizontal, 1 while
