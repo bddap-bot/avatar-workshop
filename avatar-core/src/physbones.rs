@@ -221,6 +221,11 @@ struct Chain {
     /// alone drive its parent's aim), relative to the avatar root. `solve` moves a pinned child before `step` puts it
     /// back, so its simulated position does not keep this.
     pinned: Vec<Vec3>,
+    /// Each bone's direction from its parent at the chain's reset, relative to the avatar root: what gravity falloff
+    /// measures a bone's tilt against. Against its animated direction, a chain whose parent turns after the reset
+    /// settles where the SDK's does not; no trace turns the avatar root, so which of its frame or the world's holds the
+    /// direction is not measured.
+    reset_directions: Vec<Vec3>,
     /// The bones a hand holds this step: the grabbed one and its ancestors below the root.
     held: Vec<bool>,
     parameters: Parameters,
@@ -471,6 +476,7 @@ fn chain(pb: &model::PhysBone, roots: &[usize], nodes: &Nodes) -> Chain {
         rest: vec![Transform::IDENTITY; count],
         world: vec![Transform::IDENTITY; count],
         pinned: vec![Vec3::ZERO; count],
+        reset_directions: vec![Vec3::ZERO; count],
         held: vec![false; count],
         parameters: Parameters::default(),
         grab: None,
@@ -486,7 +492,7 @@ impl PhysBones {
         let mut chains: Vec<Chain> = model.physbones.iter().map(|pb| chain(pb, &roots, &nodes)).collect();
         for (i, c) in chains.iter_mut().enumerate() {
             if roots[..i].contains(&roots[i]) {
-                *c = Chain { shadowed: true, bones: vec![], rest: vec![], world: vec![], pinned: vec![], held: vec![], ..c.clone() };
+                *c = Chain { shadowed: true, bones: vec![], rest: vec![], world: vec![], pinned: vec![], reset_directions: vec![], held: vec![], ..c.clone() };
             }
         }
         let colliders: Vec<ColliderAt> = model
@@ -847,6 +853,12 @@ impl Chain {
         self.world = self.rest.clone();
         let unroot = frame.root.rigid().inverse_rigid();
         self.pinned = self.rest.iter().map(|r| unroot.point(r.translation)).collect();
+        self.reset_directions = self
+            .bones
+            .iter()
+            .zip(&self.rest)
+            .map(|(b, r)| b.parent.map_or(Vec3::ZERO, |p| unroot.rotation * (r.translation - self.rest[p].translation).normalize_or_zero()))
+            .collect();
         self.reference = Some(unroot.mul(&self.reference_frame(frame)));
         self.last_root = Some(frame.root.rigid());
     }
@@ -1004,8 +1016,8 @@ impl Chain {
         }
         let rest_direction = rest / rest_length;
         let q = self.bones[i].params;
-        let animated = (self.rest[i].translation - self.rest[p].translation).normalize_or(rest_direction);
-        let gravity = q.gravity * (1.0 - q.gravity_falloff * tilt_cosine((self.bones[i].position - origin).normalize_or(rest_direction), animated));
+        let at_reset = (frame.root.rigid().rotation * self.reset_directions[i]).normalize_or(rest_direction);
+        let gravity = q.gravity * (1.0 - q.gravity_falloff * tilt_cosine((self.bones[i].position - origin).normalize_or(rest_direction), at_reset));
         let target = match self.version {
             PhysBoneVersion::V1_0 => origin + rest,
             PhysBoneVersion::V1_1 => {
@@ -1015,7 +1027,9 @@ impl Chain {
         };
         let carry = origin - settled[p];
         let world_carry = root_motion.point(settled[p]) - settled[p];
-        let pose_carry = carry - world_carry;
+        // All-motion immobile carries its share of a change of pose below, so stiffness carries a share of the rest.
+        let carried_by_immobile = if matches!(self.immobile_type, ImmobileType::AllMotion) { q.immobile } else { 0.0 };
+        let pose_carry = (carry - world_carry) * (1.0 - carried_by_immobile);
         let (carried, into_velocity) = match self.integration {
             IntegrationType::Simplified => (Vec3::ZERO, Vec3::ZERO),
             IntegrationType::Advanced => (
@@ -1188,11 +1202,11 @@ const CARRY_PER_STIFFNESS: f32 = 1.45;
 const STEP_FROM_REST: f32 = 0.0015;
 /// How fast advanced integration's carry nears all of the parent's movement as stiffness rises.
 const CARRY_EXPONENT: f32 = 1.6;
-/// Advanced integration carries a bone with a change of its parent's pose, apart from the avatar's own motion, by
-/// stiffness times `POSE_CARRY_IN_PLACE` in place and times `POSE_CARRY_IN_VELOCITY` more, which also stays in its next
-/// step's velocity, never more than all of the parent's move between them. Fitted to the stiffness jump cases at
-/// stiffness 0.1 and 0.3: all of it in place leaves the short bones behind a swinging bone too still, and all of it
-/// in velocity throws 2 cm bones under the 20 cm jump most of their length.
+/// Advanced integration carries a bone with what all-motion immobile leaves of a change of its parent's pose, apart from
+/// the avatar's own motion, by stiffness times `POSE_CARRY_IN_PLACE` in place and times `POSE_CARRY_IN_VELOCITY` more,
+/// which also stays in its next step's velocity, never more than all of that between them. Fitted to the stiffness jump
+/// cases at stiffness 0.1 and 0.3, with and without immobile: all of it in place leaves the short bones behind a
+/// swinging bone too still, and all of it in velocity throws 2 cm bones under the 20 cm jump most of their length.
 const POSE_CARRY_IN_PLACE: f32 = 0.725;
 const POSE_CARRY_IN_VELOCITY: f32 = 0.5;
 /// The share of a bone's momentum advanced integration keeps after its pull. Without stiffness the SDK moves the bone
@@ -1221,12 +1235,12 @@ const SEGMENT_PUSH_AT_PARENT: f32 = 0.35;
 /// hand probe's chains at pull 0.05 to 0.6 and spring 0.3 and 0.9; advanced integration keeps all of it in.
 const HAND_PUSH_OUT_OF_VELOCITY: f32 = 0.8;
 
-/// How much of gravity's falloff applies: the cosine between `bone`'s and `animated`'s tilts from horizontal, 1 while
-/// the bone keeps its animated tilt whichever way it turns about the vertical. Past a quarter turn it is 0, so falloff
+/// How much of gravity's falloff applies: the cosine between `bone`'s and `reset`'s tilts from horizontal, 1 while
+/// the bone keeps its tilt at reset whichever way it turns about the vertical. Past a quarter turn it is 0, so falloff
 /// never adds gravity; the traces reach no such tilt.
-fn tilt_cosine(bone: Vec3, animated: Vec3) -> f32 {
+fn tilt_cosine(bone: Vec3, reset: Vec3) -> f32 {
     let level = |d: Vec3| (d.x * d.x + d.z * d.z).sqrt();
-    (level(bone) * level(animated) + bone.y * animated.y).max(0.0)
+    (level(bone) * level(reset) + bone.y * reset.y).max(0.0)
 }
 
 /// Keeps `direction`, the bone toward its child in the parent's frame `frame`, within the limit. The limit's

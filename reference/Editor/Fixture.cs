@@ -731,6 +731,15 @@ namespace AvatarWorkshop.Reference
             ("Gravity90Falloff80Spring30", p => { p.gravity = 0.9f; p.gravityFalloff = 0.8f; p.spring = 0.3f; }),
         };
 
+        // Stiffness and immobile together, each at JumpBone's pull 0.1.
+        static readonly (string name, Action<VRCPhysBone> set)[] JumpStiffImmobile =
+            (from stiffness in new[] { 0.1f, 0.3f }
+             from immobile in new[] { 0.1f, 0.4f }
+             from spring in new[] { 0.3f, 0.7f }
+             select ($"Stiff{Mathf.RoundToInt(stiffness * 100)}Immobile{Mathf.RoundToInt(immobile * 100)}Spring{Mathf.RoundToInt(spring * 100)}",
+                     (Action<VRCPhysBone>)(p => { p.stiffness = stiffness; p.immobile = immobile; p.spring = spring; })))
+            .ToArray();
+
         // Short bones whose parent is a simulated bone, which swings farther in a step than they are long, not a root only
         // the jump moves.
         static readonly (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] JumpBehind =
@@ -808,6 +817,12 @@ namespace AvatarWorkshop.Reference
                     from way in JumpWays
                     from size in new[] { 0.08f, 0.2f }
                     select (name: $"Jump{way.name}{Mathf.RoundToInt(size * 100)}Behind", move: way.dir * size, chains: JumpBehind))
+                .Concat(
+                    from way in JumpWays
+                    from size in new[] { 0.08f, 0.2f }
+                    from field in JumpStiffImmobile
+                    select (name: $"Jump{way.name}{Mathf.RoundToInt(size * 100)}{field.name}", move: way.dir * size,
+                            chains: JumpCases(new[] { "OneBone", "Endpoint" }, field.set)))
                 .Select((r, i) => (r.name, 300, new Vector3(0, 1.6f, -1.2f - 0.4f * i), Vector3.zero, r.move, r.chains)))
             // Never reached, so the harness never levels them.
             .Concat(new[]
