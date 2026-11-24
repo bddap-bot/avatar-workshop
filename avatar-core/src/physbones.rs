@@ -1139,10 +1139,12 @@ fn advanced_damping(q: Params) -> f32 {
     1.0 - q.pull * (1.0 - q.stiffness).powi(PULL_DAMPING_STIFFNESS_EXPONENT)
 }
 const PULL_DAMPING_STIFFNESS_EXPONENT: i32 = 15;
-/// The share of what remains of a pinned bone's change of place that the simulation takes each step, measured against the
-/// jump cases at pull 0 and spring 0, where only the projection onto the bone's length moves a bone. Every chain those
-/// cases hold is version 1.1; a version 1.0 chain takes the change at once, as VRM's springs do.
-const FOLLOW: f32 = 0.83;
+/// The share of what remains of a pinned bone's change of place that the simulation takes each step: the one that leaves
+/// it a fifth of a step behind a steady change of pose. It fits the jump cases at pull 0 and spring 0, where only the
+/// projection onto a bone's length moves a bone, and at spring 0.9 a jump that leaves a bone's old tip near its new root
+/// turns that bone's momentum through so wide an angle that the share must be this one, not a rounding of it. Every chain
+/// those cases hold is version 1.1; a version 1.0 chain takes the change at once, as VRM's springs do.
+const FOLLOW: f32 = 5.0 / 6.0;
 /// The share of stiffness that advanced integration takes from stretch motion's share, measured against the reference
 /// traces at stiffness 0.3 and 0.7.
 const STRETCH_STIFFNESS_SHARE: f32 = 0.8;
