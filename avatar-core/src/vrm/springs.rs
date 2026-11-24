@@ -3,10 +3,11 @@
 //! A VRM spring joint moves its tail each step by its velocity `v` times `1 - dragForce`, by `stiffness · dt`
 //! metres along `r`, its rest axis turned by its parent's current rotation, and by `gravityPower · dt` metres along
 //! `gravityDir`, then puts it back at its bone's length `L`. A version 1.0 PhysBone with advanced integration and
-//! no stiffness moves a bone end `p`, taken from its parent's position, to `p + spring · v + pull · (L·r - p)` and
-//! `gravity · L` down before the same projection, which is `(1 - pull)` times
-//! `p + spring / (1 - pull) · v + pull / (1 - pull) · L·r`. With `a = stiffness · dt / L` the two steps are equal
-//! before collision for `pull = a / (1 + a)`, `spring = (1 - dragForce)(1 - pull)` and
+//! no stiffness moves a bone end `p`, taken from its parent's position, to
+//! `p + spring · (1 - pull) · v + pull · (L·r - p)` and `gravity · L` down before the same projection, which is
+//! `(1 - pull)` times `p + spring · v + pull / (1 - pull) · L·r` and `gravity · L / (1 - pull)` down. With
+//! `a = stiffness · dt / L` the two steps are equal
+//! before collision for `pull = a / (1 + a)`, `spring = 1 - dragForce` and
 //! `gravity = gravityPower · dt · (1 - pull) / L`, `dt` being the PhysBone step and `gravityPower` scaled by how
 //! far `gravityDir` points down. A chain's lengths vary, so these ride on curves over its depth; a VRM 0.x tree
 //! takes the mean length at each depth, and on a short bone gravity runs past the ±1 range VRChat authors use,
@@ -85,7 +86,7 @@ fn physbone(root: NodeIndex, ignore: Vec<NodeIndex>, endpoint: Vec3, per_depth: 
         multi_child_type: MultiChildType::First,
         integration_type: IntegrationType::Advanced,
         pull: by(&|(s, l)| pull(s, *l)),
-        spring: by(&|(s, l)| (1.0 - s.drag).clamp(0.0, 1.0) * (1.0 - pull(s, *l))),
+        spring: by(&|(s, _)| (1.0 - s.drag).clamp(0.0, 1.0)),
         stiffness: constant(0.0),
         gravity: by(&|(s, l)| per_length(s.gravity, *l) * (1.0 - pull(s, *l))),
         gravity_falloff: constant(0.0),

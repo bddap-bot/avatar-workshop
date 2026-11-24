@@ -963,7 +963,7 @@ impl Chain {
         let start = bone.position;
         bone.position += match self.integration {
             IntegrationType::Simplified => velocity * q.spring + pull * (1.0 - q.spring),
-            IntegrationType::Advanced => (velocity * q.spring + pull) * (1.0 - q.stiffness),
+            IntegrationType::Advanced => (velocity * q.spring * advanced_damping(q) + pull) * (1.0 - q.stiffness),
         };
         // Simplified integration's next velocity is this step's own move: keeping the return to the bone's length and
         // limits in it, as advanced integration does, misses the SDK's traces at spring 0.6 to 0.95 several times over.
@@ -1095,6 +1095,16 @@ fn advanced_carry(stiffness: f32) -> f32 {
 const CARRY_PER_STIFFNESS: f32 = 1.45;
 /// How fast advanced integration's carry nears all of the parent's movement as stiffness rises.
 const CARRY_EXPONENT: f32 = 1.6;
+/// The share of a bone's momentum advanced integration keeps after its pull. Without stiffness the SDK moves the bone
+/// by its momentum and then toward its target by pull, so pull takes its share of the momentum too and a chain at
+/// spring 1 settles. With stiffness the carry and stretch share above, fitted without this damping, already stand in
+/// for it: the full damping misses the probes at stiffness 0.2 to 0.8 by up to three times their bounds, and a refit of
+/// those constants with it stays above them. `PULL_DAMPING_STIFFNESS_EXPONENT` fades it out, fitted to the jump rows at
+/// stiffness 0, 0.1, 0.15 and 0.3 and the probes at 0 to 0.8.
+fn advanced_damping(q: Params) -> f32 {
+    1.0 - q.pull * (1.0 - q.stiffness).powi(PULL_DAMPING_STIFFNESS_EXPONENT)
+}
+const PULL_DAMPING_STIFFNESS_EXPONENT: i32 = 15;
 /// The share of stiffness that advanced integration takes from stretch motion's share, measured against the reference
 /// traces at stiffness 0.3 and 0.7.
 const STRETCH_STIFFNESS_SHARE: f32 = 0.8;
