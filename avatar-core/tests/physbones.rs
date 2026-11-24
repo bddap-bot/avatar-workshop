@@ -116,6 +116,78 @@ fn each_field_against_its_probe() {
     assert!(failed.is_empty(), "{failed:#?}");
 }
 
+/// Each chain of the probe's jump rows (`Fixture.JumpChains`) and the largest tip RMS error over chain length any of
+/// its bones may show from the frame before its parent's jump through the 150 after, in either row (each measured, with
+/// a margin). One row jumps on the step after the first recorded frame, the other once its chains have settled; a chain
+/// without gravity misses alike in both. A bound above 0.05 is a gap in the core, not a tolerance.
+const JUMPS: &[(&str, f32)] = &[
+    ("Advanced", 0.01),
+    ("AdvancedLevel", 0.005),
+    ("Angle45", 0.04),
+    ("Branches", 0.135),
+    ("BranchesHair30", 0.065),
+    ("FiveBones", 0.235),
+    ("Gravity100", 0.065),
+    ("Gravity100Falloff100", 0.025),
+    ("HairSpring30", 0.24),
+    ("HairSpring70", 0.05),
+    ("HairSpring70Curves", 0.205),
+    ("HairSpring70Gravity", 0.08),
+    ("Immobile30", 0.01),
+    ("OneBone", 0.005),
+    ("OneBoneSpring100", 0.475),
+    ("OneBoneSpring100Polar", 0.46),
+    ("OneBoneSpring85", 0.09),
+    ("OneBoneSpring90", 0.135),
+    ("OneBoneSpring95", 0.24),
+    ("OneBoneSpring98", 0.385),
+    ("Polar60x20", 0.015),
+    ("ShortBones", 0.085),
+    ("ShortBonesHair30", 0.19),
+    ("Simplified", 0.005),
+    ("SimplifiedWorld", 0.335),
+    ("Spring100", 0.645),
+    ("Spring70", 0.015),
+    ("Spring70Stiff15", 0.01),
+    ("Spring90", 0.135),
+    ("Spring95", 0.325),
+    ("Stretch50Motion10", 0.015),
+    ("Tail", 0.065),
+    ("TailEnd", 0.205),
+];
+
+#[test]
+fn chains_under_a_jumping_parent() {
+    let dir = path("fixtures/reference/probe");
+    let replay = replay("fixtures/reference/probe", "fixtures/unity-probe.glb", 0..450);
+    let trace = replay.run(60.0);
+    let tips = reference::rows(&dir.join("chains.tsv"));
+    let mut worst = BTreeMap::<&str, [f32; 2]>::new();
+    for (k, (row, jump)) in [("Jump", replay.first + 1), ("JumpLate", replay.first + 300)].into_iter().enumerate() {
+        let on_row = |tip: &str| tip.split('/').next() == Some(row);
+        let errors: Vec<(f32, String)> = errors(&dir, &trace, jump - 1..jump + 150).into_iter().filter(|(_, t)| on_row(t)).collect();
+        assert_eq!(errors.len(), tips.iter().filter(|r| on_row(&r[0])).count(), "{row}: a recorded tip is missing from the window");
+        for (e, tip) in errors {
+            assert!(e.is_finite(), "{tip}: {e}");
+            let chain = tip.split('|').next().unwrap().rsplit('/').next().unwrap();
+            let name = chain.strip_prefix(row).unwrap_or_else(|| panic!("{chain} is not on its row"));
+            let (name, _) = JUMPS.iter().find(|j| j.0 == name).unwrap_or_else(|| panic!("{name} is not in JUMPS"));
+            let w = &mut worst.entry(name).or_default()[k];
+            *w = w.max(e);
+        }
+    }
+    let mut failed = vec![];
+    for (name, bound) in JUMPS {
+        let [first, late] = worst.get(name).copied().unwrap_or_else(|| panic!("the recording has no {name} tips"));
+        let e = first.max(late);
+        eprintln!("{name:<22} {e:.4} (bound {bound}; first row {first:.4}, late row {late:.4})");
+        if e > *bound {
+            failed.push(format!("{name}: {e:.4} over {bound}"));
+        }
+    }
+    assert!(failed.is_empty(), "{failed:#?}");
+}
+
 #[test]
 fn fixture_median_and_multi_child_types() {
     let dir = path("fixtures/reference/fixture");
@@ -211,7 +283,18 @@ fn host_rates_agree() {
         let window = if hands { reference::step(&dir, "self sweep")..reference::step(&dir, "final") } else { reference::window(&dir) };
         let bound = if hands { 0.001 } else { 0.01 };
         let replay = replay(recording, model, 0..window.end);
-        let lengths: BTreeMap<String, f32> = reference::text(&dir.join("chains.tsv")).lines().skip(1).map(|l| l.split_once('\t').unwrap()).map(|(t, l)| (t.to_string(), l.parse().unwrap())).collect();
+        // A jump-row chain whose bound records a gap in the core swings apart at another host rate.
+        let jumping = |t: &str| {
+            let chain = t.split('|').next().unwrap().rsplit('/').next().unwrap();
+            ["JumpLate", "Jump"].iter().any(|r| t.starts_with(&format!("{r}/")) && JUMPS.iter().any(|(n, b)| *b > 0.05 && chain.strip_prefix(r) == Some(n)))
+        };
+        let lengths: BTreeMap<String, f32> = reference::text(&dir.join("chains.tsv"))
+            .lines()
+            .skip(1)
+            .map(|l| l.split_once('\t').unwrap())
+            .filter(|(t, _)| !jumping(t))
+            .map(|(t, l)| (t.to_string(), l.parse().unwrap()))
+            .collect();
         let base = replay.run(60.0);
         let at60: BTreeMap<usize, &BTreeMap<String, glam::Vec3>> = base.frames.iter().zip(&base.tips).map(|(f, t)| (f.round() as usize, t)).collect();
         for rate in [72.0, 90.0, 120.0] {

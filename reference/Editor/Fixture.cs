@@ -180,7 +180,7 @@ namespace AvatarWorkshop.Reference
             d.ViewPosition = new Vector3(0, 1.62f, 0.08f);
             if (kind == Kind.Human) HumanLayers(d);
             if (kind == Kind.Blend) BlendLayers(d);
-            if (kind == Kind.Probe) Probes(t);
+            if (kind == Kind.Probe) { Probes(t); Jumps(root.transform); }
             if (kind == Kind.WriteDefaults) WriteDefaults(d);
             if (kind == Kind.Layering) LayeringLayers(d);
             if (kind == Kind.SampleTime) SampleTimeLayers(d);
@@ -649,6 +649,114 @@ namespace AvatarWorkshop.Reference
                 pb.allowPosing = VRCPhysBoneBase.AdvancedBool.False;
                 if (bones != null) { pb.version = VRCPhysBoneBase.Version.Version_1_0; pb.spring = 0.4f; pb.gravity = 0.4f; }
                 set(pb);
+            }
+        }
+
+        // On the avatar's root, which loading leaves where the file holds it, so a row's parent moves only when the harness
+        // jumps it: on the step after the first recorded frame, as a body's first animated pose moves what hangs from it, or
+        // once its chains have settled. Each chain's name says what it varies from advanced integration at pull 0.1 and
+        // spring 0.3.
+        public static readonly (string name, int frame, Vector3 from)[] JumpRows =
+        {
+            ("Jump", 1, new Vector3(0, 1.6f, -0.45f)),
+            ("JumpLate", 300, new Vector3(0, 1.6f, -0.8f)),
+        };
+        public static readonly Vector3 JumpBy = new Vector3(0, -0.08f, -0.02f), JumpFromTilt = new Vector3(8, 0, 4);
+
+        static float[] Even(int bones) => Enumerable.Repeat(0.3f / bones, bones).ToArray();
+        static readonly float[] LongThenShort = { 0.11f, 0.025f, 0.025f, 0.025f, 0.025f };
+        static void Hair30(VRCPhysBone p) { p.gravity = 0.9f; p.gravityFalloff = 0.8f; p.maxStretch = 0.5f; p.stretchMotion = 0.15f; p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 40; }
+        static void Hair70(VRCPhysBone p) { p.pull = 0.05f; p.spring = 0.7f; p.stiffness = 0.1f; p.immobile = 0.1f; p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 40; }
+        static void OneBone(VRCPhysBone p, float spring) { p.pull = 0.04f; p.spring = spring; p.endpointPosition = new Vector3(0, 0.04f, 0); }
+
+        // `end`: the fields of a chain of one bone and an endpoint hanging from the chain's last bone.
+        public static readonly (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] JumpChains =
+        {
+            ("Advanced", Vector3.down, Even(3), 1, p => { }, null),
+            ("AdvancedLevel", Vector3.forward, Even(3), 1, p => { }, null),
+            ("Simplified", Vector3.down, Even(3), 1, p => { p.integrationType = VRCPhysBoneBase.IntegrationType.Simplified; p.spring = 0.2f; }, null),
+            ("Spring70", Vector3.down, Even(3), 1, p => p.spring = 0.7f, null),
+            ("Spring90", Vector3.down, Even(3), 1, p => p.spring = 0.9f, null),
+            ("Spring95", Vector3.down, Even(3), 1, p => p.spring = 0.95f, null),
+            ("Spring100", Vector3.down, Even(3), 1, p => p.spring = 1, null),
+            ("Spring70Stiff15", Vector3.down, Even(3), 1, p => { p.spring = 0.7f; p.stiffness = 0.15f; }, null),
+            ("Gravity100", Vector3.forward, Even(3), 1, p => p.gravity = 1, null),
+            ("Gravity100Falloff100", Vector3.forward, Even(3), 1, p => { p.gravity = 1; p.gravityFalloff = 1; }, null),
+            ("Immobile30", Vector3.down, Even(3), 1, p => p.immobile = 0.3f, null),
+            ("Angle45", Vector3.forward, Even(3), 1, p => { p.gravity = 0.6f; p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 45; }, null),
+            ("Polar60x20", Vector3.down, Even(3), 1, p => { p.limitType = VRCPhysBoneBase.LimitType.Polar; p.maxAngleX = 60; p.maxAngleZ = 20; }, null),
+            ("Stretch50Motion10", Vector3.down, Even(3), 1, p => { p.maxStretch = 0.5f; p.stretchMotion = 0.1f; }, null),
+            ("FiveBones", Vector3.down, Even(5), 1, p => { }, null),
+            ("OneBone", Vector3.down, Even(1), 1, p => { }, null),
+            ("OneBoneSpring85", Vector3.down, new[] { 0.04f }, 1, p => OneBone(p, 0.85f), null),
+            ("OneBoneSpring90", Vector3.down, new[] { 0.04f }, 1, p => OneBone(p, 0.9f), null),
+            ("OneBoneSpring95", Vector3.down, new[] { 0.04f }, 1, p => OneBone(p, 0.95f), null),
+            ("OneBoneSpring98", Vector3.down, new[] { 0.04f }, 1, p => OneBone(p, 0.98f), null),
+            ("OneBoneSpring100", Vector3.down, new[] { 0.04f }, 1, p => OneBone(p, 1), null),
+            ("OneBoneSpring100Polar", Vector3.down, new[] { 0.04f }, 1, p => { OneBone(p, 1); p.limitType = VRCPhysBoneBase.LimitType.Polar; p.maxAngleX = 55; p.maxAngleZ = 15; }, null),
+            ("ShortBones", Vector3.down, LongThenShort, 1, p => { }, null),
+            ("ShortBonesHair30", Vector3.down, LongThenShort, 1, Hair30, null),
+            ("Branches", Vector3.down, LongThenShort, 3, p => { }, null),
+            ("BranchesHair30", Vector3.down, LongThenShort, 3, p => { Hair30(p); p.radius = 0.015f; }, null),
+            ("HairSpring30", Vector3.down, Even(5), 1, Hair30, null),
+            ("HairSpring70", Vector3.down, Even(5), 1, Hair70, null),
+            ("HairSpring70Curves", Vector3.down, Even(5), 1, p => { Hair70(p); p.springCurve = Ramp(0.8f, 1); p.stiffnessCurve = Ramp(1, 0.5f); p.limitRotation = new Vector3(-20, 0, 0); }, null),
+            ("HairSpring70Gravity", Vector3.down, Even(5), 1, p => { p.pull = 0.05f; p.spring = 0.7f; p.stiffness = 0.25f; p.immobile = 0.4f; p.gravity = 0.5f; p.gravityFalloff = 0.6f; }, null),
+            ("SimplifiedWorld", Vector3.down, Even(3), 1, p => { p.integrationType = VRCPhysBoneBase.IntegrationType.Simplified; p.spring = 0.25f; p.gravity = 0.8f; p.immobileType = VRCPhysBoneBase.ImmobileType.World; p.immobile = 0.4f; }, null),
+            ("Tail", Vector3.back, Even(6), 1,
+                p => { p.pull = 0.25f; p.stiffness = 0.3f; p.gravity = 0.25f; p.gravityFalloff = 0.7f; p.immobile = 0.15f; p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 35; },
+                p => { p.integrationType = VRCPhysBoneBase.IntegrationType.Simplified; p.spring = 0.25f; p.gravity = 0.8f; p.immobileType = VRCPhysBoneBase.ImmobileType.World; p.immobile = 0.4f;
+                       p.limitType = VRCPhysBoneBase.LimitType.Polar; p.maxAngleX = 150; p.maxAngleZ = 25; p.limitRotation = new Vector3(0, -60, 0); p.endpointPosition = new Vector3(0, 0.12f, 0); }),
+        };
+
+        static void JumpBone(GameObject go, Action<VRCPhysBone> set)
+        {
+            var pb = go.AddComponent<VRCPhysBone>();
+            pb.version = VRCPhysBoneBase.Version.Version_1_1;
+            pb.integrationType = VRCPhysBoneBase.IntegrationType.Advanced;
+            pb.pull = 0.1f; pb.spring = 0.3f; pb.stiffness = 0; pb.gravity = 0; pb.gravityFalloff = 0; pb.immobile = 0;
+            pb.limitType = VRCPhysBoneBase.LimitType.None; pb.radius = 0;
+            pb.allowCollision = VRCPhysBoneBase.AdvancedBool.True;
+            pb.allowGrabbing = VRCPhysBoneBase.AdvancedBool.False;
+            pb.allowPosing = VRCPhysBoneBase.AdvancedBool.False;
+            set(pb);
+        }
+
+        static void Jumps(Transform root)
+        {
+            foreach (var (row, _, from) in JumpRows)
+            {
+                var jump = new GameObject(row).transform;
+                jump.SetParent(root, false);
+                jump.localPosition = from;
+                jump.localRotation = Quaternion.Euler(JumpFromTilt);
+                for (int i = 0; i < JumpChains.Length; i++)
+                {
+                    var (chain, dir, bones, branches, set, end) = JumpChains[i];
+                    var name = row + chain;
+                    var start = new GameObject(name);
+                    start.transform.SetParent(jump, false);
+                    start.transform.localPosition = new Vector3((i - JumpChains.Length / 2) * 0.05f, 0, 0);
+                    start.transform.localRotation = Quaternion.FromToRotation(Vector3.up, dir);
+                    Transform last = null;
+                    for (int b = 0; b < branches; b++)
+                    {
+                        var parent = start.transform;
+                        for (int k = 0; k < bones.Length; k++)
+                        {
+                            var go = new GameObject(branches == 1 ? $"{name}.{k + 1}" : $"{name}.{b}.{k + 1}");
+                            go.transform.SetParent(parent, false);
+                            go.transform.localPosition = (k == 0 && branches > 1 ? Quaternion.Euler(0, 0, 25 * (b - (branches - 1) / 2f)) : Quaternion.identity) * Vector3.up * bones[k];
+                            parent = go.transform;
+                        }
+                        last = parent;
+                    }
+                    JumpBone(start, set);
+                    if (end == null) continue;
+                    var hanging = new GameObject($"{name}End");
+                    hanging.transform.SetParent(last, false);
+                    JumpBone(hanging, end);
+                }
             }
         }
 
