@@ -96,30 +96,14 @@ const PROBES: &[(&str, &str, f32)] = &[
 fn each_field_against_its_probe() {
     let dir = path("fixtures/reference/probe");
     let replay = replay("fixtures/reference/probe", "fixtures/unity-probe.glb", 0..usize::MAX);
-    let errors = errors(&dir, &replay.run(60.0), reference::window(&dir));
-    let mut worst = BTreeMap::<&str, f32>::new();
-    for (e, tip) in &errors {
-        assert!(e.is_finite(), "{tip}: {e}");
-        let chain = tip.split('|').next().unwrap().rsplit('/').next().unwrap();
-        let (probe, ..) = PROBES.iter().find(|p| p.0 == chain).unwrap_or_else(|| panic!("{chain} is not in PROBES"));
-        let w = worst.entry(probe).or_default();
-        *w = w.max(*e);
-    }
-    let mut failed = vec![];
-    for (probe, field, bound) in PROBES {
-        let e = worst.get(probe).copied().unwrap_or_else(|| panic!("the recording has no {probe} tips"));
-        eprintln!("{probe:<22} {e:.4} (bound {bound}) {field}");
-        if e > *bound {
-            failed.push(format!("{probe} ({field}): {e:.4} over {bound}"));
-        }
-    }
-    assert!(failed.is_empty(), "{failed:#?}");
+    let errors = errors(&dir, &replay.run(60.0), reference::window(&dir)).into_iter().map(|(e, tip)| (e, chain(&tip).to_string()));
+    check_bounds(PROBES.iter().map(|&(probe, field, bound)| (probe, bound, field)), errors);
 }
 
 /// Each chain of the probe's jump rows (`Fixture.JumpChains`) and the largest tip RMS error over chain length any of
 /// its bones may show from the frame before its parent's jump through the 150 after, in either row (each measured, with
 /// a margin). One row jumps on the step after the first recorded frame, the other once its chains have settled; a chain
-/// without gravity misses alike in both. A bound above 0.05 is a gap in the core, not a tolerance.
+/// without gravity misses alike in both. A bound above `GAP` is a gap in the core, not a tolerance.
 const JUMPS: &[(&str, f32)] = &[
     ("Advanced", 0.005),
     ("AdvancedLevel", 0.005),
@@ -156,36 +140,356 @@ const JUMPS: &[(&str, f32)] = &[
     ("TailEnd", 0.205),
 ];
 
+/// The chain a tip of `errors` belongs to.
+fn chain(tip: &str) -> &str {
+    tip.split('|').next().unwrap().rsplit('/').next().unwrap()
+}
+
+/// A bound above this records a gap in the core, not a tolerance.
+const GAP: f32 = 0.05;
+
+/// The tips under the parent of `row`, which jumps on `jump`: each one's RMS error over chain length from the frame before
+/// the jump through the 150 after, with its chain's name.
+fn jump_row(dir: &Path, trace: &reference::Trace, row: &str, jump: usize) -> Vec<(f32, String)> {
+    let on_row = |tip: &str| tip.split('/').next() == Some(row);
+    let errors: Vec<(f32, String)> = errors(dir, trace, jump - 1..jump + 150).into_iter().filter(|(_, t)| on_row(t)).collect();
+    let tips = reference::rows(&dir.join("chains.tsv"));
+    assert_eq!(errors.len(), tips.iter().filter(|r| on_row(&r[0])).count(), "{row}: a recorded tip is missing from the window");
+    errors.into_iter().map(|(e, tip)| (e, chain(&tip).to_string())).collect()
+}
+
+/// Each named chain's worst error against its bound (and a note printed beside it): every chain in `errors` has a bound,
+/// and every bound a chain.
+fn check_bounds<'a>(bounds: impl IntoIterator<Item = (&'a str, f32, &'a str)>, errors: impl IntoIterator<Item = (f32, String)>) {
+    let bounds: Vec<_> = bounds.into_iter().collect();
+    let mut worst = BTreeMap::<String, f32>::new();
+    for (e, name) in errors {
+        assert!(e.is_finite(), "{name}: {e}");
+        assert!(bounds.iter().any(|b| b.0 == name), "{name} has no bound");
+        let w = worst.entry(name).or_default();
+        *w = w.max(e);
+    }
+    let mut failed = vec![];
+    for (name, bound, note) in bounds {
+        let e = *worst.get(name).unwrap_or_else(|| panic!("the recording has no {name} tips"));
+        eprintln!("{name:<26} {e:.4} (bound {bound}) {note}");
+        if e > bound {
+            failed.push(format!("{name} {note}: {e:.4} over {bound}"));
+        }
+    }
+    assert!(failed.is_empty(), "{failed:#?}");
+}
+
 #[test]
 fn chains_under_a_jumping_parent() {
     let dir = path("fixtures/reference/probe");
     let replay = replay("fixtures/reference/probe", "fixtures/unity-probe.glb", 0..450);
     let trace = replay.run(60.0);
-    let tips = reference::rows(&dir.join("chains.tsv"));
-    let mut worst = BTreeMap::<&str, [f32; 2]>::new();
-    for (k, (row, jump)) in [("Jump", replay.first + 1), ("JumpLate", replay.first + 300)].into_iter().enumerate() {
-        let on_row = |tip: &str| tip.split('/').next() == Some(row);
-        let errors: Vec<(f32, String)> = errors(&dir, &trace, jump - 1..jump + 150).into_iter().filter(|(_, t)| on_row(t)).collect();
-        assert_eq!(errors.len(), tips.iter().filter(|r| on_row(&r[0])).count(), "{row}: a recorded tip is missing from the window");
-        for (e, tip) in errors {
-            assert!(e.is_finite(), "{tip}: {e}");
-            let chain = tip.split('|').next().unwrap().rsplit('/').next().unwrap();
-            let name = chain.strip_prefix(row).unwrap_or_else(|| panic!("{chain} is not on its row"));
-            let (name, _) = JUMPS.iter().find(|j| j.0 == name).unwrap_or_else(|| panic!("{name} is not in JUMPS"));
-            let w = &mut worst.entry(name).or_default()[k];
-            *w = w.max(e);
-        }
-    }
-    let mut failed = vec![];
-    for (name, bound) in JUMPS {
-        let [first, late] = worst.get(name).copied().unwrap_or_else(|| panic!("the recording has no {name} tips"));
-        let e = first.max(late);
-        eprintln!("{name:<22} {e:.4} (bound {bound}; first row {first:.4}, late row {late:.4})");
-        if e > *bound {
-            failed.push(format!("{name}: {e:.4} over {bound}"));
-        }
-    }
-    assert!(failed.is_empty(), "{failed:#?}");
+    let errors = [("Jump", replay.first + 1), ("JumpLate", replay.first + 300)].into_iter().flat_map(|(row, jump)| {
+        jump_row(&dir, &trace, row, jump)
+            .into_iter()
+            .map(move |(e, chain)| (e, chain.strip_prefix(row).unwrap_or_else(|| panic!("{chain} is not on its row")).to_string()))
+    });
+    check_bounds(JUMPS.iter().map(|&(name, bound)| (name, bound, "")), errors);
+}
+
+/// The rows of `Fixture.JumpCases`, each jumping its parent by the size its name gives in cm, along the bones, against
+/// them or across them, once its chains have settled.
+const CASE_ROWS: &[&str] = &[
+    "JumpAlong3", "JumpAlong8", "JumpAlong20", "JumpAgainst3", "JumpAgainst8", "JumpAgainst20", "JumpAcross3", "JumpAcross8", "JumpAcross20",
+];
+
+/// Each chain of `CASE_ROWS` by row and name, and the largest tip RMS error over chain length any of its bones may show
+/// from the frame before its parent's jump through the 150 after (each measured, with a margin). A bound above `GAP` is a
+/// gap in the core, not a tolerance.
+const CASES: &[(&str, f32)] = &[
+    ("JumpAlong3OneBone2", 0.14),
+    ("JumpAlong3OneBone2Angle", 0.03),
+    ("JumpAlong3Endpoint2", 0.085),
+    ("JumpAlong3Endpoint2Angle", 0.03),
+    ("JumpAlong3Branches2", 0.075),
+    ("JumpAlong3Branches2Angle", 0.015),
+    ("JumpAlong3OneBone4", 0.02),
+    ("JumpAlong3OneBone4Angle", 0.02),
+    ("JumpAlong3Endpoint4", 0.015),
+    ("JumpAlong3Endpoint4Angle", 0.02),
+    ("JumpAlong3Branches4", 0.015),
+    ("JumpAlong3Branches4Angle", 0.015),
+    ("JumpAlong3OneBone6", 0.01),
+    ("JumpAlong3OneBone6Angle", 0.01),
+    ("JumpAlong3Endpoint6", 0.005),
+    ("JumpAlong3Endpoint6Angle", 0.005),
+    ("JumpAlong3Branches6", 0.005),
+    ("JumpAlong3Branches6Angle", 0.005),
+    ("JumpAlong3OneBone10", 0.005),
+    ("JumpAlong3OneBone10Angle", 0.005),
+    ("JumpAlong3Endpoint10", 0.005),
+    ("JumpAlong3Endpoint10Angle", 0.005),
+    ("JumpAlong3Branches10", 0.005),
+    ("JumpAlong3Branches10Angle", 0.005),
+    ("JumpAlong3OneBone20", 0.005),
+    ("JumpAlong3OneBone20Angle", 0.005),
+    ("JumpAlong3Endpoint20", 0.005),
+    ("JumpAlong3Endpoint20Angle", 0.005),
+    ("JumpAlong3Branches20", 0.005),
+    ("JumpAlong3Branches20Angle", 0.005),
+    ("JumpAlong8OneBone2", 0.135),
+    ("JumpAlong8OneBone2Angle", 0.045),
+    ("JumpAlong8Endpoint2", 0.105),
+    ("JumpAlong8Endpoint2Angle", 0.06),
+    ("JumpAlong8Branches2", 0.07),
+    ("JumpAlong8Branches2Angle", 0.025),
+    ("JumpAlong8OneBone4", 0.035),
+    ("JumpAlong8OneBone4Angle", 0.035),
+    ("JumpAlong8Endpoint4", 0.03),
+    ("JumpAlong8Endpoint4Angle", 0.04),
+    ("JumpAlong8Branches4", 0.02),
+    ("JumpAlong8Branches4Angle", 0.02),
+    ("JumpAlong8OneBone6", 0.2),
+    ("JumpAlong8OneBone6Angle", 0.025),
+    ("JumpAlong8Endpoint6", 0.13),
+    ("JumpAlong8Endpoint6Angle", 0.03),
+    ("JumpAlong8Branches6", 0.105),
+    ("JumpAlong8Branches6Angle", 0.015),
+    ("JumpAlong8OneBone10", 0.025),
+    ("JumpAlong8OneBone10Angle", 0.025),
+    ("JumpAlong8Endpoint10", 0.02),
+    ("JumpAlong8Endpoint10Angle", 0.04),
+    ("JumpAlong8Branches10", 0.015),
+    ("JumpAlong8Branches10Angle", 0.015),
+    ("JumpAlong8OneBone20", 0.005),
+    ("JumpAlong8OneBone20Angle", 0.005),
+    ("JumpAlong8Endpoint20", 0.005),
+    ("JumpAlong8Endpoint20Angle", 0.005),
+    ("JumpAlong8Branches20", 0.005),
+    ("JumpAlong8Branches20Angle", 0.005),
+    ("JumpAlong20OneBone2", 0.72),
+    ("JumpAlong20OneBone2Angle", 0.04),
+    ("JumpAlong20Endpoint2", 0.615),
+    ("JumpAlong20Endpoint2Angle", 0.07),
+    ("JumpAlong20Branches2", 0.365),
+    ("JumpAlong20Branches2Angle", 0.025),
+    ("JumpAlong20OneBone4", 0.63),
+    ("JumpAlong20OneBone4Angle", 0.045),
+    ("JumpAlong20Endpoint4", 0.525),
+    ("JumpAlong20Endpoint4Angle", 0.06),
+    ("JumpAlong20Branches4", 0.32),
+    ("JumpAlong20Branches4Angle", 0.025),
+    ("JumpAlong20OneBone6", 0.07),
+    ("JumpAlong20OneBone6Angle", 0.04),
+    ("JumpAlong20Endpoint6", 0.09),
+    ("JumpAlong20Endpoint6Angle", 0.055),
+    ("JumpAlong20Branches6", 0.04),
+    ("JumpAlong20Branches6Angle", 0.025),
+    ("JumpAlong20OneBone10", 0.035),
+    ("JumpAlong20OneBone10Angle", 0.035),
+    ("JumpAlong20Endpoint10", 0.03),
+    ("JumpAlong20Endpoint10Angle", 0.04),
+    ("JumpAlong20Branches10", 0.02),
+    ("JumpAlong20Branches10Angle", 0.02),
+    ("JumpAlong20OneBone20", 0.085),
+    ("JumpAlong20OneBone20Angle", 0.01),
+    ("JumpAlong20Endpoint20", 0.055),
+    ("JumpAlong20Endpoint20Angle", 0.01),
+    ("JumpAlong20Branches20", 0.045),
+    ("JumpAlong20Branches20Angle", 0.01),
+    ("JumpAgainst3OneBone2", 0.01),
+    ("JumpAgainst3OneBone2Angle", 0.01),
+    ("JumpAgainst3Endpoint2", 0.01),
+    ("JumpAgainst3Endpoint2Angle", 0.01),
+    ("JumpAgainst3Branches2", 0.005),
+    ("JumpAgainst3Branches2Angle", 0.005),
+    ("JumpAgainst3OneBone4", 0.005),
+    ("JumpAgainst3OneBone4Angle", 0.005),
+    ("JumpAgainst3Endpoint4", 0.005),
+    ("JumpAgainst3Endpoint4Angle", 0.005),
+    ("JumpAgainst3Branches4", 0.005),
+    ("JumpAgainst3Branches4Angle", 0.005),
+    ("JumpAgainst3OneBone6", 0.005),
+    ("JumpAgainst3OneBone6Angle", 0.005),
+    ("JumpAgainst3Endpoint6", 0.005),
+    ("JumpAgainst3Endpoint6Angle", 0.005),
+    ("JumpAgainst3Branches6", 0.005),
+    ("JumpAgainst3Branches6Angle", 0.005),
+    ("JumpAgainst3OneBone10", 0.005),
+    ("JumpAgainst3OneBone10Angle", 0.005),
+    ("JumpAgainst3Endpoint10", 0.005),
+    ("JumpAgainst3Endpoint10Angle", 0.005),
+    ("JumpAgainst3Branches10", 0.005),
+    ("JumpAgainst3Branches10Angle", 0.005),
+    ("JumpAgainst3OneBone20", 0.005),
+    ("JumpAgainst3OneBone20Angle", 0.005),
+    ("JumpAgainst3Endpoint20", 0.005),
+    ("JumpAgainst3Endpoint20Angle", 0.005),
+    ("JumpAgainst3Branches20", 0.005),
+    ("JumpAgainst3Branches20Angle", 0.005),
+    ("JumpAgainst8OneBone2", 0.66),
+    ("JumpAgainst8OneBone2Angle", 0.135),
+    ("JumpAgainst8Endpoint2", 0.55),
+    ("JumpAgainst8Endpoint2Angle", 0.17),
+    ("JumpAgainst8Branches2", 0.33),
+    ("JumpAgainst8Branches2Angle", 0.07),
+    ("JumpAgainst8OneBone4", 0.01),
+    ("JumpAgainst8OneBone4Angle", 0.01),
+    ("JumpAgainst8Endpoint4", 0.01),
+    ("JumpAgainst8Endpoint4Angle", 0.01),
+    ("JumpAgainst8Branches4", 0.01),
+    ("JumpAgainst8Branches4Angle", 0.01),
+    ("JumpAgainst8OneBone6", 0.01),
+    ("JumpAgainst8OneBone6Angle", 0.01),
+    ("JumpAgainst8Endpoint6", 0.01),
+    ("JumpAgainst8Endpoint6Angle", 0.01),
+    ("JumpAgainst8Branches6", 0.005),
+    ("JumpAgainst8Branches6Angle", 0.005),
+    ("JumpAgainst8OneBone10", 0.005),
+    ("JumpAgainst8OneBone10Angle", 0.005),
+    ("JumpAgainst8Endpoint10", 0.005),
+    ("JumpAgainst8Endpoint10Angle", 0.005),
+    ("JumpAgainst8Branches10", 0.005),
+    ("JumpAgainst8Branches10Angle", 0.005),
+    ("JumpAgainst8OneBone20", 0.005),
+    ("JumpAgainst8OneBone20Angle", 0.005),
+    ("JumpAgainst8Endpoint20", 0.005),
+    ("JumpAgainst8Endpoint20Angle", 0.005),
+    ("JumpAgainst8Branches20", 0.005),
+    ("JumpAgainst8Branches20Angle", 0.005),
+    ("JumpAgainst20OneBone2", 0.735),
+    ("JumpAgainst20OneBone2Angle", 0.21),
+    ("JumpAgainst20Endpoint2", 0.73),
+    ("JumpAgainst20Endpoint2Angle", 0.29),
+    ("JumpAgainst20Branches2", 0.37),
+    ("JumpAgainst20Branches2Angle", 0.11),
+    ("JumpAgainst20OneBone4", 0.73),
+    ("JumpAgainst20OneBone4Angle", 0.135),
+    ("JumpAgainst20Endpoint4", 0.59),
+    ("JumpAgainst20Endpoint4Angle", 0.175),
+    ("JumpAgainst20Branches4", 0.37),
+    ("JumpAgainst20Branches4Angle", 0.07),
+    ("JumpAgainst20OneBone6", 0.045),
+    ("JumpAgainst20OneBone6Angle", 0.045),
+    ("JumpAgainst20Endpoint6", 0.075),
+    ("JumpAgainst20Endpoint6Angle", 0.025),
+    ("JumpAgainst20Branches6", 0.025),
+    ("JumpAgainst20Branches6Angle", 0.025),
+    ("JumpAgainst20OneBone10", 0.01),
+    ("JumpAgainst20OneBone10Angle", 0.01),
+    ("JumpAgainst20Endpoint10", 0.01),
+    ("JumpAgainst20Endpoint10Angle", 0.01),
+    ("JumpAgainst20Branches10", 0.01),
+    ("JumpAgainst20Branches10Angle", 0.01),
+    ("JumpAgainst20OneBone20", 0.01),
+    ("JumpAgainst20OneBone20Angle", 0.01),
+    ("JumpAgainst20Endpoint20", 0.005),
+    ("JumpAgainst20Endpoint20Angle", 0.005),
+    ("JumpAgainst20Branches20", 0.005),
+    ("JumpAgainst20Branches20Angle", 0.005),
+    ("JumpAcross3OneBone2", 0.025),
+    ("JumpAcross3OneBone2Angle", 0.06),
+    ("JumpAcross3Endpoint2", 0.02),
+    ("JumpAcross3Endpoint2Angle", 0.065),
+    ("JumpAcross3Branches2", 0.015),
+    ("JumpAcross3Branches2Angle", 0.035),
+    ("JumpAcross3OneBone4", 0.01),
+    ("JumpAcross3OneBone4Angle", 0.015),
+    ("JumpAcross3Endpoint4", 0.01),
+    ("JumpAcross3Endpoint4Angle", 0.01),
+    ("JumpAcross3Branches4", 0.01),
+    ("JumpAcross3Branches4Angle", 0.01),
+    ("JumpAcross3OneBone6", 0.01),
+    ("JumpAcross3OneBone6Angle", 0.01),
+    ("JumpAcross3Endpoint6", 0.005),
+    ("JumpAcross3Endpoint6Angle", 0.005),
+    ("JumpAcross3Branches6", 0.005),
+    ("JumpAcross3Branches6Angle", 0.005),
+    ("JumpAcross3OneBone10", 0.005),
+    ("JumpAcross3OneBone10Angle", 0.005),
+    ("JumpAcross3Endpoint10", 0.005),
+    ("JumpAcross3Endpoint10Angle", 0.005),
+    ("JumpAcross3Branches10", 0.005),
+    ("JumpAcross3Branches10Angle", 0.005),
+    ("JumpAcross3OneBone20", 0.005),
+    ("JumpAcross3OneBone20Angle", 0.005),
+    ("JumpAcross3Endpoint20", 0.005),
+    ("JumpAcross3Endpoint20Angle", 0.005),
+    ("JumpAcross3Branches20", 0.005),
+    ("JumpAcross3Branches20Angle", 0.005),
+    ("JumpAcross8OneBone2", 0.245),
+    ("JumpAcross8OneBone2Angle", 0.125),
+    ("JumpAcross8Endpoint2", 0.15),
+    ("JumpAcross8Endpoint2Angle", 0.205),
+    ("JumpAcross8Branches2", 0.125),
+    ("JumpAcross8Branches2Angle", 0.065),
+    ("JumpAcross8OneBone4", 0.035),
+    ("JumpAcross8OneBone4Angle", 0.085),
+    ("JumpAcross8Endpoint4", 0.03),
+    ("JumpAcross8Endpoint4Angle", 0.115),
+    ("JumpAcross8Branches4", 0.02),
+    ("JumpAcross8Branches4Angle", 0.045),
+    ("JumpAcross8OneBone6", 0.02),
+    ("JumpAcross8OneBone6Angle", 0.05),
+    ("JumpAcross8Endpoint6", 0.02),
+    ("JumpAcross8Endpoint6Angle", 0.045),
+    ("JumpAcross8Branches6", 0.015),
+    ("JumpAcross8Branches6Angle", 0.03),
+    ("JumpAcross8OneBone10", 0.01),
+    ("JumpAcross8OneBone10Angle", 0.02),
+    ("JumpAcross8Endpoint10", 0.01),
+    ("JumpAcross8Endpoint10Angle", 0.02),
+    ("JumpAcross8Branches10", 0.01),
+    ("JumpAcross8Branches10Angle", 0.015),
+    ("JumpAcross8OneBone20", 0.005),
+    ("JumpAcross8OneBone20Angle", 0.005),
+    ("JumpAcross8Endpoint20", 0.005),
+    ("JumpAcross8Endpoint20Angle", 0.005),
+    ("JumpAcross8Branches20", 0.005),
+    ("JumpAcross8Branches20Angle", 0.005),
+    ("JumpAcross20OneBone2", 0.525),
+    ("JumpAcross20OneBone2Angle", 0.02),
+    ("JumpAcross20Endpoint2", 0.575),
+    ("JumpAcross20Endpoint2Angle", 0.06),
+    ("JumpAcross20Branches2", 0.265),
+    ("JumpAcross20Branches2Angle", 0.015),
+    ("JumpAcross20OneBone4", 0.45),
+    ("JumpAcross20OneBone4Angle", 0.1),
+    ("JumpAcross20Endpoint4", 0.475),
+    ("JumpAcross20Endpoint4Angle", 0.16),
+    ("JumpAcross20Branches4", 0.23),
+    ("JumpAcross20Branches4Angle", 0.05),
+    ("JumpAcross20OneBone6", 0.11),
+    ("JumpAcross20OneBone6Angle", 0.145),
+    ("JumpAcross20Endpoint6", 0.065),
+    ("JumpAcross20Endpoint6Angle", 0.215),
+    ("JumpAcross20Branches6", 0.06),
+    ("JumpAcross20Branches6Angle", 0.075),
+    ("JumpAcross20OneBone10", 0.035),
+    ("JumpAcross20OneBone10Angle", 0.085),
+    ("JumpAcross20Endpoint10", 0.03),
+    ("JumpAcross20Endpoint10Angle", 0.115),
+    ("JumpAcross20Branches10", 0.02),
+    ("JumpAcross20Branches10Angle", 0.045),
+    ("JumpAcross20OneBone20", 0.015),
+    ("JumpAcross20OneBone20Angle", 0.035),
+    ("JumpAcross20Endpoint20", 0.015),
+    ("JumpAcross20Endpoint20Angle", 0.03),
+    ("JumpAcross20Branches20", 0.01),
+    ("JumpAcross20Branches20Angle", 0.02),
+];
+
+#[test]
+fn chains_meeting_one_jump() {
+    let dir = path("fixtures/reference/probe");
+    let replay = replay("fixtures/reference/probe", "fixtures/unity-probe.glb", 0..450);
+    let trace = replay.run(60.0);
+    let errors: Vec<(f32, String)> = CASE_ROWS.iter().flat_map(|row| jump_row(&dir, &trace, row, replay.first + 300)).collect();
+    let chains = reference::text(&dir.join("chains.tsv"));
+    let recorded: std::collections::BTreeSet<&str> = chains
+        .lines()
+        .skip(1)
+        .filter_map(|l| l.split('/').next())
+        .filter(|r| r.starts_with("Jump"))
+        .collect();
+    assert_eq!(recorded, ["Jump", "JumpLate"].iter().chain(CASE_ROWS).copied().collect(), "the recording's jump rows");
+    check_bounds(CASES.iter().map(|&(name, bound)| (name, bound, "")), errors);
 }
 
 #[test]
@@ -285,8 +589,12 @@ fn host_rates_agree() {
         let replay = replay(recording, model, 0..window.end);
         // A jump-row chain whose bound records a gap in the core swings apart at another host rate.
         let jumping = |t: &str| {
-            let chain = t.split('|').next().unwrap().rsplit('/').next().unwrap();
-            ["JumpLate", "Jump"].iter().any(|r| t.starts_with(&format!("{r}/")) && JUMPS.iter().any(|(n, b)| *b > 0.05 && chain.strip_prefix(r) == Some(n)))
+            let (row, chain) = (t.split('/').next().unwrap(), chain(t));
+            let gap = |bounds: &[(&str, f32)], name: &str| bounds.iter().any(|(n, b)| *b > GAP && *n == name);
+            match row {
+                "Jump" | "JumpLate" => chain.strip_prefix(row).is_some_and(|c| gap(JUMPS, c)),
+                _ => CASE_ROWS.contains(&row) && gap(CASES, chain),
+            }
         };
         let lengths: BTreeMap<String, f32> = reference::text(&dir.join("chains.tsv"))
             .lines()
@@ -575,7 +883,7 @@ fn wearer_hands_push_chains_from_whichever_bone_they_hang() {
     assert_eq!(reaches.iter().filter(|(t, _)| t.split('|').next().unwrap().contains("/FingerOwnCross")).count(), 60, "chains crossing the finger collider's axis at an angle");
     let mut failed = vec![];
     for (tip, length) in reaches {
-        let chain = tip.split('|').next().unwrap().rsplit('/').next().unwrap();
+        let chain = chain(tip);
         let frames: Vec<usize> = (0..end).filter(|f| ours.contains_key(f) && recorded[tip].contains_key(f)).collect();
         assert_eq!(frames.len(), end, "{chain}: every frame of the rest compared");
         let rms = (frames.iter().map(|f| (ours[f][tip].distance(recorded[tip][f]) / length).powi(2)).sum::<f32>() / end as f32).sqrt();

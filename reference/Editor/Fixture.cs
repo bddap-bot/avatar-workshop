@@ -652,24 +652,14 @@ namespace AvatarWorkshop.Reference
             }
         }
 
-        // On the avatar's root, which loading leaves where the file holds it, so a row's parent moves only when the harness
-        // jumps it: on the step after the first recorded frame, as a body's first animated pose moves what hangs from it, or
-        // once its chains have settled. Each chain's name says what it varies from advanced integration at pull 0.1 and
-        // spring 0.3.
-        public static readonly (string name, int frame, Vector3 from)[] JumpRows =
-        {
-            ("Jump", 1, new Vector3(0, 1.6f, -0.45f)),
-            ("JumpLate", 300, new Vector3(0, 1.6f, -0.8f)),
-        };
-        public static readonly Vector3 JumpBy = new Vector3(0, -0.08f, -0.02f), JumpFromTilt = new Vector3(8, 0, 4);
-
         static float[] Even(int bones) => Enumerable.Repeat(0.3f / bones, bones).ToArray();
         static readonly float[] LongThenShort = { 0.11f, 0.025f, 0.025f, 0.025f, 0.025f };
         static void Hair30(VRCPhysBone p) { p.gravity = 0.9f; p.gravityFalloff = 0.8f; p.maxStretch = 0.5f; p.stretchMotion = 0.15f; p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 40; }
         static void Hair70(VRCPhysBone p) { p.pull = 0.05f; p.spring = 0.7f; p.stiffness = 0.1f; p.immobile = 0.1f; p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 40; }
         static void OneBone(VRCPhysBone p, float spring) { p.pull = 0.04f; p.spring = spring; p.endpointPosition = new Vector3(0, 0.04f, 0); }
 
-        // `end`: the fields of a chain of one bone and an endpoint hanging from the chain's last bone.
+        // Each chain's name says what it varies from advanced integration at pull 0.1 and spring 0.3. `end`: the fields of a
+        // chain of one bone and an endpoint hanging from the chain's last bone.
         public static readonly (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] JumpChains =
         {
             ("Advanced", Vector3.down, Even(3), 1, p => { }, null),
@@ -709,6 +699,35 @@ namespace AvatarWorkshop.Reference
                        p.limitType = VRCPhysBoneBase.LimitType.Polar; p.maxAngleX = 150; p.maxAngleZ = 25; p.limitRotation = new Vector3(0, -60, 0); p.endpointPosition = new Vector3(0, 0.12f, 0); }),
         };
 
+        // Without gravity or stiffness, so only the jump moves them. They hang 10° off vertical, since a jump exactly along a
+        // bone leaves the way it turns to rounding. A root with several children stays, so each branch is two bones.
+        static readonly (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] JumpCases =
+            (from length in new[] { 0.02f, 0.04f, 0.06f, 0.1f, 0.2f }
+             from kind in new[] { "OneBone", "Endpoint", "Branches" }
+             from limit in new[] { false, true }
+             select ($"{kind}{Mathf.RoundToInt(length * 100)}{(limit ? "Angle" : "")}", Quaternion.Euler(10, 0, 0) * Vector3.down,
+                     kind == "Branches" ? new[] { length, length } : new[] { length }, kind == "Branches" ? 3 : 1,
+                     (Action<VRCPhysBone>)(p =>
+                     {
+                         if (kind == "Endpoint") p.endpointPosition = new Vector3(0, length, 0);
+                         if (limit) { p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 30; }
+                     }),
+                     (Action<VRCPhysBone>)null)).ToArray();
+
+        // On the avatar's root, which loading leaves where the file holds it, so a row's parent moves only when the harness
+        // jumps it: on the step after the first recorded frame, as a body's first animated pose moves what hangs from it, or
+        // once its chains have settled.
+        public static readonly (string name, int frame, Vector3 from, Vector3 tilt, Vector3 by, (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] chains)[] JumpRows =
+            new[]
+            {
+                ("Jump", 1, new Vector3(0, 1.6f, -0.45f), new Vector3(8, 0, 4), new Vector3(0, -0.08f, -0.02f), JumpChains),
+                ("JumpLate", 300, new Vector3(0, 1.6f, -0.8f), new Vector3(8, 0, 4), new Vector3(0, -0.08f, -0.02f), JumpChains),
+            }.Concat(
+                (from way in new[] { (name: "Along", dir: Vector3.down), (name: "Against", dir: Vector3.up), (name: "Across", dir: Vector3.forward) }
+                 from size in new[] { 0.03f, 0.08f, 0.2f }
+                 select (name: $"Jump{way.name}{Mathf.RoundToInt(size * 100)}", move: way.dir * size))
+                .Select((r, i) => (r.name, 300, new Vector3(0, 1.6f, -1.2f - 0.4f * i), Vector3.zero, r.move, JumpCases))).ToArray();
+
         static void JumpBone(GameObject go, Action<VRCPhysBone> set)
         {
             var pb = go.AddComponent<VRCPhysBone>();
@@ -724,19 +743,19 @@ namespace AvatarWorkshop.Reference
 
         static void Jumps(Transform root)
         {
-            foreach (var (row, _, from) in JumpRows)
+            foreach (var (row, _, from, tilt, _, chains) in JumpRows)
             {
                 var jump = new GameObject(row).transform;
                 jump.SetParent(root, false);
                 jump.localPosition = from;
-                jump.localRotation = Quaternion.Euler(JumpFromTilt);
-                for (int i = 0; i < JumpChains.Length; i++)
+                jump.localRotation = Quaternion.Euler(tilt);
+                for (int i = 0; i < chains.Length; i++)
                 {
-                    var (chain, dir, bones, branches, set, end) = JumpChains[i];
+                    var (chain, dir, bones, branches, set, end) = chains[i];
                     var name = row + chain;
                     var start = new GameObject(name);
                     start.transform.SetParent(jump, false);
-                    start.transform.localPosition = new Vector3((i - JumpChains.Length / 2) * 0.05f, 0, 0);
+                    start.transform.localPosition = new Vector3((i - chains.Length / 2) * 0.05f, 0, 0);
                     start.transform.localRotation = Quaternion.FromToRotation(Vector3.up, dir);
                     Transform last = null;
                     for (int b = 0; b < branches; b++)

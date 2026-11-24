@@ -334,7 +334,7 @@ namespace AvatarWorkshop.Reference
         Transform leftArm, rightArm, leftHand;
         // In the root's space.
         Vector3? handAt;
-        (Transform parent, int frame, Vector3 from)[] jumps = new (Transform, int, Vector3)[0];
+        (Transform parent, int frame, Vector3 to)[] jumps = new (Transform, int, Vector3)[0];
         int attached;
         readonly List<VRCPhysBoneColliderBase> outsideHands = new List<VRCPhysBoneColliderBase>();
         List<(string slot, VRCPhysBoneCollider collider)> wearerHands;
@@ -587,8 +587,8 @@ namespace AvatarWorkshop.Reference
         {
             if (root == null || Finished) return;
             if (handAt is Vector3 at && leftHand != null) leftHand.position = root.TransformPoint(at);
-            foreach (var (parent, on, from) in jumps)
-                if (frame - attached >= on) { parent.localPosition = from + Fixture.JumpBy; parent.localRotation = Quaternion.identity; }
+            foreach (var (parent, on, to) in jumps)
+                if (frame - attached >= on) { parent.localPosition = to; parent.localRotation = Quaternion.identity; }
             if (armSwing == Vector2.zero) return;
             foreach (var (bone, sign) in new[] { (leftArm, -1f), (rightArm, 1f) })
             {
@@ -706,7 +706,7 @@ namespace AvatarWorkshop.Reference
             root = runtime.transform;
             attached = frame;
             if (probe)
-                jumps = Fixture.JumpRows.Select(j => (root.Find(j.name) ?? throw new Exception($"the probe lacks {j.name}"), j.frame, j.from)).ToArray();
+                jumps = Fixture.JumpRows.Select(j => (root.Find(j.name) ?? throw new Exception($"the probe lacks {j.name}"), j.frame, j.from + j.by)).ToArray();
             rootPos = root.position;
             rootRot = root.rotation;
             placed = Xf(rootPos, rootRot);
