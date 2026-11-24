@@ -731,6 +731,32 @@ namespace AvatarWorkshop.Reference
             ("Gravity90Falloff80Spring30", p => { p.gravity = 0.9f; p.gravityFalloff = 0.8f; p.spring = 0.3f; }),
         };
 
+        // Short bones whose parent is a simulated bone, which swings farther in a step than they are long, not a root only
+        // the jump moves.
+        static readonly (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] JumpBehind =
+            (from length in new[] { 0.02f, 0.04f, 0.06f }
+             from field in new (string name, Action<VRCPhysBone> set)[]
+             {
+                 ("", p => { }),
+                 ("Stretch50Motion15", p => { p.maxStretch = 0.5f; p.stretchMotion = 0.15f; }),
+                 ("Gravity90Falloff80", p => { p.gravity = 0.9f; p.gravityFalloff = 0.8f; }),
+                 ("Angle30", p => { p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 30; }),
+             }
+             select ($"Bone10Then{Mathf.RoundToInt(length * 100)}{field.name}", Quaternion.Euler(10, 0, 0) * Vector3.down, new[] { 0.1f, length }, 1, field.set,
+                     (Action<VRCPhysBone>)null))
+            .Concat(
+                from field in new (string name, Action<VRCPhysBone> set)[]
+                {
+                    ("", p => { }),
+                    ("SpringCurve", p => p.springCurve = Ramp(0.8f, 1)),
+                    ("StiffCurve", p => p.stiffnessCurve = Ramp(1, 0.5f)),
+                    ("Angle40", p => { p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 40; }),
+                    ("Angle40Rotated20", p => { p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 40; p.limitRotation = new Vector3(-20, 0, 0); }),
+                }
+                select ($"FiveBones6Spring70Stiff10{field.name}", Quaternion.Euler(10, 0, 0) * Vector3.down, Even(5), 1,
+                        (Action<VRCPhysBone>)(p => { p.spring = 0.7f; p.stiffness = 0.1f; field.set(p); }), (Action<VRCPhysBone>)null))
+            .ToArray();
+
         static readonly (string name, Vector3 dir)[] JumpWays = { ("Along", Vector3.down), ("Against", Vector3.up), ("Across", Vector3.forward) };
 
         // On the avatar's root, which loading leaves where the file holds it, so a row's parent moves only when the harness
@@ -759,6 +785,10 @@ namespace AvatarWorkshop.Reference
                     from field in JumpFields
                     select (name: $"Jump{way.name}{Mathf.RoundToInt(size * 100)}{field.name}", move: way.dir * size,
                             chains: JumpCases(new[] { "OneBone", "Endpoint" }, field.set)))
+                .Concat(
+                    from way in JumpWays
+                    from size in new[] { 0.08f, 0.2f }
+                    select (name: $"Jump{way.name}{Mathf.RoundToInt(size * 100)}Behind", move: way.dir * size, chains: JumpBehind))
                 .Select((r, i) => (r.name, 300, new Vector3(0, 1.6f, -1.2f - 0.4f * i), Vector3.zero, r.move, r.chains))).ToArray();
 
         static void JumpBone(GameObject go, Action<VRCPhysBone> set)
