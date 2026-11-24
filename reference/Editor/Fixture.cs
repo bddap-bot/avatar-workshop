@@ -699,9 +699,10 @@ namespace AvatarWorkshop.Reference
                        p.limitType = VRCPhysBoneBase.LimitType.Polar; p.maxAngleX = 150; p.maxAngleZ = 25; p.limitRotation = new Vector3(0, -60, 0); p.endpointPosition = new Vector3(0, 0.12f, 0); }),
         };
 
-        // Without gravity or stiffness, so only the jump moves them. They hang 10° off vertical, since a jump exactly along a
-        // bone leaves the way it turns to rounding. A root with several children stays, so each branch is two bones.
-        static (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] JumpCases(string[] kinds, float pull, float spring) =>
+        // Without gravity or stiffness unless `fields` sets them, so by default only the jump moves them. They hang 10° off
+        // vertical, since a jump exactly along a bone leaves the way it turns to rounding. A root with several children stays,
+        // so each branch is two bones.
+        static (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] JumpCases(string[] kinds, Action<VRCPhysBone> fields) =>
             (from length in new[] { 0.02f, 0.04f, 0.06f, 0.1f, 0.2f }
              from kind in kinds
              from limit in new[] { false, true }
@@ -709,11 +710,26 @@ namespace AvatarWorkshop.Reference
                      kind == "Branches" ? new[] { length, length } : new[] { length }, kind == "Branches" ? 3 : 1,
                      (Action<VRCPhysBone>)(p =>
                      {
-                         p.pull = pull; p.spring = spring;
+                         fields(p);
                          if (kind == "Endpoint") p.endpointPosition = new Vector3(0, length, 0);
                          if (limit) { p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 30; }
                      }),
                      (Action<VRCPhysBone>)null)).ToArray();
+
+        // Each at JumpBone's pull 0.1.
+        static readonly (string name, Action<VRCPhysBone> set)[] JumpFields =
+        {
+            ("Stiff10Spring30", p => { p.stiffness = 0.1f; p.spring = 0.3f; }),
+            ("Stiff10Spring70", p => { p.stiffness = 0.1f; p.spring = 0.7f; }),
+            ("Stiff30Spring30", p => { p.stiffness = 0.3f; p.spring = 0.3f; }),
+            ("Stiff30Spring70", p => { p.stiffness = 0.3f; p.spring = 0.7f; }),
+            ("Immobile10Spring30", p => { p.immobile = 0.1f; p.spring = 0.3f; }),
+            ("Immobile10Spring70", p => { p.immobile = 0.1f; p.spring = 0.7f; }),
+            ("Immobile40Spring30", p => { p.immobile = 0.4f; p.spring = 0.3f; }),
+            ("Immobile40Spring70", p => { p.immobile = 0.4f; p.spring = 0.7f; }),
+            ("Stretch50Motion15Spring30", p => { p.maxStretch = 0.5f; p.stretchMotion = 0.15f; p.spring = 0.3f; }),
+            ("Gravity90Falloff80Spring30", p => { p.gravity = 0.9f; p.gravityFalloff = 0.8f; p.spring = 0.3f; }),
+        };
 
         static readonly (string name, Vector3 dir)[] JumpWays = { ("Along", Vector3.down), ("Against", Vector3.up), ("Across", Vector3.forward) };
 
@@ -729,14 +745,20 @@ namespace AvatarWorkshop.Reference
                 (from way in JumpWays
                  from size in new[] { 0.03f, 0.08f, 0.2f }
                  select (name: $"Jump{way.name}{Mathf.RoundToInt(size * 100)}", move: way.dir * size,
-                         chains: JumpCases(new[] { "OneBone", "Endpoint", "Branches" }, 0.1f, 0.3f)))
+                         chains: JumpCases(new[] { "OneBone", "Endpoint", "Branches" }, p => { })))
                 .Concat(
                     from way in JumpWays
                     from size in new[] { 0.08f, 0.2f }
                     from pull in new[] { 0f, 0.3f }
                     from spring in new[] { 0f, 0.9f }
                     select (name: $"Jump{way.name}{Mathf.RoundToInt(size * 100)}Pull{Mathf.RoundToInt(pull * 100)}Spring{Mathf.RoundToInt(spring * 100)}",
-                            move: way.dir * size, chains: JumpCases(new[] { "OneBone", "Endpoint" }, pull, spring)))
+                            move: way.dir * size, chains: JumpCases(new[] { "OneBone", "Endpoint" }, p => { p.pull = pull; p.spring = spring; })))
+                .Concat(
+                    from way in JumpWays
+                    from size in new[] { 0.08f, 0.2f }
+                    from field in JumpFields
+                    select (name: $"Jump{way.name}{Mathf.RoundToInt(size * 100)}{field.name}", move: way.dir * size,
+                            chains: JumpCases(new[] { "OneBone", "Endpoint" }, field.set)))
                 .Select((r, i) => (r.name, 300, new Vector3(0, 1.6f, -1.2f - 0.4f * i), Vector3.zero, r.move, r.chains))).ToArray();
 
         static void JumpBone(GameObject go, Action<VRCPhysBone> set)
