@@ -701,18 +701,21 @@ namespace AvatarWorkshop.Reference
 
         // Without gravity or stiffness, so only the jump moves them. They hang 10° off vertical, since a jump exactly along a
         // bone leaves the way it turns to rounding. A root with several children stays, so each branch is two bones.
-        static readonly (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] JumpCases =
+        static (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] JumpCases(string[] kinds, float pull, float spring) =>
             (from length in new[] { 0.02f, 0.04f, 0.06f, 0.1f, 0.2f }
-             from kind in new[] { "OneBone", "Endpoint", "Branches" }
+             from kind in kinds
              from limit in new[] { false, true }
              select ($"{kind}{Mathf.RoundToInt(length * 100)}{(limit ? "Angle" : "")}", Quaternion.Euler(10, 0, 0) * Vector3.down,
                      kind == "Branches" ? new[] { length, length } : new[] { length }, kind == "Branches" ? 3 : 1,
                      (Action<VRCPhysBone>)(p =>
                      {
+                         p.pull = pull; p.spring = spring;
                          if (kind == "Endpoint") p.endpointPosition = new Vector3(0, length, 0);
                          if (limit) { p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 30; }
                      }),
                      (Action<VRCPhysBone>)null)).ToArray();
+
+        static readonly (string name, Vector3 dir)[] JumpWays = { ("Along", Vector3.down), ("Against", Vector3.up), ("Across", Vector3.forward) };
 
         // On the avatar's root, which loading leaves where the file holds it, so a row's parent moves only when the harness
         // jumps it: on the step after the first recorded frame, as a body's first animated pose moves what hangs from it, or
@@ -723,10 +726,18 @@ namespace AvatarWorkshop.Reference
                 ("Jump", 1, new Vector3(0, 1.6f, -0.45f), new Vector3(8, 0, 4), new Vector3(0, -0.08f, -0.02f), JumpChains),
                 ("JumpLate", 300, new Vector3(0, 1.6f, -0.8f), new Vector3(8, 0, 4), new Vector3(0, -0.08f, -0.02f), JumpChains),
             }.Concat(
-                (from way in new[] { (name: "Along", dir: Vector3.down), (name: "Against", dir: Vector3.up), (name: "Across", dir: Vector3.forward) }
+                (from way in JumpWays
                  from size in new[] { 0.03f, 0.08f, 0.2f }
-                 select (name: $"Jump{way.name}{Mathf.RoundToInt(size * 100)}", move: way.dir * size))
-                .Select((r, i) => (r.name, 300, new Vector3(0, 1.6f, -1.2f - 0.4f * i), Vector3.zero, r.move, JumpCases))).ToArray();
+                 select (name: $"Jump{way.name}{Mathf.RoundToInt(size * 100)}", move: way.dir * size,
+                         chains: JumpCases(new[] { "OneBone", "Endpoint", "Branches" }, 0.1f, 0.3f)))
+                .Concat(
+                    from way in JumpWays
+                    from size in new[] { 0.08f, 0.2f }
+                    from pull in new[] { 0f, 0.3f }
+                    from spring in new[] { 0f, 0.9f }
+                    select (name: $"Jump{way.name}{Mathf.RoundToInt(size * 100)}Pull{Mathf.RoundToInt(pull * 100)}Spring{Mathf.RoundToInt(spring * 100)}",
+                            move: way.dir * size, chains: JumpCases(new[] { "OneBone", "Endpoint" }, pull, spring)))
+                .Select((r, i) => (r.name, 300, new Vector3(0, 1.6f, -1.2f - 0.4f * i), Vector3.zero, r.move, r.chains))).ToArray();
 
         static void JumpBone(GameObject go, Action<VRCPhysBone> set)
         {
