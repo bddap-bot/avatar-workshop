@@ -2296,6 +2296,85 @@ fn chains_meeting_one_jump() {
     check_bounds(CASES.iter().map(|&(name, bound)| (name, bound, "")), errors);
 }
 
+/// Each chain of the rows that rest under a parent tilted 8° and 4° or 20° and 10° from vertical and never jump
+/// (`Fixture.Resting`), and the largest tip RMS error over chain length any of its bones may show over the frames the
+/// rows jumping on frame 300 are measured on (each measured, with a margin). A bound above `GAP` is a gap in the core, not a tolerance.
+const RESTING: &[(&str, f32)] = &[
+    ("Rest20x10FiveBones6Pull10Gravity50Falloff0", 0.005),
+    ("Rest20x10FiveBones6Pull10Gravity50Falloff0Immobile40", 0.005),
+    ("Rest20x10FiveBones6Pull10Gravity50Falloff0Stiff25", 0.01),
+    ("Rest20x10FiveBones6Pull10Gravity50Falloff0Stiff25Immobile40", 0.01),
+    ("Rest20x10FiveBones6Pull10Gravity50Falloff60", 0.005),
+    ("Rest20x10FiveBones6Pull10Gravity50Falloff60Immobile40", 0.005),
+    ("Rest20x10FiveBones6Pull10Gravity50Falloff60Stiff25", 0.005),
+    ("Rest20x10FiveBones6Pull10Gravity50Falloff60Stiff25Immobile40", 0.005),
+    ("Rest20x10FiveBones6Pull5Gravity50Falloff0", 0.005),
+    ("Rest20x10FiveBones6Pull5Gravity50Falloff0Immobile40", 0.005),
+    ("Rest20x10FiveBones6Pull5Gravity50Falloff0Stiff25", 0.01),
+    ("Rest20x10FiveBones6Pull5Gravity50Falloff0Stiff25Immobile40", 0.01),
+    ("Rest20x10FiveBones6Pull5Gravity50Falloff60", 0.005),
+    ("Rest20x10FiveBones6Pull5Gravity50Falloff60Immobile40", 0.005),
+    ("Rest20x10FiveBones6Pull5Gravity50Falloff60Stiff25", 0.005),
+    ("Rest20x10FiveBones6Pull5Gravity50Falloff60Stiff25Immobile40", 0.005),
+    ("Rest20x10OneBone6Pull10Gravity50Falloff0", 0.005),
+    ("Rest20x10OneBone6Pull10Gravity50Falloff0Immobile40", 0.005),
+    ("Rest20x10OneBone6Pull10Gravity50Falloff0Stiff25", 0.005),
+    ("Rest20x10OneBone6Pull10Gravity50Falloff0Stiff25Immobile40", 0.005),
+    ("Rest20x10OneBone6Pull10Gravity50Falloff60", 0.005),
+    ("Rest20x10OneBone6Pull10Gravity50Falloff60Immobile40", 0.005),
+    ("Rest20x10OneBone6Pull10Gravity50Falloff60Stiff25", 0.005),
+    ("Rest20x10OneBone6Pull10Gravity50Falloff60Stiff25Immobile40", 0.005),
+    ("Rest20x10OneBone6Pull5Gravity50Falloff0", 0.005),
+    ("Rest20x10OneBone6Pull5Gravity50Falloff0Immobile40", 0.005),
+    ("Rest20x10OneBone6Pull5Gravity50Falloff0Stiff25", 0.005),
+    ("Rest20x10OneBone6Pull5Gravity50Falloff0Stiff25Immobile40", 0.005),
+    ("Rest20x10OneBone6Pull5Gravity50Falloff60", 0.005),
+    ("Rest20x10OneBone6Pull5Gravity50Falloff60Immobile40", 0.005),
+    ("Rest20x10OneBone6Pull5Gravity50Falloff60Stiff25", 0.005),
+    ("Rest20x10OneBone6Pull5Gravity50Falloff60Stiff25Immobile40", 0.005),
+    ("Rest8x4FiveBones6Pull10Gravity50Falloff0", 0.005),
+    ("Rest8x4FiveBones6Pull10Gravity50Falloff0Immobile40", 0.005),
+    ("Rest8x4FiveBones6Pull10Gravity50Falloff0Stiff25", 0.01),
+    ("Rest8x4FiveBones6Pull10Gravity50Falloff0Stiff25Immobile40", 0.01),
+    ("Rest8x4FiveBones6Pull10Gravity50Falloff60", 0.005),
+    ("Rest8x4FiveBones6Pull10Gravity50Falloff60Immobile40", 0.005),
+    ("Rest8x4FiveBones6Pull10Gravity50Falloff60Stiff25", 0.01),
+    ("Rest8x4FiveBones6Pull10Gravity50Falloff60Stiff25Immobile40", 0.01),
+    ("Rest8x4FiveBones6Pull5Gravity50Falloff0", 0.005),
+    ("Rest8x4FiveBones6Pull5Gravity50Falloff0Immobile40", 0.005),
+    ("Rest8x4FiveBones6Pull5Gravity50Falloff0Stiff25", 0.015),
+    ("Rest8x4FiveBones6Pull5Gravity50Falloff0Stiff25Immobile40", 0.015),
+    ("Rest8x4FiveBones6Pull5Gravity50Falloff60", 0.005),
+    ("Rest8x4FiveBones6Pull5Gravity50Falloff60Immobile40", 0.005),
+    ("Rest8x4FiveBones6Pull5Gravity50Falloff60Stiff25", 0.085),
+    ("Rest8x4FiveBones6Pull5Gravity50Falloff60Stiff25Immobile40", 0.085),
+    ("Rest8x4OneBone6Pull10Gravity50Falloff0", 0.005),
+    ("Rest8x4OneBone6Pull10Gravity50Falloff0Immobile40", 0.005),
+    ("Rest8x4OneBone6Pull10Gravity50Falloff0Stiff25", 0.005),
+    ("Rest8x4OneBone6Pull10Gravity50Falloff0Stiff25Immobile40", 0.005),
+    ("Rest8x4OneBone6Pull10Gravity50Falloff60", 0.005),
+    ("Rest8x4OneBone6Pull10Gravity50Falloff60Immobile40", 0.005),
+    ("Rest8x4OneBone6Pull10Gravity50Falloff60Stiff25", 0.005),
+    ("Rest8x4OneBone6Pull10Gravity50Falloff60Stiff25Immobile40", 0.005),
+    ("Rest8x4OneBone6Pull5Gravity50Falloff0", 0.005),
+    ("Rest8x4OneBone6Pull5Gravity50Falloff0Immobile40", 0.005),
+    ("Rest8x4OneBone6Pull5Gravity50Falloff0Stiff25", 0.005),
+    ("Rest8x4OneBone6Pull5Gravity50Falloff0Stiff25Immobile40", 0.005),
+    ("Rest8x4OneBone6Pull5Gravity50Falloff60", 0.005),
+    ("Rest8x4OneBone6Pull5Gravity50Falloff60Immobile40", 0.005),
+    ("Rest8x4OneBone6Pull5Gravity50Falloff60Stiff25", 0.04),
+    ("Rest8x4OneBone6Pull5Gravity50Falloff60Stiff25Immobile40", 0.04),
+];
+
+#[test]
+fn chains_resting_on_a_tilted_parent() {
+    let dir = path("fixtures/reference/probe");
+    let replay = replay("fixtures/reference/probe", "fixtures/unity-probe.glb", 0..450);
+    let trace = replay.run(60.0);
+    let errors = ["Rest8x4", "Rest20x10"].into_iter().flat_map(|row| jump_row(&dir, &trace, row, replay.first + 300));
+    check_bounds(RESTING.iter().map(|&(name, bound)| (name, bound, "")), errors);
+}
+
 #[test]
 fn fixture_median_and_multi_child_types() {
     let dir = path("fixtures/reference/fixture");

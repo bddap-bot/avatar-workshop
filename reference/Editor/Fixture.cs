@@ -757,6 +757,25 @@ namespace AvatarWorkshop.Reference
                         (Action<VRCPhysBone>)(p => { p.spring = 0.7f; p.stiffness = 0.1f; field.set(p); }), (Action<VRCPhysBone>)null))
             .ToArray();
 
+        // Chains resting under a tilted parent, where gravity pulls across their rest direction, so whether stiffness, with or
+        // without falloff, holds them along it shows apart from any motion; immobile, which only scales a parent's motion,
+        // is the control.
+        static readonly (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] Resting =
+            (from shape in new (string name, float[] bones)[] { ("OneBone6", new[] { 0.06f }), ("FiveBones6", Even(5)) }
+             from pull in new[] { 0.05f, 0.1f }
+             from falloff in new[] { 0.6f, 0f }
+             from hold in new (string name, Action<VRCPhysBone> set)[]
+             {
+                 ("", p => { }),
+                 ("Stiff25", p => p.stiffness = 0.25f),
+                 ("Immobile40", p => p.immobile = 0.4f),
+                 ("Stiff25Immobile40", p => { p.stiffness = 0.25f; p.immobile = 0.4f; }),
+             }
+             select ($"{shape.name}Pull{Mathf.RoundToInt(pull * 100)}Gravity50Falloff{Mathf.RoundToInt(falloff * 100)}{hold.name}", Vector3.down, shape.bones, 1,
+                     (Action<VRCPhysBone>)(p => { p.pull = pull; p.spring = 0.7f; p.gravity = 0.5f; p.gravityFalloff = falloff; hold.set(p); }),
+                     (Action<VRCPhysBone>)null))
+            .ToArray();
+
         static readonly (string name, Vector3 dir)[] JumpWays = { ("Along", Vector3.down), ("Against", Vector3.up), ("Across", Vector3.forward) };
 
         // On the avatar's root, which loading leaves where the file holds it, so a row's parent moves only when the harness
@@ -789,7 +808,13 @@ namespace AvatarWorkshop.Reference
                     from way in JumpWays
                     from size in new[] { 0.08f, 0.2f }
                     select (name: $"Jump{way.name}{Mathf.RoundToInt(size * 100)}Behind", move: way.dir * size, chains: JumpBehind))
-                .Select((r, i) => (r.name, 300, new Vector3(0, 1.6f, -1.2f - 0.4f * i), Vector3.zero, r.move, r.chains))).ToArray();
+                .Select((r, i) => (r.name, 300, new Vector3(0, 1.6f, -1.2f - 0.4f * i), Vector3.zero, r.move, r.chains)))
+            // Never reached, so the harness never levels them.
+            .Concat(new[]
+            {
+                ("Rest8x4", int.MaxValue, new Vector3(2.5f, 1.6f, -0.45f), new Vector3(8, 0, 4), Vector3.zero, Resting),
+                ("Rest20x10", int.MaxValue, new Vector3(2.5f, 1.6f, -0.85f), new Vector3(20, 0, 10), Vector3.zero, Resting),
+            }).ToArray();
 
         static void JumpBone(GameObject go, Action<VRCPhysBone> set)
         {
