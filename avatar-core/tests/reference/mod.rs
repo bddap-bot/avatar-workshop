@@ -334,7 +334,7 @@ impl Replay {
             let poses: Vec<(usize, Transform)> = posed.iter().map(|&n| (n, frame.nodes[n])).collect();
             let pinned: Vec<(usize, Transform)> = holding.iter().map(|(n, t)| (*n, *t)).collect();
             let input = Input {
-                dt: if k == 0 { 0.0 } else { (1.0 / rate) as f32 },
+                dt: if k == 0 { 1.0 / 60.0 } else { (1.0 / rate) as f32 },
                 root: frame.root,
                 poses: &poses,
                 held: &pinned,

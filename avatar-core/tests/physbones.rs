@@ -107,11 +107,11 @@ fn each_field_against_its_probe() {
 const JUMPS: &[(&str, f32)] = &[
     ("Advanced", 0.005),
     ("AdvancedLevel", 0.005),
-    ("Angle45", 0.05),
+    ("Angle45", 0.01),
     ("Branches", 0.02),
     ("BranchesHair30", 0.02),
     ("FiveBones", 0.015),
-    ("Gravity100", 0.08),
+    ("Gravity100", 0.015),
     ("Gravity100Falloff100", 0.01),
     ("HairSpring30", 0.025),
     ("HairSpring70", 0.045),
@@ -129,7 +129,7 @@ const JUMPS: &[(&str, f32)] = &[
     ("ShortBones", 0.01),
     ("ShortBonesHair30", 0.02),
     ("Simplified", 0.005),
-    ("SimplifiedWorld", 0.065),
+    ("SimplifiedWorld", 0.015),
     ("Spring100", 0.025),
     ("Spring70", 0.005),
     ("Spring70Stiff15", 0.01),
@@ -137,7 +137,7 @@ const JUMPS: &[(&str, f32)] = &[
     ("Spring95", 0.015),
     ("Stretch50Motion10", 0.005),
     ("Tail", 0.02),
-    ("TailEnd", 0.075),
+    ("TailEnd", 0.05),
 ];
 
 /// The chain a tip of `errors` belongs to.

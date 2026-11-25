@@ -339,12 +339,7 @@ impl Evaluator {
         for (i, f) in &self.fields {
             set_field(&mut self.constraints, &mut self.contacts, f, values[*i]);
         }
-        if !self.physbones.started() {
-            let o = &self.output;
-            let file = Frame { root: input.root, nodes: o.space.clone(), locals: o.locals.clone(), active: active.clone(), enabled: physbones.clone(), hands: vec![] };
-            self.physbones.advance(0.0, &file);
-            self.physbones.advance(STEP, &file);
-        }
+        self.start(input, &active, &physbones);
         self.dynamics(input, locals, active, &physbones);
         let values = self.animator.values();
         for (i, r) in &self.renderer_enabled {
@@ -363,8 +358,18 @@ impl Evaluator {
         for (f, v) in animated.fields {
             set_field(&mut self.constraints, &mut self.contacts, f, *v);
         }
+        self.start(input, animated.active, animated.physbones);
         self.dynamics(input, animated.locals.to_vec(), animated.active.to_vec(), animated.physbones);
         &self.output
+    }
+
+    fn start(&mut self, input: &Input, active: &[bool], enabled: &[bool]) {
+        if !self.physbones.started() {
+            let o = &self.output;
+            let file = Frame { root: input.root, nodes: o.space.clone(), locals: o.locals.clone(), active: active.to_vec(), enabled: enabled.to_vec(), hands: vec![] };
+            self.physbones.advance(0.0, &file);
+            self.physbones.advance(STEP, &file);
+        }
     }
 
     fn dynamics(&mut self, input: &Input, mut locals: Vec<Transform>, active: Vec<bool>, enabled: &[bool]) {

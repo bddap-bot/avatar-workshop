@@ -131,16 +131,19 @@ the seconds since the last frame, the avatar root in the world, the root-space p
 (tracked or IK-solved, in any order) and the senders outside the avatar. The frame runs the animator (not on a
 frame with no time passed), applies its node transforms and the humanoid bones its human stream poses, active flags, PhysBone enabled flags and constraint and
 contact fields over the rest pose, places the host's poses, solves the constraints before PhysBones, advances
-PhysBones (a stopped chain leaves its bones to animation; on the first `evaluate` every chain starts at the rest
-pose and takes one step there, as the SDK's chains do on the frame the avatar loads, before its animator first poses
-it, and that frame's time then steps them toward its pose), solves the
+PhysBones (a stopped chain leaves its bones to animation; on the first `evaluate` or `evaluate_animated` every chain
+starts at the rest pose and takes one step there, as the SDK's chains do on the frame the avatar loads, before its
+animator first poses it, and that frame's time then steps them toward its pose; no hand collider pushes a chain in
+the first two steps after load, which the SDK's take before the hand colliders a recording adds on its first frame
+join), solves the
 constraints after them, advances contacts,
 and sets each receiver's and PhysBone's parameters on the animator for the next frame, where a host's own `set`
 before then wins. `output()` is the frame: every node's local pose and root-space pose, active flags, each
 renderer's enabled flag, and the blendshape weights, material properties and slots the animator binds. The
 reference replays drive it with what the recording's animation left (`evaluate_animated`) and, for the dynamics
-replay, with the SDK's PhysBone output in place of the core's (`Input::held`); a runtime uses neither. Its chains
-start at the first frame it is given, which for a recording begun after the avatar loaded is not the rest pose.
+replay, with the SDK's PhysBone output in place of the core's (`Input::held`); a runtime uses neither. Each replay
+gives the recording's first frame a full step at any host rate, as the run does: on the probe scene's first recorded
+frame its gravity chains have already moved as far as two steps from the file's pose take them.
 
 `cargo run --release --example run -- RECORDING AVATAR.glb OUT [--frames N]` writes the core's reference run
 of a model under a recording's scripted input: each frame the parameters `inputs.tsv` sets, the root of `track.tsv`,
@@ -673,7 +676,8 @@ the descriptor's hands (the emulator extracts its senders only; a recording fail
 `placed_hand_colliders` in `meta.json`), while the client pushes every chain whose filter admits the wearer with the
 wearer's hand and finger colliders. So when recording starts, a global PhysBone collider stands on each enabled hand
 and finger collider where the core puts it (`reference/Editor/WearerHands.cs`), listed as `wearer_hands` in
-`meta.json`. An automatic collider is computed as the core computes it, from the skeleton in the humanoid's collider
+`meta.json`. They join the SDK's simulation after its chains' first two steps, so the hand collider probe's chains
+start the recording unpushed. An automatic collider is computed as the core computes it, from the skeleton in the humanoid's collider
 pose (the muscle pose the exporter writes as each bone's `colliderPose`). That the client's PhysBone hand colliders
 sit where the core puts them is assumed, not measured here. A global collider collides with every chain whose filter
 admits its player, as the client's hand colliders do; the hand collider probe below measures that filtering.

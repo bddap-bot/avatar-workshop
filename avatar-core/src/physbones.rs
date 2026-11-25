@@ -275,6 +275,7 @@ pub struct PhysBones {
     now: f64,
     /// The time of the last simulated step, at most one step past `now`.
     stepped: f64,
+    steps: u32,
     before: Vec<Vec<Transform>>,
     after: Vec<Vec<Transform>>,
 }
@@ -532,6 +533,7 @@ impl PhysBones {
             last: None,
             now: 0.0,
             stepped: 0.0,
+            steps: 0,
             before: authored.clone(),
             after: authored,
         })
@@ -607,8 +609,11 @@ impl PhysBones {
             let s = if t1 > t0 { 1.0 + ((time - t1) / (t1 - t0).max(STEP as f64 / 2.0)) as f32 } else { 1.0 };
             let mut input = blend(&last, frame, s);
             self.before = self.after.clone();
-            let own = self.hands(0, &input.root, &input.nodes);
-            let hands: Vec<Touch> = own.iter().map(|h| h.touch(Toucher::Wearer)).chain(input.hands.iter().map(|h| h.touch(Toucher::Other))).collect();
+            let touched = self.steps >= UNTOUCHED_STEPS;
+            self.steps = (self.steps + 1).min(UNTOUCHED_STEPS);
+            let own = if touched { self.hands(0, &input.root, &input.nodes) } else { vec![] };
+            let others = input.hands.iter().filter(|_| touched);
+            let hands: Vec<Touch> = own.iter().map(|h| h.touch(Toucher::Wearer)).chain(others.map(|h| h.touch(Toucher::Other))).collect();
             for &i in &self.order {
                 let c = &mut self.chains[i];
                 let on = c.on(&input, i);
@@ -1200,6 +1205,11 @@ const CARRY_PER_STIFFNESS: f32 = 1.45;
 /// The smallest step of its own, over the bone's length, that frees a bone held since its chain's reset: fitted to the chains
 /// resting under a tilted parent, where 0.0012 leaves a chain the SDK holds bending and 0.0017 holds one the SDK bends.
 const STEP_FROM_REST: f32 = 0.0015;
+
+/// The steps after an avatar loads that no hand collider takes part in: the SDK's step at the file's pose and its
+/// first frame's, which come before the hand colliders a recording adds on that frame join.
+const UNTOUCHED_STEPS: u32 = 2;
+
 /// How fast advanced integration's carry nears all of the parent's movement as stiffness rises.
 const CARRY_EXPONENT: f32 = 1.6;
 /// Advanced integration carries a bone with what all-motion immobile leaves of a change of its parent's pose, apart from
