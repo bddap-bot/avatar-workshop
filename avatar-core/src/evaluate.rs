@@ -9,7 +9,7 @@ use crate::animator::Animator;
 use crate::constraints::{Constraints, Scene};
 use crate::contacts::{Contacts, Sender};
 use crate::humanoid::{muscle_names, Body, Human};
-use crate::physbones::{Error, Frame, HandCollider, Nodes, PhysBones, Toucher, Transform, STEP};
+use crate::physbones::{Error, Frame, HandCollider, Motion, Nodes, PhysBones, Toucher, Transform, STEP};
 use crate::Avatar;
 
 /// What the host gives each frame.
@@ -194,6 +194,15 @@ impl Evaluator {
                 rest,
             }
         });
+        // The SDK's recordings show a frozen chain's bone taking all of its pose from animation when a clip binds only its
+        // rotation, and keeping it under the skeleton positions the human pose restores on non-humanoid nodes.
+        let mut animated: Vec<bool> = transforms.iter().map(Option::is_some).collect();
+        for b in m.humanoid.bones.values().filter(|_| e.human.is_some()) {
+            if let Some(a) = animated.get_mut(b.node.0 as usize) {
+                *a = true;
+            }
+        }
+        e.physbones.set_animated(animated);
         e.transforms = transforms.into_iter().enumerate().filter_map(|(n, t)| t.map(|t| (n, t))).collect();
         e.output.active.clone_from(&e.authored_active);
         e.output.renderers.clone_from(&e.authored_renderers);
@@ -352,7 +361,8 @@ impl Evaluator {
     }
 
     /// Evaluates a frame from what the host's animation left instead of the core's animator, which does not run:
-    /// the renderers and the animator-bound output stay as authored.
+    /// the renderers and the animator-bound output stay as authored. A frozen chain keeps its pose on what the core's
+    /// own controller does not write, so the host's animation is taken to write what that controller does.
     pub fn evaluate_animated(&mut self, input: &Input, animated: &Animated) -> &Output {
         let count = self.nodes.parent.len();
         assert!(animated.locals.len() == count && animated.active.len() == count, "animation leaves {} locals and {} active flags for {count} nodes", animated.locals.len(), animated.active.len());
@@ -375,7 +385,23 @@ impl Evaluator {
         }
     }
 
+    /// Gives each frozen chain not in `skip` the pose its last step left wherever the animator does not write them.
+    fn freeze_stopped(&self, locals: &mut [Transform], skip: &[bool]) {
+        for c in (0..self.physbone_parameters.len()).filter(|&c| self.physbones.motion(c) == Motion::Frozen && !skip[c]) {
+            for (n, l) in self.physbones.bones(c).zip(self.physbones.local(c)) {
+                if !self.physbones.animates(n) {
+                    locals[n] = l;
+                }
+            }
+        }
+    }
+
     fn dynamics(&mut self, input: &Input, mut locals: Vec<Transform>, active: Vec<bool>, enabled: &[bool]) {
+        let none = vec![false; self.physbone_parameters.len()];
+        self.freeze_stopped(&mut locals, &none);
+        // Poses and constraints write over a frozen bone as over any transform; only a chain frozen by this advance has
+        // not yet stood under them.
+        let frozen: Vec<bool> = (0..none.len()).map(|c| self.physbones.motion(c) == Motion::Frozen).collect();
         let parent = &self.nodes.parent;
         let posed = place(parent, &mut locals, input.poses);
         let rigid = Transform { scale: Vec3::ONE, ..input.root };
@@ -386,10 +412,8 @@ impl Evaluator {
         let frame = Frame { root: input.root, nodes, locals: locals.clone(), active: active.clone(), enabled: enabled.to_vec(), hands: input.hands.to_vec() };
         self.root = input.root;
         self.physbones.advance(input.dt, &frame);
-        for c in 0..self.physbone_parameters.len() {
-            if !self.physbones.running(c) {
-                continue;
-            }
+        self.freeze_stopped(&mut locals, &frozen);
+        for c in (0..self.physbone_parameters.len()).filter(|&c| self.physbones.motion(c) == Motion::Running) {
             for (n, l) in self.physbones.bones(c).zip(self.physbones.local(c)) {
                 locals[n] = l;
             }

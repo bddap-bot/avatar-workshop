@@ -132,7 +132,8 @@ the seconds since the last frame, the avatar root in the world, the root-space p
 (tracked or IK-solved, in any order) and the senders outside the avatar. The frame runs the animator (not on a
 frame with no time passed), applies its node transforms and the humanoid bones its human stream poses, active flags, PhysBone enabled flags and constraint and
 contact fields over the rest pose, places the host's poses, solves the constraints before PhysBones, advances
-PhysBones (a stopped chain leaves its bones to animation; on the first `evaluate` or `evaluate_animated` every chain
+PhysBones (a stopped chain's bones hold the pose its last step left where animation does not pose them, or return to
+animation if it resets when disabled; on the first `evaluate` or `evaluate_animated` every chain
 starts at the rest pose and takes one step there, as the SDK's chains do on the frame the avatar loads, before its
 animator first poses it, and one more for each frame `stand` says the avatar stood loaded before that, and that
 frame's time then steps them toward its pose; no hand collider pushes a chain in

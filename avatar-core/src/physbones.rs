@@ -221,7 +221,7 @@ struct Chain {
     /// Another component earlier in the model has the same root: VRChat poses those bones by the first alone, so this
     /// one has none.
     shadowed: bool,
-    running: bool,
+    motion: Motion,
     reset_when_disabled: bool,
     version: PhysBoneVersion,
     integration: IntegrationType,
@@ -294,6 +294,17 @@ impl ColliderAt {
     }
 }
 
+/// What a chain did in the last [`PhysBones::advance`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Motion {
+    /// Off since it last reset: animation poses its bones.
+    Off,
+    Running,
+    /// Stopped after it last stepped, without resetting: [`PhysBones::local`] answers that step's pose, which the
+    /// SDK's bones keep where animation does not write them, as Unity leaves a transform nothing writes.
+    Frozen,
+}
+
 /// Who touches a PhysBone, for its collision, grab and pose filters.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Toucher {
@@ -321,6 +332,8 @@ pub struct PhysBones {
     steps: u32,
     before: Vec<Vec<Transform>>,
     after: Vec<Vec<Transform>>,
+    /// Each node animation poses, which a frozen chain leaves to it.
+    animated: Vec<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -503,7 +516,7 @@ fn chain(pb: &model::PhysBone, roots: &[usize], nodes: &Nodes) -> Chain {
     Chain {
         node: pb.node.0 as usize,
         shadowed: false,
-        running: false,
+        motion: Motion::Off,
         reset_when_disabled: pb.reset_when_disabled,
         version: pb.version,
         integration: pb.integration_type,
@@ -582,6 +595,7 @@ impl PhysBones {
             steps: 0,
             before: authored.clone(),
             after: authored,
+            animated: vec![],
         })
     }
 
@@ -614,9 +628,19 @@ impl PhysBones {
         self.last.is_some()
     }
 
-    /// Whether `physbone` simulated in the last [`PhysBones::advance`]; a stopped chain leaves its bones to animation.
-    pub fn running(&self, physbone: usize) -> bool {
-        self.chains[physbone].running
+    /// Whether `physbone` simulated in the last [`PhysBones::advance`], stopped with its last step's pose, or neither.
+    pub fn motion(&self, physbone: usize) -> Motion {
+        self.chains[physbone].motion
+    }
+
+    /// Marks the nodes animation poses: a frozen chain leaves them to it and keeps its pose on the rest.
+    pub fn set_animated(&mut self, animated: Vec<bool>) {
+        self.animated = animated;
+    }
+
+    /// Whether a frozen chain leaves node `n` to animation.
+    pub fn animates(&self, n: usize) -> bool {
+        self.animated.get(n).copied().unwrap_or(false)
     }
 
     /// Whether an earlier component has `physbone`'s root, so `physbone` poses nothing and reports nothing.
@@ -636,7 +660,7 @@ impl PhysBones {
         let Some((t0, last)) = self.last.take() else {
             for (i, c) in self.chains.iter_mut().enumerate() {
                 c.reset(frame);
-                c.running = c.on(frame, i, &self.parent);
+                c.motion = if c.on(frame, i, &self.parent) { Motion::Running } else { Motion::Off };
             }
             self.after = self.chains.iter().map(|c| c.locals(frame)).collect();
             self.before = self.after.clone();
@@ -671,35 +695,53 @@ impl PhysBones {
         for &i in &self.order {
             let c = &mut self.chains[i];
             let on = c.on(input, i, &self.parent);
-            if on {
-                if !c.running {
+            c.motion = match (on, c.motion) {
+                (true, was) => {
+                    if was != Motion::Running {
+                        c.reset(input);
+                    }
+                    let was = carry.map(|share| (share, c.clone()));
+                    c.step(input, &self.colliders, &self.parent, hands);
+                    // A chain drawn behind its step takes the load step whole: drawn into it, that is where the SDK draws it.
+                    if let Some((share, was)) = was.filter(|_| !c.drawn_behind) {
+                        for (b, from) in c.bones.iter_mut().zip(&was.bones) {
+                            *b = from.lerp(b, share);
+                        }
+                        for (w, from) in c.world.iter_mut().zip(&was.world) {
+                            *w = from.lerp(w, share);
+                        }
+                    }
+                    Motion::Running
+                }
+                (false, Motion::Running) if c.reset_when_disabled => {
                     c.reset(input);
+                    Motion::Off
                 }
-                let was = carry.map(|share| (share, c.clone()));
-                c.step(input, &self.colliders, &self.parent, hands);
-                // A chain drawn behind its step takes the load step whole: drawn into it, that is where the SDK draws it.
-                if let Some((share, was)) = was.filter(|_| !c.drawn_behind) {
-                    for (b, from) in c.bones.iter_mut().zip(&was.bones) {
-                        *b = from.lerp(b, share);
-                    }
-                    for (w, from) in c.world.iter_mut().zip(&was.world) {
-                        *w = from.lerp(w, share);
-                    }
+                (false, Motion::Running | Motion::Frozen) => Motion::Frozen,
+                (false, Motion::Off) => continue,
+            };
+            let animated = &self.animated;
+            let frozen: Vec<(usize, Transform)> = match c.motion {
+                Motion::Frozen => c
+                    .bones
+                    .iter()
+                    .filter_map(|b| b.node)
+                    .zip(self.after[i].iter().copied())
+                    .filter(|(n, _)| !animated.get(*n).copied().unwrap_or(false))
+                    .collect(),
+                _ => {
+                    self.after[i] = c.locals(input);
+                    vec![]
                 }
-            } else if c.running && c.reset_when_disabled {
-                c.reset(input);
-            } else if !c.running {
-                continue;
-            }
-            c.running = on;
-            self.after[i] = c.locals(input);
-            if let Some(below) = self.below[i].as_ref().filter(|_| on) {
+            };
+            if let Some(below) = self.below[i].as_ref().filter(|_| c.motion != Motion::Off) {
                 let unroot = input.root.rigid().inverse_rigid();
                 for &(n, bone) in below {
+                    let local = frozen.iter().find(|(f, _)| *f == n).map(|(_, l)| l).or(input.locals.get(n));
                     let posed = match (bone, self.parent[n]) {
-                        (Some(b), _) => Some(unroot.mul(&c.world[b])),
-                        (None, Some(p)) => input.nodes.get(p).zip(input.locals.get(n)).map(|(p, l)| p.mul(l)),
-                        (None, None) => None,
+                        (Some(b), _) if c.motion == Motion::Running => Some(unroot.mul(&c.world[b])),
+                        (_, Some(p)) => input.nodes.get(p).zip(local).map(|(p, l)| p.mul(l)),
+                        (_, None) => None,
                     };
                     if let (Some(posed), Some(at)) = (posed, input.nodes.get_mut(n)) {
                         *at = posed;

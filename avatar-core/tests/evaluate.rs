@@ -4,7 +4,7 @@ mod reference;
 
 use std::path::Path;
 
-use avatar_core::evaluate::{Evaluator, Input};
+use avatar_core::evaluate::{Animated, Evaluator, Input};
 use avatar_core::physbones::{Toucher, Transform};
 
 fn fixture() -> avatar_core::Avatar {
@@ -129,6 +129,49 @@ fn another_avatars_hands_push_what_allows_others() {
     let pushed = moved(&free, &run(true, &hands));
     assert!(pushed > 0.01, "a hand that the chain allows moved its tip {pushed} m");
     assert!(run(false, &[]) == run(false, &hands), "a hand that the chain refuses moved its tip");
+}
+
+/// A PhysBone disabled mid-swing leaves the bones it posed where its last step put them, as Unity leaves a transform
+/// nothing writes, and goes back to its animated pose only when it resets on disable.
+#[test]
+fn a_disabled_chain_holds_its_last_pose() {
+    let base = fixture();
+    let c = 0;
+    let run = |reset_when_disabled: bool| {
+        let mut avatar = base.clone();
+        avatar.model.physbones[c].reset_when_disabled = reset_when_disabled;
+        let mut ev = Evaluator::new(&avatar).unwrap();
+        ev.evaluate(&input(0.0));
+        let rest = ev.output().locals.clone();
+        let bones: Vec<usize> = ev.physbones().bones(c).collect();
+        let mut flags = vec![true; avatar.model.physbones.len()];
+        let active = vec![true; rest.len()];
+        let root = |k: usize| Transform { translation: glam::Vec3::new(0.0, 0.0, k.min(20) as f32 * 0.05), ..Transform::IDENTITY };
+        let frame = |ev: &mut Evaluator, k: usize, flags: &[bool]| {
+            let animated = Animated { locals: &rest, active: &active, physbones: flags, fields: &[] };
+            ev.evaluate_animated(&Input { root: root(k), ..input(1.0 / 60.0) }, &animated).locals.clone()
+        };
+        let mut last = vec![];
+        for k in 1..=10 {
+            last = frame(&mut ev, k, &flags);
+        }
+        flags[c] = false;
+        let after: Vec<_> = (11..=40).map(|k| frame(&mut ev, k, &flags)).collect();
+        (bones, rest, last, after)
+    };
+    let near = |a: &Transform, b: &Transform| a.translation.distance(b.translation) < 1e-6 && a.rotation.angle_between(b.rotation) < 1e-5;
+    let (bones, rest, last, after) = run(false);
+    let swung = bones.iter().skip(1).any(|&n| !near(&last[n], &rest[n]));
+    assert!(swung, "the chain did not swing before it was disabled");
+    for (k, locals) in after.iter().enumerate() {
+        for &n in &bones {
+            assert!(near(&locals[n], &last[n]), "node {n} moved {k} frames after its chain was disabled: {:?} to {:?}", last[n], locals[n]);
+        }
+    }
+    let (bones, rest, _, after) = run(true);
+    for &n in &bones {
+        assert!(near(&after[29][n], &rest[n]), "node {n} kept its swing through a reset on disable");
+    }
 }
 
 #[test]
