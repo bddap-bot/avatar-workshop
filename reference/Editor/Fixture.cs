@@ -807,13 +807,13 @@ namespace AvatarWorkshop.Reference
             {
                 ("CapsuleBonesAsSpheresRoot75Depth4", Vector3.forward, new[] { 0.02f, 0.02f, 0.02f }, 1,
                  p => { p.radius = 0.005f; Against(p, VRCPhysBoneColliderBase.ShapeType.Capsule, -Normal(75) * 0.056f, spheres: true); }, null),
-                ("InsideRadius", Vector3.forward, new[] { 0.03f, 0.03f, 0.03f }, 1, p => { p.radius = 0.02f; Inside(p, 0); }, null),
+                ("InsideRadius", Vector3.forward, new[] { 0.03f, 0.03f, 0.03f }, 1, p => { p.radius = 0.02f; Inside(p, Vector3.zero); }, null),
                 ("InsideRadiusEndpoint", Vector3.forward, new[] { 0.03f, 0.03f }, 1,
-                 p => { p.radius = 0.02f; p.endpointPosition = new Vector3(0, 0.03f, 0); Inside(p, 0); }, null),
+                 p => { p.radius = 0.02f; p.endpointPosition = new Vector3(0, 0.03f, 0); Inside(p, Vector3.zero); }, null),
                 ("InsideRadiusPolarImmobile40", Vector3.forward, new[] { 0.03f, 0.03f, 0.03f }, 1,
-                 p => { p.radius = 0.02f; p.immobile = 0.4f; p.limitType = VRCPhysBoneBase.LimitType.Polar; p.maxAngleX = 20; p.maxAngleZ = 20; Inside(p, 0); }, null),
-                ("InsideOutRadius", Vector3.forward, new[] { 0.03f, 0.03f, 0.03f }, 1, p => { p.radius = 0.01f; Inside(p, 0.015f); }, null),
-                ("InsideOut", Vector3.forward, new[] { 0.03f, 0.03f, 0.03f }, 1, p => Inside(p, 0.015f), null),
+                 p => { p.radius = 0.02f; p.immobile = 0.4f; p.limitType = VRCPhysBoneBase.LimitType.Polar; p.maxAngleX = 20; p.maxAngleZ = 20; Inside(p, Vector3.zero); }, null),
+                ("InsideOutRadius", Vector3.forward, new[] { 0.03f, 0.03f, 0.03f }, 1, p => { p.radius = 0.01f; Inside(p, Vector3.down * 0.015f); }, null),
+                ("InsideOut", Vector3.forward, new[] { 0.03f, 0.03f, 0.03f }, 1, p => Inside(p, Vector3.down * 0.015f), null),
                 ("Gravity50Branches", Vector3.forward, new[] { 0.04f, 0.04f }, 3, p => p.gravity = 0.5f, null),
                 ("Gravity50Nested", Vector3.forward, new[] { 0.04f, 0.04f }, 3, p => { p.gravity = 0.5f; Nested(p, q => q.gravity = 0.5f); }, null),
                 ("Gravity50NestedOverlap", Vector3.forward, new[] { 0.04f, 0.04f }, 3,
@@ -834,6 +834,46 @@ namespace AvatarWorkshop.Reference
                         }), (Action<VRCPhysBone>)null))
             .ToArray();
 
+        // Chains whose radius curve rises from half the radius to all of it or falls from all to half, on a parent that never
+        // moves. Each inside-bounds sphere's wall is placed where the bones' radius meets it only if the curve is read at
+        // some depths: by bone count or by distance from the root, at a bone's own depth or its parent's.
+        static readonly (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] RadiusCurves =
+            (from c in new[]
+             {
+                 (name: "RisingEndpoint", bones: new[] { 0.034f }, endpoint: true, rising: true, wall: 0.106f),
+                 (name: "RisingThree", bones: Over68(3), endpoint: false, rising: true, wall: 0.106f),
+                 (name: "RisingFive", bones: Over68(5), endpoint: false, rising: true, wall: 0.108f),
+                 (name: "FallingEndpoint", bones: new[] { 0.034f }, endpoint: true, rising: false, wall: 0.095f),
+                 (name: "FallingThree", bones: Over68(3), endpoint: false, rising: false, wall: 0.105f),
+                 (name: "FallingFive", bones: Over68(5), endpoint: false, rising: false, wall: 0.1145f),
+                 (name: "FallingFiveInterior", bones: Over68(5), endpoint: false, rising: false, wall: 0.111f),
+                 (name: "FallingUneven", bones: new[] { 0.034f, 0.017f, 0.017f }, endpoint: false, rising: false, wall: 0.09f),
+             }
+             select ($"Inside{c.name}", Vector3.forward, c.bones, 1, (Action<VRCPhysBone>)(p =>
+             {
+                 RadiusCurve(p, c.rising, c.endpoint, 0.036f);
+                 Inside(p, new Vector3(0, c.rising ? 0 : 0.088f, -0.03f), c.wall);
+             }), (Action<VRCPhysBone>)null))
+            .Concat(
+                from rising in new[] { true, false }
+                from shape in new[] { (name: "Endpoint", bones: new[] { 0.034f }, endpoint: true), (name: "Three", bones: Over68(3), endpoint: false),
+                                      (name: "Five", bones: Over68(5), endpoint: false) }
+                select ($"Capsule{(rising ? "Rising" : "Falling")}{shape.name}", Vector3.forward, shape.bones, 1, (Action<VRCPhysBone>)(p =>
+                {
+                    RadiusCurve(p, rising, shape.endpoint, 0.012f);
+                    Against(p, VRCPhysBoneColliderBase.ShapeType.Capsule, -Normal(75) * 0.064f);
+                }), (Action<VRCPhysBone>)null))
+            .ToArray();
+
+        static float[] Over68(int bones) => Enumerable.Repeat(0.068f / bones, bones).ToArray();
+
+        static void RadiusCurve(VRCPhysBone p, bool rising, bool endpoint, float radius)
+        {
+            p.radius = radius;
+            p.radiusCurve = rising ? Ramp(0.5f, 1) : Ramp(1, 0.5f);
+            if (endpoint) p.endpointPosition = new Vector3(0, 0.034f, 0);
+        }
+
         static Vector3 Normal(float degrees) => new Vector3(0, Mathf.Cos(degrees * Mathf.Deg2Rad), Mathf.Sin(degrees * Mathf.Deg2Rad));
 
         // A 6 cm collider at `at` from the chain's root along its own axes, on the row (a nested chain's too), a capsule 30 cm
@@ -850,12 +890,12 @@ namespace AvatarWorkshop.Reference
             p.colliders = new List<VRCPhysBoneColliderBase> { c };
         }
 
-        // An inside-bounds sphere of 10 cm radius centred `below` the chain's root along its rest direction.
-        static void Inside(VRCPhysBone p, float below)
+        // An inside-bounds sphere, of 10 cm radius unless given, centred at `at` from the chain's root along its own axes.
+        static void Inside(VRCPhysBone p, Vector3 at, float radius = 0.1f)
         {
             var c = p.transform.parent.gameObject.AddComponent<VRCPhysBoneCollider>();
-            c.shapeType = VRCPhysBoneColliderBase.ShapeType.Sphere; c.radius = 0.1f; c.insideBounds = true;
-            c.position = p.transform.localPosition + p.transform.localRotation * (Vector3.down * below);
+            c.shapeType = VRCPhysBoneColliderBase.ShapeType.Sphere; c.radius = radius; c.insideBounds = true;
+            c.position = p.transform.localPosition + p.transform.localRotation * at;
             p.colliders = new List<VRCPhysBoneColliderBase> { c };
         }
 
@@ -907,6 +947,7 @@ namespace AvatarWorkshop.Reference
                 ("Rest8x4", int.MaxValue, new Vector3(2.5f, 1.6f, -0.45f), new Vector3(8, 0, 4), Vector3.zero, Resting),
                 ("Rest20x10", int.MaxValue, new Vector3(2.5f, 1.6f, -0.85f), new Vector3(20, 0, 10), Vector3.zero, Resting),
                 ("Start", int.MaxValue, new Vector3(-2.5f, 1.6f, -0.45f), Vector3.zero, Vector3.zero, Starting),
+                ("RadiusCurve", int.MaxValue, new Vector3(-2.5f, 1.6f, -0.85f), Vector3.zero, Vector3.zero, RadiusCurves),
             }).ToArray();
 
         static void JumpBone(GameObject go, Action<VRCPhysBone> set)

@@ -3438,11 +3438,16 @@ const UNDAMPED_RATES: f32 = 0.265;
 /// the 60 Hz run by up to this share of its length, its 2 cm bones the most (measured, with a margin).
 const FIELD_RATES: f32 = 0.03;
 
+/// A radius curve chain whose tip leans on an inside-bounds wall beside its root, swung by the probe's motion, parts from
+/// the 60 Hz run by up to this share of its length, the five-bone chain at 72 Hz the most (measured, with a margin).
+const WALL_RATES: f32 = 0.06;
+
 fn rate_bound(tip: &str, bound: f32) -> f32 {
     let row = tip.split('/').next().unwrap();
     let case = CASE_ROWS.contains(&row);
     match row {
         "Jump" | "JumpLate" if chain(tip).contains("Spring100") => UNDAMPED_RATES,
+        "RadiusCurve" if ["RadiusCurveInsideRisingThree", "RadiusCurveInsideRisingFive"].contains(&chain(tip)) => WALL_RATES,
         _ if case && (row.contains("Pull0Spring") || row.ends_with("Spring90")) => UNDAMPED_RATES,
         _ if case && ["Stiff", "Immobile", "Stretch", "Gravity"].iter().any(|f| row.contains(f)) => FIELD_RATES,
         _ => bound,
@@ -3450,7 +3455,7 @@ fn rate_bound(tip: &str, bound: f32) -> f32 {
 }
 
 /// Runs at 72, 90 and 120 Hz agree with the 60 Hz run, at the times both hold a frame, within 1% of chain length over
-/// the motion, or the bound `rate_bound` names for a case row; over the hand probe's sweeps, whose hands move at constant
+/// the motion, or the bound `rate_bound` names for a chain; over the hand probe's sweeps, whose hands move at constant
 /// speeds so steps between host frames meet them exactly where they are, within 0.1%.
 #[test]
 fn host_rates_agree() {
@@ -3499,7 +3504,7 @@ fn host_rates_agree() {
             }
             assert_eq!(sums.len(), lengths.len(), "{recording} at {rate} Hz compared every tip");
             assert!(sums.values().all(|(s, _)| s.is_finite()));
-            for limit in [bound, FIELD_RATES, UNDAMPED_RATES] {
+            for limit in [bound, FIELD_RATES, UNDAMPED_RATES, WALL_RATES] {
                 let worst = sums
                     .iter()
                     .filter(|(tip, _)| rate_bound(tip, bound) == limit)
@@ -3798,4 +3803,56 @@ fn chains_starting_against_a_collider() {
     assert_eq!(chains.len(), 39, "the row's chains: {chains:?}");
     let far: Vec<&(f32, String)> = start.iter().filter(|(e, _)| *e > 0.01).collect();
     assert!(far.is_empty(), "{far:#?}");
+}
+
+/// Each chain of the row whose radius curves rise or fall along them (`Fixture.RadiusCurves`), with its worst tip's error
+/// over chain length at the first recorded frame and its RMS over that frame and the 150 after it while the chain settles,
+/// each bound at its measured value.
+const RADIUS_CURVES: &[(&str, f32, f32)] = &[
+    ("CapsuleFallingEndpoint", 0.012, 0.076),
+    ("CapsuleFallingFive", 0.089, 0.101),
+    ("CapsuleFallingThree", 0.065, 0.089),
+    ("CapsuleRisingEndpoint", 0.007, 0.059),
+    ("CapsuleRisingFive", 0.065, 0.082),
+    ("CapsuleRisingThree", 0.046, 0.071),
+    ("InsideFallingEndpoint", 0.014, 0.117),
+    ("InsideFallingFive", 0.088, 0.163),
+    ("InsideFallingFiveInterior", 0.111, 0.109),
+    ("InsideFallingThree", 0.096, 0.168),
+    ("InsideFallingUneven", 0.121, 0.161),
+    ("InsideRisingEndpoint", 0.001, 0.001),
+    ("InsideRisingFive", 0.001, 0.001),
+    ("InsideRisingThree", 0.001, 0.001),
+];
+
+/// The frames the radius curve row is recorded for.
+const RADIUS_CURVE_FRAMES: usize = 151;
+
+#[test]
+fn chains_with_a_radius_curve_starting_against_a_collider() {
+    let dir = path("fixtures/reference/probe");
+    let replay = replay("fixtures/reference/probe", "fixtures/unity-probe.glb", 0..RADIUS_CURVE_FRAMES);
+    let trace = replay.run(60.0);
+    let worst = |window: std::ops::Range<usize>| {
+        let mut by = BTreeMap::<String, f32>::new();
+        for (e, tip) in errors(&dir, &trace, window) {
+            if let Some(name) = chain(&tip).strip_prefix("RadiusCurve") {
+                let at = by.entry(name.to_string()).or_default();
+                *at = at.max(e);
+            }
+        }
+        by
+    };
+    let (first, settling) = (worst(replay.first..replay.first + 1), worst(replay.first..replay.first + RADIUS_CURVE_FRAMES));
+    let recorded: BTreeSet<&str> = first.keys().map(String::as_str).collect();
+    assert_eq!(recorded, RADIUS_CURVES.iter().map(|c| c.0).collect::<BTreeSet<_>>(), "the row's chains");
+    let mut failed = vec![];
+    for (name, at_first, while_settling) in RADIUS_CURVES {
+        let (f, m) = (first[*name], settling[*name]);
+        eprintln!("{name:<26} first frame {f:.4} (bound {at_first}), settling {m:.4} (bound {while_settling})");
+        if f > *at_first || m > *while_settling {
+            failed.push(format!("{name}: first frame {f:.4} (bound {at_first}), settling {m:.4} (bound {while_settling})"));
+        }
+    }
+    assert!(failed.is_empty(), "{failed:#?}");
 }
