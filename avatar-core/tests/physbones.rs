@@ -4,7 +4,7 @@
 
 mod reference;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use reference::{errors, median, parameters, Replay};
@@ -89,6 +89,7 @@ const PROBES: &[(&str, &str, f32)] = &[
     ("BentAngleRotated", "a bent chain: angle limit with rotation", 0.025),
     ("BentAngle11", "a bent chain: angle limit, version 1.1", 0.01),
     ("BentRootInside", "a bent chain: its root inside a sphere collider", 0.05),
+    ("BentRootInside11", "a bent chain: its root inside a sphere collider, version 1.1", 0.05),
     ("BentTail", "a bent chain: the fixture tail's fields but its colliders", 0.025),
 ];
 
@@ -3259,7 +3260,7 @@ fn chains_meeting_one_jump() {
     let trace = replay.run(60.0);
     let errors: Vec<(f32, String)> = CASE_ROWS.iter().flat_map(|row| jump_row(&dir, &trace, row, replay.first + 300)).collect();
     let chains = reference::text(&dir.join("chains.tsv"));
-    let recorded: std::collections::BTreeSet<&str> = chains
+    let recorded: BTreeSet<&str> = chains
         .lines()
         .skip(1)
         .filter_map(|l| l.split('/').next())
@@ -3782,4 +3783,19 @@ fn wearer_hands_push_chains_from_whichever_bone_they_hang() {
         }
     }
     assert!(failed.is_empty(), "{failed:#?}");
+}
+
+/// The row whose parent never moves (`Fixture.Starting`), where before the first recorded frame only the collider a chain
+/// starts against, or gravity, moves it: at that frame every tip of every chain is within 1% of its chain's length of
+/// the recording's.
+#[test]
+fn chains_starting_against_a_collider() {
+    let dir = path("fixtures/reference/probe");
+    let replay = replay("fixtures/reference/probe", "fixtures/unity-probe.glb", 0..1);
+    let start: Vec<(f32, String)> =
+        errors(&dir, &replay.run(60.0), replay.first..replay.first + 1).into_iter().filter(|(_, t)| t.starts_with("Start/")).collect();
+    let chains: BTreeSet<&str> = start.iter().map(|(_, t)| chain(t)).collect();
+    assert_eq!(chains.len(), 39, "the row's chains: {chains:?}");
+    let far: Vec<&(f32, String)> = start.iter().filter(|(e, _)| *e > 0.01).collect();
+    assert!(far.is_empty(), "{far:#?}");
 }

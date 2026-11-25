@@ -369,6 +369,7 @@ impl Evaluator {
             let file = Frame { root: input.root, nodes: o.space.clone(), locals: o.locals.clone(), active: active.to_vec(), enabled: enabled.to_vec(), hands: vec![] };
             self.physbones.advance(0.0, &file);
             self.physbones.advance(STEP, &file);
+            self.physbones.carry_load(&file);
         }
     }
 

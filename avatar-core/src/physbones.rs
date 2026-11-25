@@ -54,6 +54,9 @@ impl Transform {
     }
 
     fn lerp(&self, to: &Transform, s: f32) -> Transform {
+        if self == to {
+            return *self;
+        }
         Transform {
             translation: self.translation.lerp(to.translation, s),
             rotation: slerp(self.rotation, to.rotation, s),
@@ -192,6 +195,25 @@ struct Bone {
     resting: bool,
 }
 
+impl Bone {
+    /// The bone `share` of the way from `self` to `to`, a later step of it; what a step does not move is `to`'s.
+    fn lerp(&self, to: &Bone, share: f32) -> Bone {
+        let Bone { node, authored, parent, children, params, position, previous, shown, strain, resting } = to.clone();
+        Bone {
+            node,
+            authored,
+            parent,
+            children,
+            params,
+            position: self.position.lerp(position, share),
+            previous: self.previous.lerp(previous, share),
+            shown: self.shown.lerp(shown, share),
+            strain: self.strain + (strain - self.strain) * share,
+            resting,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct Chain {
     /// The component's node and its ancestors.
@@ -247,8 +269,23 @@ struct ColliderAt {
     shape: ColliderShape,
     position: Vec3,
     rotation: Quat,
-    /// A sphere outside which bones stay and that does not treat them as spheres: it meets each bone's segment.
+    /// A sphere or capsule outside which bones stay and that does not treat them as spheres: it meets each bone's segment.
     meets_segment: bool,
+}
+
+impl ColliderAt {
+    /// A sphere's or capsule's core segment and radius in the world, placed at `place`; none for a plane.
+    fn core(&self, place: &Transform) -> Option<(Vec3, Vec3, f32)> {
+        let center = place.point(self.position);
+        let axis = (place.rotation * self.rotation) * Vec3::Y;
+        let scale = place.scale.x.abs();
+        let (r, half) = match self.shape {
+            ColliderShape::Sphere { radius, .. } => (radius * scale, 0.0),
+            ColliderShape::Capsule { radius, height, .. } => (radius * scale, ((height * 0.5 - radius) * scale).max(0.0)),
+            ColliderShape::Plane {} => return None,
+        };
+        Some((center - axis * half, center + axis * half, r))
+    }
 }
 
 /// Who touches a PhysBone, for its collision, grab and pose filters.
@@ -504,7 +541,8 @@ impl PhysBones {
                 shape: c.shape.clone(),
                 position: Vec3::from(c.position),
                 rotation: unit(Quat::from_array(c.rotation)),
-                meets_segment: matches!(c.shape, ColliderShape::Sphere { inside_bounds: false, .. }) && !c.bones_as_spheres,
+                meets_segment: matches!(c.shape, ColliderShape::Sphere { inside_bounds: false, .. } | ColliderShape::Capsule { inside_bounds: false, .. })
+                    && !c.bones_as_spheres,
             })
             .collect();
         let hands = standard_hands(&model.descriptor, &model.humanoid, &nodes)
@@ -614,38 +652,59 @@ impl PhysBones {
             let own = if touched { self.hands(0, &input.root, &input.nodes) } else { vec![] };
             let others = input.hands.iter().filter(|_| touched);
             let hands: Vec<Touch> = own.iter().map(|h| h.touch(Toucher::Wearer)).chain(others.map(|h| h.touch(Toucher::Other))).collect();
-            for &i in &self.order {
-                let c = &mut self.chains[i];
-                let on = c.on(&input, i);
-                if on {
-                    if !c.running {
-                        c.reset(&input);
-                    }
-                    c.step(&input, &self.colliders, &hands);
-                } else if c.running && c.reset_when_disabled {
-                    c.reset(&input);
-                } else if !c.running {
-                    continue;
-                }
-                c.running = on;
-                self.after[i] = c.locals(&input);
-                if let Some(below) = self.below[i].as_ref().filter(|_| on) {
-                    let unroot = input.root.rigid().inverse_rigid();
-                    for &(n, bone) in below {
-                        let posed = match (bone, self.parent[n]) {
-                            (Some(b), _) => Some(unroot.mul(&c.world[b])),
-                            (None, Some(p)) => input.nodes.get(p).zip(input.locals.get(n)).map(|(p, l)| p.mul(l)),
-                            (None, None) => None,
-                        };
-                        if let (Some(posed), Some(at)) = (posed, input.nodes.get_mut(n)) {
-                            *at = posed;
-                        }
-                    }
-                }
-            }
+            self.step_chains(&mut input, &hands, None);
             self.stepped = time;
         }
         self.last = Some((t1, frame.clone()));
+    }
+
+    /// Steps every chain once at `input`, or `carry` of a step, posing the nodes below each running chain for those after it.
+    fn step_chains(&mut self, input: &mut Frame, hands: &[Touch], carry: Option<f32>) {
+        for &i in &self.order {
+            let c = &mut self.chains[i];
+            let on = c.on(input, i);
+            if on {
+                if !c.running {
+                    c.reset(input);
+                }
+                let was = carry.map(|share| (share, c.clone()));
+                c.step(input, &self.colliders, hands);
+                if let Some((share, was)) = was {
+                    for (b, from) in c.bones.iter_mut().zip(&was.bones) {
+                        *b = from.lerp(b, share);
+                    }
+                    for (w, from) in c.world.iter_mut().zip(&was.world) {
+                        *w = from.lerp(w, share);
+                    }
+                }
+            } else if c.running && c.reset_when_disabled {
+                c.reset(input);
+            } else if !c.running {
+                continue;
+            }
+            c.running = on;
+            self.after[i] = c.locals(input);
+            if let Some(below) = self.below[i].as_ref().filter(|_| on) {
+                let unroot = input.root.rigid().inverse_rigid();
+                for &(n, bone) in below {
+                    let posed = match (bone, self.parent[n]) {
+                        (Some(b), _) => Some(unroot.mul(&c.world[b])),
+                        (None, Some(p)) => input.nodes.get(p).zip(input.locals.get(n)).map(|(p, l)| p.mul(l)),
+                        (None, None) => None,
+                    };
+                    if let (Some(posed), Some(at)) = (posed, input.nodes.get_mut(n)) {
+                        *at = posed;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Carries every running chain [`LOAD_CARRY`] of a step further at `frame`, the file's pose, and keeps the clock where
+    /// it is: the step a fifth longer than the rest that Unity's first frame after load takes.
+    pub(crate) fn carry_load(&mut self, frame: &Frame) {
+        self.step_chains(&mut frame.clone(), &[], Some(LOAD_CARRY));
+        self.before = self.after.clone();
     }
 
     /// Each simulated node's local pose at the host's current time, for `physbone`'s bones in
@@ -1105,19 +1164,21 @@ impl Chain {
             origin + pushed.normalize_or(direction) * kept
         };
         for (collider, place) in places {
-            let pushed = match collider.shape {
-                ColliderShape::Sphere { radius, .. } if collider.meets_segment => {
-                    let at = place.point(collider.position);
-                    touch_bone(origin, bone.position, q.radius * scale, (at, radius * place.scale.x.abs()))
-                }
-                _ => collide(bone.position, q.radius * scale, collider, place),
+            let pushed = match collider.core(place).filter(|_| collider.meets_segment) {
+                Some(core) => touch_segment(origin, bone.position, q.radius * scale, core),
+                None => collide(bone.position, q.radius * scale, collider, place),
             };
-            momentum += pushed - bone.position;
+            let out = match (collider.meets_segment, self.version) {
+                (false, _) => 0.0,
+                (true, PhysBoneVersion::V1_0) => 1.0,
+                (true, PhysBoneVersion::V1_1) => PUSH_OUT_OF_VELOCITY,
+            };
+            momentum += (pushed - bone.position) * (1.0 - out);
             bone.position = keep(pushed);
         }
         for touch in touches {
-            let pushed = touch_hand(origin, bone.position, q.radius * scale, (touch.a, touch.b, touch.radius));
-            momentum += (pushed - bone.position) * (1.0 - HAND_PUSH_OUT_OF_VELOCITY);
+            let pushed = touch_segment(origin, bone.position, q.radius * scale, (touch.a, touch.b, touch.radius));
+            momentum += (pushed - bone.position) * (1.0 - PUSH_OUT_OF_VELOCITY);
             bone.position = keep(pushed);
         }
         if matches!(self.integration, IntegrationType::Simplified) {
@@ -1210,6 +1271,13 @@ const STEP_FROM_REST: f32 = 0.0015;
 /// first frame's, which come before the hand colliders a recording adds on that frame join.
 const UNTOUCHED_STEPS: u32 = 2;
 
+/// The share of a step more that the SDK's chains take at the file's pose: Unity's first frame after load lasts its fixed
+/// timestep, 0.02 s, 1.2 steps. On the probe scene's first recorded frame, a step after that, its gravity chains and its
+/// chains whose root starts inside a collider are where 2.2 steps take them: with the load frame 1.1, 1.15, 1.25 or 1.3
+/// steps long the gravity chains are 6, 4, 2 and 5 times as far off as at 1.2. A clock that stays 0.2 steps ahead after
+/// it misses the jump cases.
+const LOAD_CARRY: f32 = 0.2;
+
 /// How fast advanced integration's carry nears all of the parent's movement as stiffness rises.
 const CARRY_EXPONENT: f32 = 1.6;
 /// Advanced integration carries a bone with what all-motion immobile leaves of a change of its parent's pose, apart from
@@ -1238,12 +1306,12 @@ const FOLLOW: f32 = 5.0 / 6.0;
 /// The share of stiffness that advanced integration takes from stretch motion's share, measured against the reference
 /// traces at stiffness 0.3 and 0.7.
 const STRETCH_STIFFNESS_SHARE: f32 = 0.8;
-/// A collider sphere touching a bone's segment at its parent's end moves the bone this share of the push that frees
-/// that point, and touching it at the bone's own end all of it, measured against the reference traces.
-const SEGMENT_PUSH_AT_PARENT: f32 = 0.35;
-/// The share of a hand's push that simplified integration leaves out of the bone's next velocity, measured against the
-/// hand probe's chains at pull 0.05 to 0.6 and spring 0.3 and 0.9; advanced integration keeps all of it in.
-const HAND_PUSH_OUT_OF_VELOCITY: f32 = 0.8;
+/// The share of a hand's push, and of a version 1.1 chain's push from a collider that meets its segment, that simplified
+/// integration leaves out of the bone's next velocity, measured against the hand probe's chains at pull 0.05 to 0.6 and
+/// spring 0.3 and 0.9; advanced integration keeps all of it in. A version 1.0 chain keeps none of such a collider's push:
+/// the bent chain whose root starts inside a sphere rests 2 mm from the SDK's that way and 7 mm at this share, where its
+/// version 1.1 twin rests 0.4 mm from it at this share and 10 mm keeping none.
+const PUSH_OUT_OF_VELOCITY: f32 = 0.8;
 
 /// How much of gravity's falloff applies: the cosine between `bone`'s and `reset`'s tilts from horizontal, 1 while
 /// the bone keeps its tilt at reset whichever way it turns about the vertical. Past a quarter turn it is 0, so falloff
@@ -1285,25 +1353,18 @@ fn limit(direction: Vec3, local_rest: Vec3, frame: Quat, limit: LimitAt) -> Vec3
 }
 
 /// Pushes a bone's end at `position` out of the collider, or keeps it inside an inside-bounds one; the caller then
-/// puts it back at a length its stretch allows, as VRM's spring bones do. A bone collides with a capsule or plane, or with
-/// a sphere set to treat bones as spheres, as a sphere of its radius at its end, and one of radius 0 passes through
-/// spheres and capsules: as the reference traces show. Other spheres meet the bone's whole segment (`touch_bone`).
+/// puts it back at a length its stretch allows, as VRM's spring bones do. A bone collides with a plane, or with a sphere or
+/// capsule set to treat bones as spheres, as a sphere of its radius at its end, and one of radius 0 passes through spheres
+/// and capsules: as the reference traces show. Other spheres and capsules meet the bone's whole segment ([`touch_segment`]).
 fn collide(position: Vec3, radius: f32, collider: &ColliderAt, place: &Transform) -> Vec3 {
-    let center = place.point(collider.position);
-    let axis = (place.rotation * collider.rotation) * Vec3::Y;
-    let scale = place.scale.x.abs();
-    let (r, half, inside) = match collider.shape {
-        ColliderShape::Sphere { radius: r, inside_bounds } => (r * scale, 0.0, inside_bounds),
-        ColliderShape::Capsule { radius: r, height, inside_bounds } => (r * scale, ((height * 0.5 - r) * scale).max(0.0), inside_bounds),
-        ColliderShape::Plane {} => {
-            let d = (position - center).dot(axis) - radius;
-            return if d < 0.0 { position - axis * d } else { position };
-        }
+    let Some((a, b, r)) = collider.core(place) else {
+        let axis = (place.rotation * collider.rotation) * Vec3::Y;
+        let d = (position - place.point(collider.position)).dot(axis) - radius;
+        return if d < 0.0 { position - axis * d } else { position };
     };
-    let ab = axis * half;
-    let core = center + ab * (if half > 0.0 { ((position - center).dot(axis) / half).clamp(-1.0, 1.0) } else { 0.0 });
+    let (_, core) = closest_on_segments(position, position, a, b);
     let d = position - core;
-    if inside {
+    if matches!(collider.shape, ColliderShape::Sphere { inside_bounds: true, .. } | ColliderShape::Capsule { inside_bounds: true, .. }) {
         let limit = (r - radius).max(0.0);
         return if d.length() > limit { core + d.normalize_or_zero() * limit } else { position };
     }
@@ -1311,30 +1372,16 @@ fn collide(position: Vec3, radius: f32, collider: &ColliderAt, place: &Transform
     if radius <= 0.0 || d.length() >= reach {
         return position;
     }
-    core + d.normalize_or(axis.any_orthonormal_vector()) * reach
-}
-
-/// Pushes a bone's end at `position` so its segment from `origin`, its parent's end, clears the sphere `(at, r)`: the
-/// end moves by the push that frees the segment's nearest point, times a share from [`SEGMENT_PUSH_AT_PARENT`], for a
-/// contact at `origin`, to 1 at the end, from the sphere probes.
-fn touch_bone(origin: Vec3, position: Vec3, radius: f32, (at, r): (Vec3, f32)) -> Vec3 {
-    let (on_bone, core) = closest_on_segments(origin, position, at, at);
-    let d = on_bone - core;
-    let reach = r + radius;
-    if radius <= 0.0 || d.length() >= reach {
-        return position;
-    }
-    let segment = position - origin;
-    let along = if segment.length_squared() > 0.0 { ((on_bone - origin).dot(segment) / segment.length_squared()).clamp(0.0, 1.0) } else { 1.0 };
-    let share = SEGMENT_PUSH_AT_PARENT + (1.0 - SEGMENT_PUSH_AT_PARENT) * along;
-    position + (core + d.normalize_or(segment.normalize_or(Vec3::Y).any_orthonormal_vector()) * reach - on_bone) * share
+    core + d.normalize_or((b - a).normalize_or(Vec3::Y).any_orthonormal_vector()) * reach
 }
 
 /// Pushes a bone's end at `position` by all of the push that takes one point of its segment from `origin` out of the
-/// hand's capsule `(a, b, r)`: the point nearest the capsule's point nearest the end, but no nearer `origin` than the
-/// bone's radius. The hand probe's one-bone chains, which move only by the push, stop where that point leaves the
-/// reach, at every height and angle around the capsule, and along its axis past either end.
-fn touch_hand(origin: Vec3, position: Vec3, radius: f32, (a, b, r): (Vec3, Vec3, f32)) -> Vec3 {
+/// capsule `(a, b, r)`, a hand's or a collider's (a sphere's has `a == b`): the point nearest the capsule's point nearest
+/// the end, but no nearer `origin` than the bone's radius. The hand probe's one-bone chains, which move only by the push,
+/// stop where that point leaves the reach, at every height and angle around the capsule, and along its axis past either
+/// end; the probe scene's chains whose root starts inside a capsule or sphere are where the SDK's are on the first
+/// recorded frame and settle where they do.
+fn touch_segment(origin: Vec3, position: Vec3, radius: f32, (a, b, r): (Vec3, Vec3, f32)) -> Vec3 {
     let segment = position - origin;
     let length = segment.length();
     if radius <= 0.0 || length <= 0.0 {

@@ -468,10 +468,11 @@ fn fields(dir: &Path, replay: &Replay, end: usize) -> BTreeMap<usize, Vec<(Field
 }
 
 fn blend(a: &Frame, b: &Frame, s: f32) -> Frame {
-    let mix = |x: &Transform, y: &Transform| Transform {
-        translation: x.translation.lerp(y.translation, s),
-        rotation: x.rotation.slerp(y.rotation, s),
-        scale: x.scale.lerp(y.scale, s),
+    let mix = |x: &Transform, y: &Transform| {
+        if x == y {
+            return *x;
+        }
+        Transform { translation: x.translation.lerp(y.translation, s), rotation: x.rotation.slerp(y.rotation, s), scale: x.scale.lerp(y.scale, s) }
     };
     Frame {
         root: mix(&a.root, &b.root),

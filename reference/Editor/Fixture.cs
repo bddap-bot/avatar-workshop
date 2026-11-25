@@ -597,6 +597,7 @@ namespace AvatarWorkshop.Reference
                     p.immobile = 0.3f; p.immobileCurve = Ramp(1, 0);
                     p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 60; p.maxAngleXCurve = Ramp(0.5f, 1); p.limitRotation = new Vector3(10, 0, 0);
                 }),
+                ("BentRootInside11", p => { p.version = VRCPhysBoneBase.Version.Version_1_1; p.radius = 0.03f; Collide(p, VRCPhysBoneColliderBase.ShapeType.Sphere, 0.12f, 0, new Vector3(0, -0.03f, 0.08f), Quaternion.identity); p.gravity = 0.4f; }),
             };
             // A row of its own, so the probes above keep their places and their recordings.
             var partial = new (string name, Vector3 dir, Action<VRCPhysBone> set)[]
@@ -785,6 +786,82 @@ namespace AvatarWorkshop.Reference
                      (Action<VRCPhysBone>)null))
             .ToArray();
 
+        // Chains on a parent that never moves, so in the steps before the first recorded frame only a collider they start
+        // against moves them: a capsule or sphere of 6 cm radius whose surface a 5 mm bone's root sits 1 or 4 mm inside,
+        // its chain leading out at 0, 45 or 75 degrees from the surface's normal, so the first bone's own end is clear; a
+        // first bone that passes the collider with only its middle inside; a capsule that treats bones as spheres; and an
+        // inside-bounds sphere that holds a bone's end but not all of its radius. With them, chains rooted on a child of
+        // another chain's root, under gravity or against a capsule, beside the same branches with no second chain. Last, roots
+        // 3.5 cm inside, and version 1.0 chains at 4 mm and 3.5 cm, to part the version from the depth.
+        static readonly (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] Starting =
+            (from shape in new[] { VRCPhysBoneColliderBase.ShapeType.Capsule, VRCPhysBoneColliderBase.ShapeType.Sphere }
+             from angle in new[] { 0, 45, 75 }
+             from depth in new[] { 1, 4 }
+             select ($"{shape}Root{angle}Depth{depth}", Vector3.forward, new[] { 0.02f, 0.02f, 0.02f }, 1,
+                     (Action<VRCPhysBone>)(p => { p.radius = 0.005f; Against(p, shape, -Normal(angle) * (0.06f - depth / 1000f)); }), (Action<VRCPhysBone>)null))
+            .Concat(
+                from shape in new[] { VRCPhysBoneColliderBase.ShapeType.Capsule, VRCPhysBoneColliderBase.ShapeType.Sphere }
+                select ($"{shape}Middle", Vector3.forward, new[] { 0.05f, 0.02f, 0.02f }, 1,
+                        (Action<VRCPhysBone>)(p => { p.radius = 0.005f; Against(p, shape, new Vector3(0, 0.025f, -0.062f)); }), (Action<VRCPhysBone>)null))
+            .Concat(new (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[]
+            {
+                ("CapsuleBonesAsSpheresRoot75Depth4", Vector3.forward, new[] { 0.02f, 0.02f, 0.02f }, 1,
+                 p => { p.radius = 0.005f; Against(p, VRCPhysBoneColliderBase.ShapeType.Capsule, -Normal(75) * 0.056f, spheres: true); }, null),
+                ("InsideRadius", Vector3.forward, new[] { 0.03f, 0.03f, 0.03f }, 1, p => { p.radius = 0.02f; Inside(p, 0); }, null),
+                ("InsideRadiusEndpoint", Vector3.forward, new[] { 0.03f, 0.03f }, 1,
+                 p => { p.radius = 0.02f; p.endpointPosition = new Vector3(0, 0.03f, 0); Inside(p, 0); }, null),
+                ("InsideRadiusPolarImmobile40", Vector3.forward, new[] { 0.03f, 0.03f, 0.03f }, 1,
+                 p => { p.radius = 0.02f; p.immobile = 0.4f; p.limitType = VRCPhysBoneBase.LimitType.Polar; p.maxAngleX = 20; p.maxAngleZ = 20; Inside(p, 0); }, null),
+                ("InsideOutRadius", Vector3.forward, new[] { 0.03f, 0.03f, 0.03f }, 1, p => { p.radius = 0.01f; Inside(p, 0.015f); }, null),
+                ("InsideOut", Vector3.forward, new[] { 0.03f, 0.03f, 0.03f }, 1, p => Inside(p, 0.015f), null),
+                ("Gravity50Branches", Vector3.forward, new[] { 0.04f, 0.04f }, 3, p => p.gravity = 0.5f, null),
+                ("Gravity50Nested", Vector3.forward, new[] { 0.04f, 0.04f }, 3, p => { p.gravity = 0.5f; Nested(p, q => q.gravity = 0.5f); }, null),
+                ("Gravity50NestedOverlap", Vector3.forward, new[] { 0.04f, 0.04f }, 3,
+                 p => { p.gravity = 0.5f; p.ignoreOtherPhysBones = false; Nested(p, q => q.gravity = 0.5f); }, null),
+                ("NestedCapsuleRoot75Depth1", Vector3.forward, new[] { 0.02f, 0.02f, 0.02f, 0.02f }, 3,
+                 p => Nested(p, q => { q.radius = 0.005f; Against(q, VRCPhysBoneColliderBase.ShapeType.Capsule, -Normal(75) * 0.059f); }), null),
+            })
+            .Concat(
+                from shape in new[] { VRCPhysBoneColliderBase.ShapeType.Capsule, VRCPhysBoneColliderBase.ShapeType.Sphere }
+                from angle in new[] { 45, 75 }
+                from deep in new[] { (depth: 35, v10: false), (depth: 4, v10: true), (depth: 35, v10: true) }
+                select ($"{shape}Root{angle}Depth{deep.depth}{(deep.v10 ? "Version10" : "")}", Vector3.forward, new[] { 0.02f, 0.02f, 0.02f }, 1,
+                        (Action<VRCPhysBone>)(p =>
+                        {
+                            p.radius = 0.005f;
+                            if (deep.v10) p.version = VRCPhysBoneBase.Version.Version_1_0;
+                            Against(p, shape, -Normal(angle) * (0.06f - deep.depth / 1000f));
+                        }), (Action<VRCPhysBone>)null))
+            .ToArray();
+
+        static Vector3 Normal(float degrees) => new Vector3(0, Mathf.Cos(degrees * Mathf.Deg2Rad), Mathf.Sin(degrees * Mathf.Deg2Rad));
+
+        // A 6 cm collider at `at` from the chain's root along its own axes, on the row (a nested chain's too), a capsule 30 cm
+        // long across the chain.
+        static void Against(VRCPhysBone p, VRCPhysBoneColliderBase.ShapeType shape, Vector3 at, bool spheres = false)
+        {
+            var row = p.transform.parent;
+            if (row.GetComponent<VRCPhysBone>() != null) row = row.parent;
+            var c = row.gameObject.AddComponent<VRCPhysBoneCollider>();
+            c.shapeType = shape; c.radius = 0.06f; c.height = shape == VRCPhysBoneColliderBase.ShapeType.Capsule ? 0.3f : 0; c.bonesAsSpheres = spheres;
+            var placed = row.InverseTransformPoint(p.transform.TransformPoint(at));
+            c.position = placed;
+            c.rotation = Quaternion.Inverse(row.rotation) * p.transform.rotation * Quaternion.Euler(0, 0, 90);
+            p.colliders = new List<VRCPhysBoneColliderBase> { c };
+        }
+
+        // An inside-bounds sphere of 10 cm radius centred `below` the chain's root along its rest direction.
+        static void Inside(VRCPhysBone p, float below)
+        {
+            var c = p.transform.parent.gameObject.AddComponent<VRCPhysBoneCollider>();
+            c.shapeType = VRCPhysBoneColliderBase.ShapeType.Sphere; c.radius = 0.1f; c.insideBounds = true;
+            c.position = p.transform.localPosition + p.transform.localRotation * (Vector3.down * below);
+            p.colliders = new List<VRCPhysBoneColliderBase> { c };
+        }
+
+        // A second chain, JumpBone's fields with `set`, rooted on the first bone of the middle branch.
+        static void Nested(VRCPhysBone p, Action<VRCPhysBone> set) => JumpBone(p.transform.GetChild(1).gameObject, set);
+
         static readonly (string name, Vector3 dir)[] JumpWays = { ("Along", Vector3.down), ("Against", Vector3.up), ("Across", Vector3.forward) };
 
         // On the avatar's root, which loading leaves where the file holds it, so a row's parent moves only when the harness
@@ -829,6 +906,7 @@ namespace AvatarWorkshop.Reference
             {
                 ("Rest8x4", int.MaxValue, new Vector3(2.5f, 1.6f, -0.45f), new Vector3(8, 0, 4), Vector3.zero, Resting),
                 ("Rest20x10", int.MaxValue, new Vector3(2.5f, 1.6f, -0.85f), new Vector3(20, 0, 10), Vector3.zero, Resting),
+                ("Start", int.MaxValue, new Vector3(-2.5f, 1.6f, -0.45f), Vector3.zero, Vector3.zero, Starting),
             }).ToArray();
 
         static void JumpBone(GameObject go, Action<VRCPhysBone> set)
