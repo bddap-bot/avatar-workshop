@@ -640,12 +640,34 @@ namespace AvatarWorkshop.Reference
                              else Collide(p, VRCPhysBoneColliderBase.ShapeType.Sphere, 0.06f, 0, v10 ? new Vector3(0, -0.2f, 0.15f) : new Vector3(0, -0.1f, 0.22f), Quaternion.identity);
                          })))
                 .ToArray();
+            // A row of its own, so the probes above keep their places and their recordings.
+            Action<VRCPhysBone> deep = p => { p.radius = 0.03f; Collide(p, VRCPhysBoneColliderBase.ShapeType.Sphere, 0.12f, 0, new Vector3(0, -0.03f, 0.08f), Quaternion.identity); };
+            var tailFields = new (string name, Action<VRCPhysBone> set)[]
+            {
+                ("PullCurve", p => p.pullCurve = Ramp(1, 0.5f)),
+                ("GravityCurve", p => p.gravityCurve = Ramp(0.5f, 1)),
+                ("Falloff", p => p.gravityFalloff = 0.5f),
+                ("Immobile", p => { p.immobile = 0.3f; p.immobileCurve = Ramp(1, 0); }),
+                ("Angle", p => { p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 60; p.maxAngleXCurve = Ramp(0.5f, 1); p.limitRotation = new Vector3(10, 0, 0); }),
+                ("RadiusFalling", p => p.radiusCurve = Ramp(1, 0.5f)),
+            };
+            (string name, Action<VRCPhysBone> set)[] deepRow = tailFields.Select(f => (name: "Deep" + f.name, set: (Action<VRCPhysBone>)(p => { deep(p); f.set(p); })))
+                .Concat(new (string name, Action<VRCPhysBone> set)[] { ("DeepTail", (Action<VRCPhysBone>)(p => { deep(p); foreach (var f in tailFields) f.set(p); })) })
+                .Concat(tailFields.Select(f => (name: "DeepTailBut" + f.name, set: (Action<VRCPhysBone>)(p => { deep(p); foreach (var g in tailFields) if (g.name != f.name) g.set(p); }))))
+                .Concat(new (string name, Action<VRCPhysBone> set)[]
+                {
+                    ("DeepGravity20", (Action<VRCPhysBone>)(p => { deep(p); p.gravity = 0.2f; })),
+                    ("DeepRadiusRising", p => { deep(p); p.radiusCurve = Ramp(0.5f, 1); }),
+                    ("DeepTail11", p => { deep(p); foreach (var f in tailFields) f.set(p); p.version = VRCPhysBoneBase.Version.Version_1_1; }),
+                })
+                .ToArray();
             var tail = new[] { new Vector3(0, -0.05f, -0.12f), new Vector3(0, -0.08f, -0.1f), new Vector3(0, -0.1f, -0.06f), new Vector3(0, -0.1f, 0) };
             var all = probes.Select(p => (p.name, p.dir, p.set, bones: (Vector3[])null))
                 .Concat(bent.Select(b => (b.name, dir: Vector3.up, b.set, bones: tail)))
                 .Select((p, i) => (p.name, p.dir, p.set, p.bones, at: new Vector3((i - probes.Length / 2) * 0.05f, 0.3f, 0)))
                 .Concat(partial.Select((p, j) => (p.name, p.dir, p.set, bones: (Vector3[])null, at: new Vector3((j - partial.Length / 2) * 0.05f, 0.3f, -0.15f))))
                 .Concat(swung.Select((p, j) => (p.name, p.dir, p.set, bones: (Vector3[])null, at: new Vector3((j - swung.Length / 2) * 0.05f, 0.3f, -0.3f))))
+                .Concat(deepRow.Select((p, j) => (p.name, dir: Vector3.up, p.set, bones: tail, at: new Vector3((j - deepRow.Length / 2) * 0.05f, 0.3f, -0.45f))))
                 .ToArray();
             for (int i = 0; i < all.Length; i++)
             {

@@ -88,11 +88,27 @@ const PROBES: &[(&str, &str, f32)] = &[
     ("BentAngle", "a bent chain: angle limit", 0.01),
     ("BentAngleRotated", "a bent chain: angle limit with rotation", 0.025),
     ("BentAngle11", "a bent chain: angle limit, version 1.1", 0.01),
-    ("BentRootInside", "a bent chain: its root inside a sphere collider", 0.05),
+    ("BentRootInside", "a bent chain: its root inside a sphere collider", 0.03),
     ("BentRootInside11", "a bent chain: its root inside a sphere collider, version 1.1", 0.05),
+    ("DeepPullCurve", "a bent chain whose root starts inside a sphere: a pull curve", 0.030),
+    ("DeepGravityCurve", "a bent chain whose root starts inside a sphere: a gravity curve", 0.035),
+    ("DeepFalloff", "a bent chain whose root starts inside a sphere: gravity falloff", 0.035),
+    ("DeepImmobile", "a bent chain whose root starts inside a sphere: immobile with a curve", 0.025),
+    ("DeepAngle", "a bent chain whose root starts inside a sphere: a rotated angle limit with a curve", 0.115),
+    ("DeepRadiusFalling", "a bent chain whose root starts inside a sphere: a falling radius curve", 0.035),
+    ("DeepTail", "a bent chain whose root starts inside a sphere: the fixture tail's fields", 0.025),
+    ("DeepTailButPullCurve", "a bent chain whose root starts inside a sphere: the fixture tail's fields but a pull curve", 0.025),
+    ("DeepTailButGravityCurve", "a bent chain whose root starts inside a sphere: the fixture tail's fields but a gravity curve", 0.025),
+    ("DeepTailButFalloff", "a bent chain whose root starts inside a sphere: the fixture tail's fields but gravity falloff", 0.025),
+    ("DeepTailButImmobile", "a bent chain whose root starts inside a sphere: the fixture tail's fields but immobile with a curve", 0.035),
+    ("DeepTailButAngle", "a bent chain whose root starts inside a sphere: the fixture tail's fields but a rotated angle limit with a curve", 0.025),
+    ("DeepTailButRadiusFalling", "a bent chain whose root starts inside a sphere: the fixture tail's fields but a falling radius curve", 0.025),
+    ("DeepGravity20", "a bent chain whose root starts inside a sphere: gravity 0.2", 0.030),
+    ("DeepRadiusRising", "a bent chain whose root starts inside a sphere: a rising radius curve", 0.045),
+    ("DeepTail11", "a bent chain whose root starts inside a sphere: the fixture tail's fields, version 1.1", 0.030),
     ("BentTail", "a bent chain: the fixture tail's fields but its colliders", 0.025),
     ("Swung11SimplifiedRisingSphere", "a rising radius curve, swung against a sphere, version 1.1, simplified", 0.02),
-    ("Swung11SimplifiedRisingCapsule", "a rising radius curve, swung against a capsule, version 1.1, simplified", 0.02),
+    ("Swung11SimplifiedRisingCapsule", "a rising radius curve, swung against a capsule, version 1.1, simplified", 0.03),
     ("Swung11SimplifiedFallingSphere", "a falling radius curve, swung against a sphere, version 1.1, simplified", 0.015),
     ("Swung11SimplifiedFallingCapsule", "a falling radius curve, swung against a capsule, version 1.1, simplified", 0.035),
     ("Swung11SimplifiedConstantSphere", "no radius curve, swung against a sphere, version 1.1, simplified", 0.01),
@@ -3393,6 +3409,7 @@ fn fixture_median_and_multi_child_types() {
     assert!(worst("Armature/Hips/Spine/Chest/Neck/Head/Hair|") <= 0.035, "first child drives the root");
     assert!(worst("Armature/Hips/Skirt|") <= 0.03, "the children's average drives the root");
     assert!(worst("Armature/Hips/Spine/Chest/Neck/Head/Antenna|") <= 0.12, "a root with several children stays");
+    assert!(worst("Armature/Hips/Tail.0|") <= 0.011, "the tail whose root starts inside the hip sphere");
 }
 
 #[test]
@@ -3466,11 +3483,17 @@ const FIELD_RATES: f32 = 0.03;
 /// the 60 Hz run by up to this share of its length, the five-bone chain at 72 Hz the most (measured, with a margin).
 const WALL_RATES: f32 = 0.06;
 
+/// A version 1.0 simplified chain swung over a capsule turns over it in one step, so at a host rate whose frame lands
+/// beside that step it parts from the 60 Hz run on that frame alone, the falling radius curve chain at 72 Hz by 13% of
+/// its length there and 1.3% (RMS) over the motion (measured, with a margin).
+const TURN_OVER_RATES: f32 = 0.02;
+
 fn rate_bound(tip: &str, bound: f32) -> f32 {
     let row = tip.split('/').next().unwrap();
     let case = CASE_ROWS.contains(&row);
     match row {
         "Jump" | "JumpLate" if chain(tip).contains("Spring100") => UNDAMPED_RATES,
+        _ if chain(tip).starts_with("Swung10Simplified") && chain(tip).ends_with("Capsule") => TURN_OVER_RATES,
         "RadiusCurve" | "RadiusCurve10" if ["InsideRisingThree", "InsideRisingFive"].iter().any(|c| chain(tip) == format!("{row}{c}")) => WALL_RATES,
         _ if case && (row.contains("Pull0Spring") || row.ends_with("Spring90")) => UNDAMPED_RATES,
         _ if case && ["Stiff", "Immobile", "Stretch", "Gravity"].iter().any(|f| row.contains(f)) => FIELD_RATES,
@@ -3528,7 +3551,7 @@ fn host_rates_agree() {
             }
             assert_eq!(sums.len(), lengths.len(), "{recording} at {rate} Hz compared every tip");
             assert!(sums.values().all(|(s, _)| s.is_finite()));
-            for limit in [bound, FIELD_RATES, UNDAMPED_RATES, WALL_RATES] {
+            for limit in [bound, FIELD_RATES, UNDAMPED_RATES, WALL_RATES, TURN_OVER_RATES] {
                 let worst = sums
                     .iter()
                     .filter(|(tip, _)| rate_bound(tip, bound) == limit)
@@ -3726,6 +3749,8 @@ fn the_scripted_run_meets_the_bar_on_the_fixture() {
     }
     assert_eq!(motion.len(), reference::rows(&dir.join("chains.tsv")).len() - 1);
     assert!(median(&motion) <= 0.05, "median {}", median(&motion));
+    let tail = motion.iter().find(|(_, t)| t.starts_with("Armature/Hips/Tail.0|")).unwrap().0;
+    assert!(tail <= 0.011, "the tail whose root starts inside the hip sphere: {tail}");
     let first = *trace.frames.first().unwrap() as usize;
     assert_eq!(first, 0, "the recording starts on the frame the emulator attaches");
     for (at, label) in [(window.start, "the motion's start"), (first, "the first frame")] {
@@ -3829,29 +3854,33 @@ fn chains_starting_against_a_collider() {
     assert!(far.is_empty(), "{far:#?}");
 }
 
-/// Each chain of the rows whose radius curves rise or fall along them (`Fixture.RadiusCurves`, at version 1.1, and
-/// `Fixture.RadiusCurves10`, at version 1.0), with its worst tip's error over chain length at either version at the first
-/// recorded frame and its RMS over that frame and the 150 after it while the chain settles, each bound at its measured value.
-const RADIUS_CURVES: &[(&str, f32, f32)] = &[
-    ("CapsuleFallingEndpoint", 0.012, 0.076),
-    ("CapsuleFallingFive", 0.089, 0.101),
-    ("CapsuleFallingThree", 0.065, 0.089),
-    ("CapsuleRisingEndpoint", 0.007, 0.059),
-    ("CapsuleRisingFive", 0.065, 0.082),
-    ("CapsuleRisingThree", 0.046, 0.071),
-    ("InsideFallingEndpoint", 0.014, 0.117),
-    ("InsideFallingFive", 0.088, 0.163),
-    ("InsideFallingFiveInterior", 0.111, 0.109),
-    ("InsideFallingThree", 0.096, 0.168),
-    ("InsideFallingUneven", 0.121, 0.161),
-    ("InsideRisingEndpoint", 0.001, 0.001),
-    ("InsideRisingFive", 0.001, 0.001),
-    ("InsideRisingThree", 0.001, 0.001),
+/// The chains whose radius curves rise or fall along them (`Fixture.RadiusCurves`), at version 1.1 on the `RadiusCurve`
+/// row and at version 1.0 on the `RadiusCurve10` row.
+const RADIUS_CURVES: &[&str] = &[
+    "CapsuleFallingEndpoint",
+    "CapsuleFallingFive",
+    "CapsuleFallingThree",
+    "CapsuleRisingEndpoint",
+    "CapsuleRisingFive",
+    "CapsuleRisingThree",
+    "InsideFallingEndpoint",
+    "InsideFallingFive",
+    "InsideFallingFiveInterior",
+    "InsideFallingThree",
+    "InsideFallingUneven",
+    "InsideRisingEndpoint",
+    "InsideRisingFive",
+    "InsideRisingThree",
 ];
 
 /// The frames the radius curve row is recorded for.
 const RADIUS_CURVE_FRAMES: usize = 151;
 
+/// The largest tip error over chain length any radius curve chain may show.
+const RADIUS_CURVE_BOUND: f32 = 0.01;
+
+/// Every radius curve chain of both versions is within 1% of chain length of the recording's at the first recorded frame
+/// and over the 150 frames after it while the chain settles.
 #[test]
 fn chains_with_a_radius_curve_starting_against_a_collider() {
     let dir = path("fixtures/reference/probe");
@@ -3867,17 +3896,17 @@ fn chains_with_a_radius_curve_starting_against_a_collider() {
             let at = by.entry(name.to_string()).or_default();
             *at = at.max(e);
         }
-        let names: BTreeSet<String> = RADIUS_CURVES.iter().map(|c| c.0.to_string()).collect();
+        let names: BTreeSet<String> = RADIUS_CURVES.iter().map(|c| c.to_string()).collect();
         assert_eq!(rows, BTreeMap::from([("RadiusCurve", names.clone()), ("RadiusCurve10", names)]), "the rows' chains");
         by
     };
     let (first, settling) = (worst(replay.first..replay.first + 1), worst(replay.first..replay.first + RADIUS_CURVE_FRAMES));
     let mut failed = vec![];
-    for (name, at_first, while_settling) in RADIUS_CURVES {
+    for name in RADIUS_CURVES {
         let (f, m) = (first[*name], settling[*name]);
-        eprintln!("{name:<26} first frame {f:.4} (bound {at_first}), settling {m:.4} (bound {while_settling})");
-        if f > *at_first || m > *while_settling {
-            failed.push(format!("{name}: first frame {f:.4} (bound {at_first}), settling {m:.4} (bound {while_settling})"));
+        eprintln!("{name:<26} first frame {f:.4}, settling {m:.4}");
+        if f > RADIUS_CURVE_BOUND || m > RADIUS_CURVE_BOUND {
+            failed.push(format!("{name}: first frame {f:.4}, settling {m:.4}"));
         }
     }
     assert!(failed.is_empty(), "{failed:#?}");

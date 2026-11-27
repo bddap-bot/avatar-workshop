@@ -449,7 +449,9 @@ fn params(pb: &model::PhysBone, t: f32) -> Params {
 
 /// The bones a PhysBone simulates, breadth first from its root, so that a bone's children are solved together.
 /// A leaf gets a child at the endpoint position when it is set. Curves are read at each bone's depth, from 0 at
-/// the root's children to 1 at the deepest bones.
+/// the root's children to 1 at the deepest bones, but the radius belongs to a bone's end and is read from 0 at the root
+/// to 1 at the deepest ends: the radius curve rows of both versions fit that reading alone, while the pull curve probe
+/// misses by 14% of chain length if pull is read that way too.
 fn chain(pb: &model::PhysBone, roots: &[usize], nodes: &Nodes) -> Chain {
     let root = pb.root.0 as usize;
     let endpoint = Vec3::from(pb.endpoint_position);
@@ -489,6 +491,7 @@ fn chain(pb: &model::PhysBone, roots: &[usize], nodes: &Nodes) -> Chain {
     let deepest = depth.iter().copied().fold(0.0f32, f32::max);
     for (bone, d) in bones.iter_mut().zip(&depth) {
         bone.params = params(pb, if deepest > 1.0 { ((d - 1.0) / (deepest - 1.0)).max(0.0) } else { 0.0 });
+        bone.params.radius = at(&pb.radius, if deepest > 0.0 { d / deepest } else { 0.0 }).max(0.0);
     }
     let count = bones.len();
     let mut lineage = vec![pb.node.0 as usize];
@@ -1080,6 +1083,7 @@ impl Chain {
         }
         let rest_direction = rest / rest_length;
         let q = self.bones[i].params;
+        let radii = (self.bones[p].params.radius * scale, q.radius * scale);
         let at_reset = (frame.root.rigid().rotation * self.reset_directions[i]).normalize_or(rest_direction);
         let gravity = q.gravity * (1.0 - q.gravity_falloff * tilt_cosine((self.bones[i].position - origin).normalize_or(rest_direction), at_reset));
         let target = match self.version {
@@ -1163,9 +1167,14 @@ impl Chain {
             let kept = if share > 0.0 { pushed.length().clamp(rest_length * low, rest_length * high) } else { rest_length };
             origin + pushed.normalize_or(direction) * kept
         };
+        let segment_push = match (self.version, self.integration) {
+            (PhysBoneVersion::V1_1, _) => SegmentPush::Plain,
+            (PhysBoneVersion::V1_0, IntegrationType::Advanced) => SegmentPush::TurnOver,
+            (PhysBoneVersion::V1_0, IntegrationType::Simplified) => SegmentPush::TurnOverOrMeetInside,
+        };
         for (collider, place) in places {
             let pushed = match collider.core(place).filter(|_| collider.meets_segment) {
-                Some(core) => touch_segment(origin, bone.position, q.radius * scale, core, matches!(self.version, PhysBoneVersion::V1_0)),
+                Some(core) => touch_segment(origin, bone.position, radii, core, segment_push),
                 None => collide(bone.position, q.radius * scale, collider, place),
             };
             let out = match (collider.meets_segment, self.version) {
@@ -1177,7 +1186,7 @@ impl Chain {
             bone.position = keep(pushed);
         }
         for touch in touches {
-            let pushed = touch_segment(origin, bone.position, q.radius * scale, (touch.a, touch.b, touch.radius), false);
+            let pushed = touch_segment(origin, bone.position, radii, (touch.a, touch.b, touch.radius), SegmentPush::Plain);
             momentum += (pushed - bone.position) * (1.0 - PUSH_OUT_OF_VELOCITY);
             bone.position = keep(pushed);
         }
@@ -1309,7 +1318,7 @@ const STRETCH_STIFFNESS_SHARE: f32 = 0.8;
 /// The share of a hand's push, and of a version 1.1 chain's push from a collider that meets its segment, that simplified
 /// integration leaves out of the bone's next velocity, measured against the hand probe's chains at pull 0.05 to 0.6 and
 /// spring 0.3 and 0.9; advanced integration keeps all of it in. A version 1.0 chain keeps none of such a collider's push:
-/// the bent chain whose root starts inside a sphere rests 2 mm from the SDK's that way and 7 mm at this share, where its
+/// the bent chain whose root starts inside a sphere rests several times further from the SDK's at this share, where its
 /// version 1.1 twin rests 0.4 mm from it at this share and 10 mm keeping none.
 const PUSH_OUT_OF_VELOCITY: f32 = 0.8;
 
@@ -1375,35 +1384,62 @@ fn collide(position: Vec3, radius: f32, collider: &ColliderAt, place: &Transform
     core + d.normalize_or((b - a).normalize_or(Vec3::Y).any_orthonormal_vector()) * reach
 }
 
+/// How a collider's push on a bone's segment differs by the bone's chain; hands push every chain [`SegmentPush::Plain`].
+#[derive(Clone, Copy)]
+enum SegmentPush {
+    Plain,
+    TurnOver,
+    TurnOverOrMeetInside,
+}
+
+/// Under [`SegmentPush::TurnOverOrMeetInside`], where a bone whose `origin` is inside the collider is met, as a share
+/// of its radius at `origin` from `origin` ([`INSIDE_CONTACT`]), and the share of the push it takes there
+/// ([`INSIDE_PUSH`]). The probe row of the bent chain whose root starts 3.5 cm inside a sphere, alone and with each of
+/// the fixture tail's fields, rests 2 mm above the SDK's under gravity 0.4 and 3.4 mm below it under 0.2 when met at
+/// the radius with all of the push; met nearer `origin` the SDK's rest moves more with gravity, and these two shares
+/// together take the row's tips from 1.56% of chain length (RMS) to 1.21%. Version 1.0 chains under advanced
+/// integration whose root starts 4 mm and 3.5 cm inside a sphere or capsule are within 0.5% of the SDK's met at the
+/// radius with all of the push, and up to 4.2% off at the first recorded frame met so. Keeping a share of the push in
+/// velocity instead moves the whole row alike, under either gravity. Only chains whose root starts inside were
+/// measured.
+const INSIDE_CONTACT: f32 = 0.6;
+const INSIDE_PUSH: f32 = 0.78;
+
 /// Pushes a bone's end at `position` by all of the push that takes one point of its segment from `origin` out of the
-/// capsule `(a, b, r)`, a hand's or a collider's (a sphere's has `a == b`): the point nearest the capsule's point nearest
-/// the end, but no nearer `origin` than the bone's radius. The hand probe's one-bone chains, which move only by the push,
-/// stop where that point leaves the reach, at every height and angle around the capsule, and along its axis past either
-/// end; the probe scene's chains whose root starts inside a capsule or sphere are where the SDK's are on the first
-/// recorded frame and settle where they do. With `turn_over`, a bone whose `origin` is outside the capsule and whose
-/// pushed point is not held at the radius's distance from it is pushed as far, but along the line from the capsule's
-/// point nearest the end through the end: a version 1.0 bone swung across a capsule then turns over it to the far side
-/// once its end has passed the capsule's axis, as the SDK's does, where otherwise it stays on the near side and the swung
-/// row's version 1.0 simplified capsule chains miss by 10–11% of chain length. Version 1.1 chains pushed so miss by up to
-/// 6%, the bent version 1.0 chain whose root starts inside a sphere, pushed so from there, by 23% where it otherwise
-/// misses by 4%, and version 1.0 chains resting against a capsule with a rising radius curve move off their bounds when
-/// the held point is pushed so too.
-fn touch_segment(origin: Vec3, position: Vec3, radius: f32, (a, b, r): (Vec3, Vec3, f32), turn_over: bool) -> Vec3 {
+/// capsule `(a, b, r)`, a hand's or a collider's (a sphere's has `a == b`): the point nearest the capsule's point
+/// nearest the end, but no nearer `origin` than the bone's radius at `origin`. The hand probe's one-bone chains, which
+/// move only by the push, stop where that point leaves the reach, at every height and angle around the capsule, and
+/// along its axis past either end; the probe scene's chains whose root starts inside a capsule or sphere are where the
+/// SDK's are on the first recorded frame and settle where they do. Under the version 1.0 rules, a bone whose `origin`
+/// is outside the capsule and whose pushed point is not held at the radius's distance from it is pushed as far, but
+/// along the line from the capsule's point nearest the end through the end: a version 1.0 bone swung across a capsule
+/// then turns over it to the far side once its end has passed the capsule's axis, as the SDK's does, where otherwise it
+/// stays on the near side and the swung row's version 1.0 simplified capsule chains miss by 10–11% of chain length.
+/// Version 1.1 chains pushed so miss by up to 6%, the bent version 1.0 chain whose root starts inside a sphere, pushed
+/// so from there, by 23% where it otherwise misses by 4%, and version 1.0 chains resting against a capsule with a
+/// rising radius curve move off their bounds when the held point is pushed so too.
+fn touch_segment(origin: Vec3, position: Vec3, (at_origin, at_end): (f32, f32), (a, b, r): (Vec3, Vec3, f32), rule: SegmentPush) -> Vec3 {
     let segment = position - origin;
     let length = segment.length();
-    if radius <= 0.0 || length <= 0.0 {
+    if length <= 0.0 {
         return position;
     }
+    let inside = origin.distance(closest_on_segments(origin, origin, a, b).1) < r;
+    let deep = matches!(rule, SegmentPush::TurnOverOrMeetInside) && inside;
     let (_, core) = closest_on_segments(position, position, a, b);
-    let (nearest, lowest) = ((core - origin).dot(segment) / (length * length), (radius / length).min(1.0));
-    let on_bone = origin + segment * nearest.clamp(lowest, 1.0);
-    let d = on_bone - core;
+    let nearest = (core - origin).dot(segment) / (length * length);
+    let lowest = (at_origin * if deep { INSIDE_CONTACT } else { 1.0 } / length).min(1.0);
+    let along = nearest.clamp(lowest, 1.0);
+    let radius = at_origin + (at_end - at_origin) * along;
+    if radius <= 0.0 {
+        return position;
+    }
+    let d = origin + segment * along - core;
     let reach = r + radius;
     if d.length() >= reach {
         return position;
     }
     let away = d.normalize_or((b - a).normalize_or(Vec3::Y).any_orthonormal_vector());
-    let outside = || origin.distance(closest_on_segments(origin, origin, a, b).1) >= r;
-    let away = if turn_over && nearest > lowest && outside() { (position - core).normalize_or(away) } else { away };
-    position + away * (reach - d.length())
+    let away = if !matches!(rule, SegmentPush::Plain) && nearest > lowest && !inside { (position - core).normalize_or(away) } else { away };
+    position + away * (reach - d.length()) * if deep { INSIDE_PUSH } else { 1.0 }
 }
