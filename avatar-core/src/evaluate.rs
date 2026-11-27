@@ -273,14 +273,7 @@ impl Evaluator {
 
     /// Whether renderer `r` draws after the last frame: enabled, on a node active with all its ancestors.
     pub fn shown(&self, r: usize) -> bool {
-        let mut at = Some(self.renderer_nodes[r] as usize);
-        while let Some(n) = at {
-            if !self.output.active[n] {
-                return false;
-            }
-            at = self.nodes.parent[n];
-        }
-        self.output.renderers[r]
+        self.output.renderers[r] && crate::active_in_hierarchy(&self.output.active, &self.nodes.parent, self.renderer_nodes[r] as usize)
     }
 
     /// This avatar's hand and finger colliders after the last frame, in the world, named by the host's `player` for it:

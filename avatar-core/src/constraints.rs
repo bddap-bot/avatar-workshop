@@ -41,17 +41,6 @@ impl Scene<'_> {
         }
         t
     }
-
-    fn active_in_hierarchy(&self, node: usize, parent: &[Option<usize>]) -> bool {
-        let mut at = Some(node);
-        while let Some(n) = at {
-            if !self.active[n] {
-                return false;
-            }
-            at = parent[n];
-        }
-        true
-    }
 }
 
 fn relative(parent: &Transform, child: &Transform) -> Transform {
@@ -319,7 +308,7 @@ impl Constraints {
     fn solve_one(&mut self, i: usize, scene: &mut Scene) {
         let c = &self.model[i];
         let target = c.target.0 as usize;
-        let on = c.enabled && scene.active_in_hierarchy(c.node.0 as usize, &self.parent);
+        let on = c.enabled && crate::active_in_hierarchy(scene.active, &self.parent, c.node.0 as usize);
         let was = std::mem::replace(&mut self.running[i], on);
         if !on {
             self.frozen[i] = None;

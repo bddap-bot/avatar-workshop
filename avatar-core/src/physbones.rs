@@ -216,8 +216,8 @@ impl Bone {
 
 #[derive(Clone, Debug)]
 struct Chain {
-    /// The component's node and its ancestors.
-    lineage: Vec<usize>,
+    /// The component's node.
+    node: usize,
     /// Another component earlier in the model has the same root: VRChat poses those bones by the first alone, so this
     /// one has none.
     shadowed: bool,
@@ -494,12 +494,8 @@ fn chain(pb: &model::PhysBone, roots: &[usize], nodes: &Nodes) -> Chain {
         bone.params.radius = at(&pb.radius, if deepest > 0.0 { d / deepest } else { 0.0 }).max(0.0);
     }
     let count = bones.len();
-    let mut lineage = vec![pb.node.0 as usize];
-    while let Some(p) = nodes.parent[*lineage.last().unwrap()] {
-        lineage.push(p);
-    }
     Chain {
-        lineage,
+        node: pb.node.0 as usize,
         shadowed: false,
         running: false,
         reset_when_disabled: pb.reset_when_disabled,
@@ -631,7 +627,7 @@ impl PhysBones {
         let Some((t0, last)) = self.last.take() else {
             for (i, c) in self.chains.iter_mut().enumerate() {
                 c.reset(frame);
-                c.running = c.on(frame, i);
+                c.running = c.on(frame, i, &self.parent);
             }
             self.after = self.chains.iter().map(|c| c.locals(frame)).collect();
             self.before = self.after.clone();
@@ -665,13 +661,13 @@ impl PhysBones {
     fn step_chains(&mut self, input: &mut Frame, hands: &[Touch], carry: Option<f32>) {
         for &i in &self.order {
             let c = &mut self.chains[i];
-            let on = c.on(input, i);
+            let on = c.on(input, i, &self.parent);
             if on {
                 if !c.running {
                     c.reset(input);
                 }
                 let was = carry.map(|share| (share, c.clone()));
-                c.step(input, &self.colliders, hands);
+                c.step(input, &self.colliders, &self.parent, hands);
                 if let Some((share, was)) = was {
                     for (b, from) in c.bones.iter_mut().zip(&was.bones) {
                         *b = from.lerp(b, share);
@@ -863,8 +859,8 @@ fn blend(a: &Frame, b: &Frame, s: f32) -> Frame {
 }
 
 impl Chain {
-    fn on(&self, frame: &Frame, index: usize) -> bool {
-        !self.shadowed && frame.enabled.get(index).copied().unwrap_or(true) && self.lineage.iter().all(|&n| frame.active.get(n).copied().unwrap_or(true))
+    fn on(&self, frame: &Frame, index: usize, parent: &[Option<usize>]) -> bool {
+        !self.shadowed && frame.enabled.get(index).copied().unwrap_or(true) && crate::active_in_hierarchy(&frame.active, parent, self.node)
     }
 
     fn parent_world(&self, frame: &Frame) -> Transform {
@@ -944,7 +940,7 @@ impl Chain {
         t
     }
 
-    fn step(&mut self, frame: &Frame, colliders: &[ColliderAt], hands: &[Touch]) {
+    fn step(&mut self, frame: &Frame, colliders: &[ColliderAt], parent: &[Option<usize>], hands: &[Touch]) {
         self.animate(frame);
         let avatar = frame.root.rigid();
         let before = self.last_root.unwrap_or(avatar);
@@ -971,6 +967,7 @@ impl Chain {
             .colliders
             .iter()
             .filter_map(|&c| colliders.get(c))
+            .filter(|c| crate::active_in_hierarchy(&frame.active, parent, c.node))
             .map(|c| (c.clone(), node_world(frame, Some(c.node))))
             .collect();
         let touches: Vec<Touch> = hands.iter().copied().filter(|h| allowed(&self.collision, h.owner)).collect();

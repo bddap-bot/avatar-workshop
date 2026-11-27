@@ -3873,41 +3873,74 @@ const RADIUS_CURVES: &[&str] = &[
     "InsideRisingThree",
 ];
 
-/// The frames the radius curve row is recorded for.
-const RADIUS_CURVE_FRAMES: usize = 151;
+/// The frames the radius curve and sibling rows are recorded for.
+const SETTLING_FRAMES: usize = 151;
 
-/// The largest tip error over chain length any radius curve chain may show.
-const RADIUS_CURVE_BOUND: f32 = 0.01;
+/// The largest tip error over chain length any radius curve or sibling chain may show.
+const SETTLING_BOUND: f32 = 0.01;
 
-/// Every radius curve chain of both versions is within 1% of chain length of the recording's at the first recorded frame
-/// and over the 150 frames after it while the chain settles.
-#[test]
-fn chains_with_a_radius_curve_starting_against_a_collider() {
+/// Each of `names` on each of `rows`, rows whose parent never moves, is within [`SETTLING_BOUND`] of chain length of the
+/// recording's at the first recorded frame and over the [`SETTLING_FRAMES`] from it while the chain settles.
+fn rows_settle_within_bound(rows: &[&str], names: &[&str]) {
     let dir = path("fixtures/reference/probe");
-    let replay = replay("fixtures/reference/probe", "fixtures/unity-probe.glb", 0..RADIUS_CURVE_FRAMES);
+    let replay = replay("fixtures/reference/probe", "fixtures/unity-probe.glb", 0..SETTLING_FRAMES);
     let trace = replay.run(60.0);
     let worst = |window: std::ops::Range<usize>| {
-        let (mut by, mut rows) = (BTreeMap::<String, f32>::new(), BTreeMap::<&str, BTreeSet<String>>::new());
+        let (mut by, mut seen) = (BTreeMap::<(&str, String), f32>::new(), BTreeMap::<&str, BTreeSet<String>>::new());
         for (e, tip) in errors(&dir, &trace, window) {
-            let row = tip.split('/').next().unwrap();
-            let Some(row) = ["RadiusCurve", "RadiusCurve10"].into_iter().find(|r| *r == row) else { continue };
-            let name = chain(&tip).strip_prefix(row).unwrap();
-            rows.entry(row).or_default().insert(name.to_string());
-            let at = by.entry(name.to_string()).or_default();
+            let Some(&row) = rows.iter().find(|r| tip.split('/').next() == Some(**r)) else { continue };
+            let name = chain(&tip).strip_prefix(row).unwrap().to_string();
+            seen.entry(row).or_default().insert(name.clone());
+            let at = by.entry((row, name)).or_default();
             *at = at.max(e);
         }
-        let names: BTreeSet<String> = RADIUS_CURVES.iter().map(|c| c.to_string()).collect();
-        assert_eq!(rows, BTreeMap::from([("RadiusCurve", names.clone()), ("RadiusCurve10", names)]), "the rows' chains");
+        let names: BTreeSet<String> = names.iter().map(|c| c.to_string()).collect();
+        assert_eq!(seen, rows.iter().map(|r| (*r, names.clone())).collect(), "the rows' chains");
         by
     };
-    let (first, settling) = (worst(replay.first..replay.first + 1), worst(replay.first..replay.first + RADIUS_CURVE_FRAMES));
+    let (first, settling) = (worst(replay.first..replay.first + 1), worst(replay.first..replay.first + SETTLING_FRAMES));
     let mut failed = vec![];
-    for name in RADIUS_CURVES {
-        let (f, m) = (first[*name], settling[*name]);
-        eprintln!("{name:<26} first frame {f:.4}, settling {m:.4}");
-        if f > RADIUS_CURVE_BOUND || m > RADIUS_CURVE_BOUND {
-            failed.push(format!("{name}: first frame {f:.4}, settling {m:.4}"));
+    for (key, f) in &first {
+        let m = settling[key];
+        eprintln!("{}{:<30} first frame {f:.4}, settling {m:.4}", key.0, key.1);
+        if *f > SETTLING_BOUND || m > SETTLING_BOUND {
+            failed.push(format!("{}{}: first frame {f:.4}, settling {m:.4}", key.0, key.1));
         }
     }
     assert!(failed.is_empty(), "{failed:#?}");
+}
+
+/// Every radius curve chain of both versions meets the bound.
+#[test]
+fn chains_with_a_radius_curve_starting_against_a_collider() {
+    rows_settle_within_bound(&["RadiusCurve", "RadiusCurve10"], RADIUS_CURVES);
+}
+
+/// The sibling row's chains (`Fixture.SiblingChains`): the SDK pushes every one whose sphere's object is active, and
+/// leaves the two whose sphere's object is inactive where they are.
+const SIBLINGS: &[&str] = &[
+    "InsideAverage2",
+    "InsideAverage2Rising",
+    "InsideAverage3",
+    "InsideAverage3Rising",
+    "InsideFirst2",
+    "InsideFirst2Rising",
+    "InsideFirst3",
+    "InsideFirst3Rising",
+    "InsideIgnore1",
+    "InsideIgnore1Inactive",
+    "InsideIgnore2",
+    "InsideIgnore2Deep",
+    "InsideIgnore2DeepRising",
+    "InsideIgnore2Inactive",
+    "InsideIgnore2Rising",
+    "InsideIgnore2RisingPolarImmobile40",
+    "InsideIgnore3",
+    "InsideIgnore3Rising",
+];
+
+/// Every sibling chain meets the bound.
+#[test]
+fn sibling_chains_inside_a_sphere() {
+    rows_settle_within_bound(&["Siblings"], SIBLINGS);
 }

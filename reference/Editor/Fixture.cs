@@ -912,6 +912,56 @@ namespace AvatarWorkshop.Reference
             RadiusCurves.Select(c => (c.name, c.dir, c.bones, c.branches,
                                       (Action<VRCPhysBone>)(p => { c.set(p); p.version = VRCPhysBoneBase.Version.Version_1_0; }), c.end)).ToArray();
 
+        // Each sphere's wall crosses the farthest end bone at its full radius, so a push moves the chain past the 1% bound;
+        // the two whose sphere sits on an inactive object show whether such a collider pushes.
+        static readonly (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] SiblingChains =
+            (from type in new[] { VRCPhysBoneBase.MultiChildType.Ignore, VRCPhysBoneBase.MultiChildType.First, VRCPhysBoneBase.MultiChildType.Average }
+             from branches in new[] { 2, 3 }
+             from rising in new[] { false, true }
+             select (name: $"{type}{branches}{(rising ? "Rising" : "")}", bones: new[] { 0.05f }, branches, type, rising, set: (Action<VRCPhysBone>)(p => { })))
+            .Concat(new[]
+            {
+                (name: "Ignore2Deep", bones: new[] { 0.03f, 0.03f }, branches: 2, type: VRCPhysBoneBase.MultiChildType.Ignore, rising: false, set: (Action<VRCPhysBone>)(p => { })),
+                (name: "Ignore2DeepRising", bones: new[] { 0.03f, 0.03f }, branches: 2, type: VRCPhysBoneBase.MultiChildType.Ignore, rising: true, set: (Action<VRCPhysBone>)(p => { })),
+                (name: "Ignore1", bones: new[] { 0.05f }, branches: 1, type: VRCPhysBoneBase.MultiChildType.Ignore, rising: false, set: (Action<VRCPhysBone>)(p => { })),
+                (name: "Ignore2RisingPolarImmobile40", bones: new[] { 0.05f }, branches: 2, type: VRCPhysBoneBase.MultiChildType.Ignore, rising: true,
+                 set: (Action<VRCPhysBone>)(p => { p.immobile = 0.4f; p.limitType = VRCPhysBoneBase.LimitType.Polar; p.maxAngleX = 20; p.maxAngleZ = 20; })),
+                (name: "Ignore2Inactive", bones: new[] { 0.05f }, branches: 2, type: VRCPhysBoneBase.MultiChildType.Ignore, rising: false, set: (Action<VRCPhysBone>)ColliderOnInactiveChild),
+                (name: "Ignore1Inactive", bones: new[] { 0.05f }, branches: 1, type: VRCPhysBoneBase.MultiChildType.Ignore, rising: false, set: (Action<VRCPhysBone>)ColliderOnInactiveChild),
+            })
+            .Select(c => ($"Inside{c.name}", Vector3.forward, c.bones, c.branches, (Action<VRCPhysBone>)(p =>
+            {
+                p.multiChildType = c.type;
+                p.radius = SiblingRadius;
+                if (c.rising) p.radiusCurve = Ramp(0.5f, 1);
+                p.endpointPosition = new Vector3(0, SiblingEndpoint, 0);
+                Inside(p, SiblingCentre, SiblingSphereRadius(c.bones, c.branches));
+                c.set(p);
+            }), (Action<VRCPhysBone>)null))
+            .ToArray();
+
+        // `Inside` puts every chain's sphere on the shared row object, so this one moves to an inactive object of its own.
+        static void ColliderOnInactiveChild(VRCPhysBone p)
+        {
+            var c = (VRCPhysBoneCollider)p.colliders[0];
+            if (c.shapeType != VRCPhysBoneColliderBase.ShapeType.Sphere) throw new ArgumentException("only a sphere's fields are copied");
+            var off = new GameObject($"{p.name}Collider");
+            off.transform.SetParent(c.transform, false);
+            var moved = off.AddComponent<VRCPhysBoneCollider>();
+            moved.shapeType = c.shapeType; moved.radius = c.radius; moved.insideBounds = c.insideBounds; moved.position = c.position;
+            UnityEngine.Object.DestroyImmediate(c);
+            off.SetActive(false);
+            p.colliders = new List<VRCPhysBoneColliderBase> { moved };
+        }
+
+        const float SiblingRadius = 0.03f, SiblingEndpoint = 0.04f, SiblingCrossing = 0.0026f;
+        static readonly Vector3 SiblingCentre = new Vector3(0, 0.06f, 0);
+
+        static float SiblingSphereRadius(float[] bones, int branches) =>
+            Enumerable.Range(0, branches)
+                .Select(b => (BranchTilt(b, branches) * Vector3.up * bones[0] + Vector3.up * (bones.Skip(1).Sum() + SiblingEndpoint) - SiblingCentre).magnitude)
+                .Max() + SiblingRadius - SiblingCrossing;
+
         static float[] Over68(int bones) => Enumerable.Repeat(0.068f / bones, bones).ToArray();
 
         static void RadiusCurve(VRCPhysBone p, bool rising, bool endpoint, float radius)
@@ -996,7 +1046,10 @@ namespace AvatarWorkshop.Reference
                 ("Start", int.MaxValue, new Vector3(-2.5f, 1.6f, -0.45f), Vector3.zero, Vector3.zero, Starting),
                 ("RadiusCurve", int.MaxValue, new Vector3(-2.5f, 1.6f, -0.85f), Vector3.zero, Vector3.zero, RadiusCurves),
                 ("RadiusCurve10", int.MaxValue, new Vector3(-2.5f, 1.6f, -1.25f), Vector3.zero, Vector3.zero, RadiusCurves10),
+                ("Siblings", int.MaxValue, new Vector3(-2.5f, 1.6f, -1.65f), Vector3.zero, Vector3.zero, SiblingChains),
             }).ToArray();
+
+        static Quaternion BranchTilt(int b, int branches) => branches > 1 ? Quaternion.Euler(0, 0, 25 * (b - (branches - 1) / 2f)) : Quaternion.identity;
 
         static void JumpBone(GameObject go, Action<VRCPhysBone> set)
         {
@@ -1035,7 +1088,7 @@ namespace AvatarWorkshop.Reference
                         {
                             var go = new GameObject(branches == 1 ? $"{name}.{k + 1}" : $"{name}.{b}.{k + 1}");
                             go.transform.SetParent(parent, false);
-                            go.transform.localPosition = (k == 0 && branches > 1 ? Quaternion.Euler(0, 0, 25 * (b - (branches - 1) / 2f)) : Quaternion.identity) * Vector3.up * bones[k];
+                            go.transform.localPosition = (k == 0 ? BranchTilt(b, branches) : Quaternion.identity) * Vector3.up * bones[k];
                             parent = go.transform;
                         }
                         last = parent;

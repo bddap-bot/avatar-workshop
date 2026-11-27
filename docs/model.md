@@ -120,7 +120,8 @@ natively, as a Godot extension, or compiled to WebAssembly. A runtime does not r
   from its parent, where a chain's own colliders but spheres meet its end alone: at the segment's point nearest the hand's
   point nearest the bone's end, but no nearer the parent than the bone's radius, and the bone's end moves by all of
   the push that frees that point. Under simplified integration 0.8 of that push stays out of the bone's next
-  velocity; under advanced integration none does. Of two components on one root, the first in
+  velocity; under advanced integration none does. A chain's own collider pushes it only while the collider's object is
+  active in the hierarchy. Of two components on one root, the first in
   the model poses the bones and the second does nothing, as the SDK's simulation of corpus 2 shows.
 - Constraints and contacts: all six constraint kinds; contacts between the avatar, other avatars and hands, driving
   receiver parameters.
