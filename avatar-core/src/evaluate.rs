@@ -102,6 +102,7 @@ pub struct Evaluator {
     renderer_nodes: Vec<u32>,
     human: Option<HumanTargets>,
     root: Transform,
+    standing: u32,
     output: Output,
 }
 
@@ -144,6 +145,7 @@ impl Evaluator {
             renderer_nodes: m.renderers.iter().map(|r| r.node.0).collect(),
             human: None,
             root: Transform::IDENTITY,
+            standing: 0,
             output: Output {
                 locals: nodes.rest.clone(),
                 space: vec![Transform::IDENTITY; count],
@@ -218,6 +220,13 @@ impl Evaluator {
     /// [`Animator::set_eyes`].
     pub fn set_eyes(&mut self, blink: f32, look_y: f32) {
         self.animator.set_eyes(blink, look_y)
+    }
+
+    /// Before the first evaluation, has it take `frames` more PhysBones steps at the file's pose after the load step, for an
+    /// avatar that stood loaded that many frames before it: the SDK's chains step on each of them.
+    pub fn stand(&mut self, frames: u32) {
+        assert!(!self.physbones.started(), "the avatar has already been evaluated");
+        self.standing = frames;
     }
 
     /// [`Animator::set_head`].
@@ -362,7 +371,7 @@ impl Evaluator {
             let file = Frame { root: input.root, nodes: o.space.clone(), locals: o.locals.clone(), active: active.to_vec(), enabled: enabled.to_vec(), hands: vec![] };
             self.physbones.advance(0.0, &file);
             self.physbones.advance(STEP, &file);
-            self.physbones.carry_load(&file);
+            self.physbones.carry_load(&file, self.standing);
         }
     }
 

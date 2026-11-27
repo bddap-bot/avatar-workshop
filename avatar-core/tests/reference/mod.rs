@@ -104,6 +104,8 @@ pub struct Replay {
     pub names: Vec<Option<String>>,
     /// The first recorded frame replayed.
     pub first: usize,
+    /// [`standing`] for `first`.
+    pub standing: u32,
     /// What the host gives the core each recorded frame: the root, every node's root-space pose (those the
     /// recording does not hold at rest), its animated local pose, and the active and PhysBone enabled flags.
     pub frames: Vec<Frame>,
@@ -222,6 +224,7 @@ impl Replay {
             nodes,
             names,
             first,
+            standing: standing(dir, first),
             frames: out.into_iter().map(|(_, fr)| fr).collect(),
             posed: posed.into_iter().collect(),
             fields: BTreeMap::new(),
@@ -263,6 +266,7 @@ impl Replay {
         each: &mut dyn FnMut(f64, &Evaluator),
     ) {
         let mut ev = Evaluator::new(&self.avatar).unwrap();
+        ev.stand(self.standing);
         let mut fields: Vec<(Field, f32)> = vec![];
         let change = |fields: &mut Vec<(Field, f32)>, changes: &[(Field, f32)]| {
             for (f, v) in changes {
@@ -496,6 +500,15 @@ pub fn window(dir: &Path) -> Range<usize> {
     let (motion, _) = step("motion");
     let (settle, frames) = step("settle");
     motion..settle + frames
+}
+
+/// The frames the avatar in the recording in `dir` stood loaded before a replay that starts on `first`: the harness counts
+/// frames from the editor's first and records from the one the emulator attaches on, `time.tsv`'s first (a checked-in
+/// recording without one attached on frame 0), and a replay that starts later finds the avatar already animated.
+pub fn standing(dir: &Path, first: usize) -> u32 {
+    let timed = dir.join("time.tsv").exists() || dir.join("time.tsv.gz").exists();
+    let attached = if timed { *animator::graph_times(dir).keys().next().expect("time.tsv holds no frames") } else { 0 };
+    if first == attached { attached as u32 } else { 0 }
 }
 
 /// Each tip's RMS error over its rest chain length in `window`, a tip the replay lacks counting as unmoving, as

@@ -17,7 +17,7 @@ use avatar_core::model::HumanBodyBone;
 use avatar_core::physbones::{Nodes, Transform};
 use avatar_core::Avatar;
 
-use super::{animator::{graph_times, inputs}, canonical, floats, paths, rows, text, tips, unity};
+use super::{animator::{graph_times, inputs}, canonical, floats, paths, rows, standing, text, tips, unity};
 
 /// The harness's frame time (`Time.captureDeltaTime`), on which the SDK's PhysBones and contacts step from the frame
 /// the emulator attaches.
@@ -102,6 +102,9 @@ pub fn run(avatar: &Avatar, dir: &Path, frames: Option<usize>) -> Run {
     let mut run = Run::default();
     let (mut params, mut states, mut outputs) = (BTreeMap::new(), BTreeMap::new(), BTreeMap::new());
     let time = graph_times(dir);
+    let standing = standing(dir, first);
+    ev.stand(standing);
+    writeln!(run.script, "{first}\tstand\t{standing}").unwrap();
     let mut root = Transform::IDENTITY;
     let mut poses: Vec<(usize, Transform)> = vec![];
     for f in first..end {

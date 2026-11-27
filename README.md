@@ -134,7 +134,8 @@ frame with no time passed), applies its node transforms and the humanoid bones i
 contact fields over the rest pose, places the host's poses, solves the constraints before PhysBones, advances
 PhysBones (a stopped chain leaves its bones to animation; on the first `evaluate` or `evaluate_animated` every chain
 starts at the rest pose and takes one step there, as the SDK's chains do on the frame the avatar loads, before its
-animator first poses it, and that frame's time then steps them toward its pose; no hand collider pushes a chain in
+animator first poses it, and one more for each frame `stand` says the avatar stood loaded before that, and that
+frame's time then steps them toward its pose; no hand collider pushes a chain in
 the first two steps after load, which the SDK's take before the hand colliders a recording adds on its first frame
 join), solves the
 constraints after them, advances contacts,
@@ -149,8 +150,8 @@ frame its gravity chains have already moved as far as two steps from the file's 
 `cargo run --release --example run -- RECORDING AVATAR.glb OUT [--frames N]` writes the core's reference run
 of a model under a recording's scripted input: each frame the parameters `inputs.tsv` sets, the root of `track.tsv`,
 and the humanoid trunk and limbs as `poses.tsv` holds them, every one from the first frame, as a host gives the pose
-its IK solved (fingers, eyes and jaw stay the animator's), each frame stepped through `evaluate_clocked` by the harness's fixed frame time and its animator by the change in the emulator's graph time (`time.tsv`, which starts at 0 and on some avatars first advances a frame after the SDK's PhysBones first step). `OUT/tips.tsv` holds every PhysBone tip each frame, and `params.tsv`,
-`states.tsv` and `output.tsv` the animator's parameters, each layer's state and the frame output as change logs. `script.tsv` is what each frame fed the core (`set`, `head`, `pose` and `frame` lines, in the order it applied them, each value the hex of its f32 bits; a `frame` line gives the dynamics' seconds, the animator's and the root), so another runtime can feed its own the same and compare.
+its IK solved (fingers, eyes and jaw stay the animator's), each frame stepped through `evaluate_clocked` by the harness's fixed frame time and its animator by the change in the emulator's graph time (`time.tsv`, which starts at 0 and on some avatars first advances a frame after the SDK's PhysBones first step). The harness counts frames from the editor's first and records from the one the emulator attaches on, `time.tsv`'s first, so the run has the avatar `stand` that many frames at the file's pose before it. `OUT/tips.tsv` holds every PhysBone tip each frame, and `params.tsv`,
+`states.tsv` and `output.tsv` the animator's parameters, each layer's state and the frame output as change logs. `script.tsv` is what each frame fed the core (`stand`, `set`, `head`, `pose` and `frame` lines, in the order it applied them, each value the hex of its f32 bits; a `stand` line, first, gives the frames the avatar stood loaded before the run's first frame, as a decimal count; a `frame` line gives the dynamics' seconds, the animator's and the root), so another runtime can feed its own the same and compare.
 Two runs write the same bytes; `cargo test --test evaluate` checks that on the fixture's recording.
 
 ## Godot extension

@@ -876,6 +876,46 @@ namespace AvatarWorkshop.Reference
                         }), (Action<VRCPhysBone>)null))
             .ToArray();
 
+        // The Start row's capsule and sphere contacts at its root, with the fields of chains that start against a head
+        // capsule one at a time and together: a spring of 0.73, a pull of 0.05, stiffness 0.13, immobile 0.07 and a 45 degree
+        // angle limit; the combination deeper, at 45 degrees, under gravity, and on a chain rooted on a child of another's root.
+        static readonly (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] StartingFields =
+            (from field in new (string name, Action<VRCPhysBone> set)[]
+             {
+                 ("Spring73", p => p.spring = 0.727f),
+                 ("Pull5", p => p.pull = 0.053f),
+                 ("Stiff13", p => p.stiffness = 0.133f),
+                 ("Immobile7", p => p.immobile = 0.069f),
+                 ("Angle45", p => { p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 45; }),
+                 ("Spring73Pull5", p => { p.spring = 0.727f; p.pull = 0.053f; }),
+                 ("Fields", HeadFields),
+             }
+             from shape in new[] { VRCPhysBoneColliderBase.ShapeType.Capsule, VRCPhysBoneColliderBase.ShapeType.Sphere }
+             select ($"{field.name}{shape}Root75Depth4", Vector3.forward, new[] { 0.02f, 0.02f, 0.02f }, 1,
+                     (Action<VRCPhysBone>)(p => { p.radius = 0.005f; field.set(p); Against(p, shape, -Normal(75) * 0.056f); }), (Action<VRCPhysBone>)null))
+            .Concat(new (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[]
+            {
+                ("FieldsCapsuleRoot75Depth1", Vector3.forward, new[] { 0.02f, 0.02f, 0.02f }, 1,
+                 p => { p.radius = 0.005f; HeadFields(p); Against(p, VRCPhysBoneColliderBase.ShapeType.Capsule, -Normal(75) * 0.059f); }, null),
+                ("FieldsCapsuleRoot75Depth10", Vector3.forward, new[] { 0.02f, 0.02f, 0.02f }, 1,
+                 p => { p.radius = 0.005f; HeadFields(p); Against(p, VRCPhysBoneColliderBase.ShapeType.Capsule, -Normal(75) * 0.05f); }, null),
+                ("FieldsCapsuleRoot45Depth4", Vector3.forward, new[] { 0.02f, 0.02f, 0.02f }, 1,
+                 p => { p.radius = 0.005f; HeadFields(p); Against(p, VRCPhysBoneColliderBase.ShapeType.Capsule, -Normal(45) * 0.056f); }, null),
+                ("FieldsShortCapsuleRoot75Depth4", Vector3.forward, new[] { 0.017f, 0.017f, 0.017f }, 1,
+                 p => { p.radius = 0.005f; HeadFields(p); Against(p, VRCPhysBoneColliderBase.ShapeType.Capsule, -Normal(75) * 0.056f); }, null),
+                ("FieldsGravity57CapsuleRoot75Depth4", Vector3.forward, new[] { 0.02f, 0.02f, 0.02f }, 1,
+                 p => { p.radius = 0.005f; HeadFields(p); p.gravity = 0.57f; Against(p, VRCPhysBoneColliderBase.ShapeType.Capsule, -Normal(75) * 0.056f); }, null),
+                ("FieldsNestedCapsuleRoot75Depth4", Vector3.forward, new[] { 0.02f, 0.02f, 0.02f, 0.02f }, 3,
+                 p => { HeadFields(p); Nested(p, q => { q.radius = 0.005f; HeadFields(q); Against(q, VRCPhysBoneColliderBase.ShapeType.Capsule, -Normal(75) * 0.056f); }); }, null),
+            })
+            .ToArray();
+
+        static void HeadFields(VRCPhysBone p)
+        {
+            p.spring = 0.727f; p.pull = 0.053f; p.stiffness = 0.133f; p.immobile = 0.069f;
+            p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 45;
+        }
+
         // Chains whose radius curve rises from half the radius to all of it or falls from all to half, on a parent that never
         // moves. Each inside-bounds sphere's wall is placed where the bones' radius meets it only if the curve is read at
         // some depths: by bone count or by distance from the root, at a bone's own depth or its parent's.
@@ -1047,6 +1087,7 @@ namespace AvatarWorkshop.Reference
                 ("RadiusCurve", int.MaxValue, new Vector3(-2.5f, 1.6f, -0.85f), Vector3.zero, Vector3.zero, RadiusCurves),
                 ("RadiusCurve10", int.MaxValue, new Vector3(-2.5f, 1.6f, -1.25f), Vector3.zero, Vector3.zero, RadiusCurves10),
                 ("Siblings", int.MaxValue, new Vector3(-2.5f, 1.6f, -1.65f), Vector3.zero, Vector3.zero, SiblingChains),
+                ("StartFields", int.MaxValue, new Vector3(-2.5f, 1.6f, -2.05f), Vector3.zero, Vector3.zero, StartingFields),
             }).ToArray();
 
         static Quaternion BranchTilt(int b, int branches) => branches > 1 ? Quaternion.Euler(0, 0, 25 * (b - (branches - 1) / 2f)) : Quaternion.identity;

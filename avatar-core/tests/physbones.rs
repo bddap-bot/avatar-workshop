@@ -3854,6 +3854,65 @@ fn chains_starting_against_a_collider() {
     assert!(far.is_empty(), "{far:#?}");
 }
 
+/// The row whose parent never moves (`Fixture.StartingFields`): the Start row's root contacts under a head chain's spring,
+/// pull, stiffness, immobile and angle limit, one at a time and together, each with its largest tip error over chain length
+/// at the first recorded frame.
+const START_FIELDS: &[(&str, f32)] = &[
+    ("StartFieldsAngle45CapsuleRoot75Depth4", 0.01),
+    ("StartFieldsAngle45SphereRoot75Depth4", 0.01),
+    ("StartFieldsFieldsCapsuleRoot45Depth4", 0.01),
+    ("StartFieldsFieldsCapsuleRoot75Depth1", 0.01),
+    ("StartFieldsFieldsCapsuleRoot75Depth10", GAP_LIMIT_AFTER_PUSH),
+    ("StartFieldsFieldsCapsuleRoot75Depth4", 0.01),
+    ("StartFieldsFieldsGravity57CapsuleRoot75Depth4", 0.01),
+    ("StartFieldsFieldsNestedCapsuleRoot75Depth4", 0.01),
+    ("StartFieldsFieldsNestedCapsuleRoot75Depth4.1.1", 0.01),
+    ("StartFieldsFieldsShortCapsuleRoot75Depth4", 0.01),
+    ("StartFieldsFieldsSphereRoot75Depth4", 0.01),
+    ("StartFieldsImmobile7CapsuleRoot75Depth4", 0.01),
+    ("StartFieldsImmobile7SphereRoot75Depth4", 0.01),
+    ("StartFieldsPull5CapsuleRoot75Depth4", 0.01),
+    ("StartFieldsPull5SphereRoot75Depth4", 0.01),
+    ("StartFieldsSpring73CapsuleRoot75Depth4", 0.01),
+    ("StartFieldsSpring73Pull5CapsuleRoot75Depth4", 0.01),
+    ("StartFieldsSpring73Pull5SphereRoot75Depth4", 0.01),
+    ("StartFieldsSpring73SphereRoot75Depth4", 0.01),
+    ("StartFieldsStiff13CapsuleRoot75Depth4", 0.01),
+    ("StartFieldsStiff13SphereRoot75Depth4", 0.01),
+];
+
+/// The chain whose first bone starts wholly inside the capsule: the SDK stops that bone at its angle limit, which the
+/// core's collider push takes it past (0.164 measured).
+const GAP_LIMIT_AFTER_PUSH: f32 = 0.17;
+
+#[test]
+fn chains_starting_against_a_collider_with_head_fields() {
+    let dir = path("fixtures/reference/probe");
+    let replay = replay("fixtures/reference/probe", "fixtures/unity-probe.glb", 0..1);
+    let errors = errors(&dir, &replay.run(60.0), replay.first..replay.first + 1);
+    let row = errors.into_iter().filter(|(_, t)| t.starts_with("StartFields/")).map(|(e, t)| (e, chain(&t).to_string()));
+    check_bounds(START_FIELDS.iter().map(|&(name, bound)| (name, bound, "")), row);
+}
+
+/// An avatar that stood loaded a frame before its first evaluated one takes one more step at the file's pose by that frame:
+/// a chain under gravity moves on, and a chain that starts at rest against nothing stays where it was.
+#[test]
+fn a_standing_frame_steps_at_the_files_pose() {
+    let mut replay = replay("fixtures/reference/probe", "fixtures/unity-probe.glb", 0..1);
+    assert_eq!(replay.standing, 0);
+    let tips = |trace: &reference::Trace, chain: &str| -> Vec<glam::Vec3> {
+        trace.tips[0].iter().filter(|(t, _)| t.split('|').next().is_some_and(|r| r.ends_with(&format!("/{chain}")))).map(|(_, p)| *p).collect()
+    };
+    let loaded = replay.run(60.0);
+    replay.standing = 1;
+    let stood = replay.run(60.0);
+    let (gravity, still) = ("StartGravity50Branches", "StartFieldsFieldsNestedCapsuleRoot75Depth4");
+    let moved = tips(&loaded, gravity).iter().zip(tips(&stood, gravity)).map(|(a, b)| a.distance(b)).fold(0.0f32, f32::max);
+    assert!(moved > 1e-3, "the gravity chain's tips moved {moved} m");
+    assert!(!tips(&loaded, still).is_empty());
+    assert_eq!(tips(&loaded, still), tips(&stood, still));
+}
+
 /// The chains whose radius curves rise or fall along them (`Fixture.RadiusCurves`), at version 1.1 on the `RadiusCurve`
 /// row and at version 1.0 on the `RadiusCurve10` row.
 const RADIUS_CURVES: &[&str] = &[

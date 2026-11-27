@@ -699,10 +699,15 @@ impl PhysBones {
         }
     }
 
-    /// Carries every running chain [`LOAD_CARRY`] of a step further at `frame`, the file's pose, and keeps the clock where
-    /// it is: the step a fifth longer than the rest that Unity's first frame after load takes.
-    pub(crate) fn carry_load(&mut self, frame: &Frame) {
+    /// Carries every running chain [`LOAD_CARRY`] of a step further at `frame`, the file's pose, and a whole step more for
+    /// each of the `standing` frames the avatar stood loaded before its first evaluated one, and keeps the clock where it
+    /// is: the step a fifth longer than the rest that Unity's first frame after load takes, and the SDK's step on each
+    /// frame after it.
+    pub(crate) fn carry_load(&mut self, frame: &Frame, standing: u32) {
         self.step_chains(&mut frame.clone(), &[], Some(LOAD_CARRY));
+        for _ in 0..standing {
+            self.step_chains(&mut frame.clone(), &[], None);
+        }
         self.before = self.after.clone();
     }
 
