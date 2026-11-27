@@ -621,11 +621,31 @@ namespace AvatarWorkshop.Reference
                 ("Stretch50Motion50LevelStiff70Advanced", Vector3.forward, p => { Advanced(p); p.spring = 0.5f; p.stiffness = 0.7f; p.maxStretch = 0.5f; p.stretchMotion = 0.5f; }),
                 ("Stretch30Squish40Motion50Advanced", Vector3.forward, p => { Advanced(p); p.spring = 0.6f; p.stiffness = 0.3f; p.gravity = 0.15f; p.maxStretch = 0.3f; p.maxSquish = 0.4f; p.stretchMotion = 0.5f; }),
             };
+            // Chains whose radius curve rises or falls along them, and their twins without a curve, swung by the head's motion
+            // against a sphere or a capsule long enough that they never reach its ends, at each version and integration: a row
+            // of their own. A version 1.0 chain hangs lower under the same gravity, so its collider sits on its path.
+            var swung =
+                (from v10 in new[] { false, true }
+                 from advanced in new[] { false, true }
+                 from curve in new[] { "Rising", "Falling", "Constant" }
+                 from capsule in new[] { false, true }
+                 select (name: $"Swung{(v10 ? "10" : "11")}{(advanced ? "Advanced" : "Simplified")}{curve}{(capsule ? "Capsule" : "Sphere")}",
+                         dir: Vector3.forward, set: (Action<VRCPhysBone>)(p =>
+                         {
+                             if (v10) p.version = VRCPhysBoneBase.Version.Version_1_0;
+                             if (advanced) { Advanced(p); p.spring = 0.5f; p.stiffness = 0.3f; }
+                             p.radius = 0.03f;
+                             if (curve != "Constant") p.radiusCurve = curve == "Rising" ? Ramp(0.5f, 1) : Ramp(1, 0.5f);
+                             if (capsule) Collide(p, VRCPhysBoneColliderBase.ShapeType.Capsule, 0.04f, 0.6f, v10 ? new Vector3(0, -0.2f, 0.13f) : new Vector3(0, -0.09f, 0.18f), Quaternion.Euler(0, 0, 90));
+                             else Collide(p, VRCPhysBoneColliderBase.ShapeType.Sphere, 0.06f, 0, v10 ? new Vector3(0, -0.2f, 0.15f) : new Vector3(0, -0.1f, 0.22f), Quaternion.identity);
+                         })))
+                .ToArray();
             var tail = new[] { new Vector3(0, -0.05f, -0.12f), new Vector3(0, -0.08f, -0.1f), new Vector3(0, -0.1f, -0.06f), new Vector3(0, -0.1f, 0) };
             var all = probes.Select(p => (p.name, p.dir, p.set, bones: (Vector3[])null))
                 .Concat(bent.Select(b => (b.name, dir: Vector3.up, b.set, bones: tail)))
                 .Select((p, i) => (p.name, p.dir, p.set, p.bones, at: new Vector3((i - probes.Length / 2) * 0.05f, 0.3f, 0)))
                 .Concat(partial.Select((p, j) => (p.name, p.dir, p.set, bones: (Vector3[])null, at: new Vector3((j - partial.Length / 2) * 0.05f, 0.3f, -0.15f))))
+                .Concat(swung.Select((p, j) => (p.name, p.dir, p.set, bones: (Vector3[])null, at: new Vector3((j - swung.Length / 2) * 0.05f, 0.3f, -0.3f))))
                 .ToArray();
             for (int i = 0; i < all.Length; i++)
             {
@@ -865,6 +885,11 @@ namespace AvatarWorkshop.Reference
                 }), (Action<VRCPhysBone>)null))
             .ToArray();
 
+        // The same chains at version 1.0.
+        static readonly (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] RadiusCurves10 =
+            RadiusCurves.Select(c => (c.name, c.dir, c.bones, c.branches,
+                                      (Action<VRCPhysBone>)(p => { c.set(p); p.version = VRCPhysBoneBase.Version.Version_1_0; }), c.end)).ToArray();
+
         static float[] Over68(int bones) => Enumerable.Repeat(0.068f / bones, bones).ToArray();
 
         static void RadiusCurve(VRCPhysBone p, bool rising, bool endpoint, float radius)
@@ -948,6 +973,7 @@ namespace AvatarWorkshop.Reference
                 ("Rest20x10", int.MaxValue, new Vector3(2.5f, 1.6f, -0.85f), new Vector3(20, 0, 10), Vector3.zero, Resting),
                 ("Start", int.MaxValue, new Vector3(-2.5f, 1.6f, -0.45f), Vector3.zero, Vector3.zero, Starting),
                 ("RadiusCurve", int.MaxValue, new Vector3(-2.5f, 1.6f, -0.85f), Vector3.zero, Vector3.zero, RadiusCurves),
+                ("RadiusCurve10", int.MaxValue, new Vector3(-2.5f, 1.6f, -1.25f), Vector3.zero, Vector3.zero, RadiusCurves10),
             }).ToArray();
 
         static void JumpBone(GameObject go, Action<VRCPhysBone> set)

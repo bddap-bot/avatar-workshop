@@ -91,6 +91,30 @@ const PROBES: &[(&str, &str, f32)] = &[
     ("BentRootInside", "a bent chain: its root inside a sphere collider", 0.05),
     ("BentRootInside11", "a bent chain: its root inside a sphere collider, version 1.1", 0.05),
     ("BentTail", "a bent chain: the fixture tail's fields but its colliders", 0.025),
+    ("Swung11SimplifiedRisingSphere", "a rising radius curve, swung against a sphere, version 1.1, simplified", 0.02),
+    ("Swung11SimplifiedRisingCapsule", "a rising radius curve, swung against a capsule, version 1.1, simplified", 0.02),
+    ("Swung11SimplifiedFallingSphere", "a falling radius curve, swung against a sphere, version 1.1, simplified", 0.015),
+    ("Swung11SimplifiedFallingCapsule", "a falling radius curve, swung against a capsule, version 1.1, simplified", 0.035),
+    ("Swung11SimplifiedConstantSphere", "no radius curve, swung against a sphere, version 1.1, simplified", 0.01),
+    ("Swung11SimplifiedConstantCapsule", "no radius curve, swung against a capsule, version 1.1, simplified", 0.015),
+    ("Swung11AdvancedRisingSphere", "a rising radius curve, swung against a sphere, version 1.1, advanced", 0.025),
+    ("Swung11AdvancedRisingCapsule", "a rising radius curve, swung against a capsule, version 1.1, advanced", 0.02),
+    ("Swung11AdvancedFallingSphere", "a falling radius curve, swung against a sphere, version 1.1, advanced", 0.02),
+    ("Swung11AdvancedFallingCapsule", "a falling radius curve, swung against a capsule, version 1.1, advanced", 0.02),
+    ("Swung11AdvancedConstantSphere", "no radius curve, swung against a sphere, version 1.1, advanced", 0.02),
+    ("Swung11AdvancedConstantCapsule", "no radius curve, swung against a capsule, version 1.1, advanced", 0.015),
+    ("Swung10SimplifiedRisingSphere", "a rising radius curve, swung against a sphere, version 1.0, simplified", 0.025),
+    ("Swung10SimplifiedRisingCapsule", "a rising radius curve, swung against a capsule, version 1.0, simplified", 0.045),
+    ("Swung10SimplifiedFallingSphere", "a falling radius curve, swung against a sphere, version 1.0, simplified", 0.02),
+    ("Swung10SimplifiedFallingCapsule", "a falling radius curve, swung against a capsule, version 1.0, simplified", 0.04),
+    ("Swung10SimplifiedConstantSphere", "no radius curve, swung against a sphere, version 1.0, simplified", 0.02),
+    ("Swung10SimplifiedConstantCapsule", "no radius curve, swung against a capsule, version 1.0, simplified", 0.05),
+    ("Swung10AdvancedRisingSphere", "a rising radius curve, swung against a sphere, version 1.0, advanced", 0.02),
+    ("Swung10AdvancedRisingCapsule", "a rising radius curve, swung against a capsule, version 1.0, advanced", 0.02),
+    ("Swung10AdvancedFallingSphere", "a falling radius curve, swung against a sphere, version 1.0, advanced", 0.01),
+    ("Swung10AdvancedFallingCapsule", "a falling radius curve, swung against a capsule, version 1.0, advanced", 0.015),
+    ("Swung10AdvancedConstantSphere", "no radius curve, swung against a sphere, version 1.0, advanced", 0.005),
+    ("Swung10AdvancedConstantCapsule", "no radius curve, swung against a capsule, version 1.0, advanced", 0.01),
 ];
 
 #[test]
@@ -3447,7 +3471,7 @@ fn rate_bound(tip: &str, bound: f32) -> f32 {
     let case = CASE_ROWS.contains(&row);
     match row {
         "Jump" | "JumpLate" if chain(tip).contains("Spring100") => UNDAMPED_RATES,
-        "RadiusCurve" if ["RadiusCurveInsideRisingThree", "RadiusCurveInsideRisingFive"].contains(&chain(tip)) => WALL_RATES,
+        "RadiusCurve" | "RadiusCurve10" if ["InsideRisingThree", "InsideRisingFive"].iter().any(|c| chain(tip) == format!("{row}{c}")) => WALL_RATES,
         _ if case && (row.contains("Pull0Spring") || row.ends_with("Spring90")) => UNDAMPED_RATES,
         _ if case && ["Stiff", "Immobile", "Stretch", "Gravity"].iter().any(|f| row.contains(f)) => FIELD_RATES,
         _ => bound,
@@ -3805,9 +3829,9 @@ fn chains_starting_against_a_collider() {
     assert!(far.is_empty(), "{far:#?}");
 }
 
-/// Each chain of the row whose radius curves rise or fall along them (`Fixture.RadiusCurves`), with its worst tip's error
-/// over chain length at the first recorded frame and its RMS over that frame and the 150 after it while the chain settles,
-/// each bound at its measured value.
+/// Each chain of the rows whose radius curves rise or fall along them (`Fixture.RadiusCurves`, at version 1.1, and
+/// `Fixture.RadiusCurves10`, at version 1.0), with its worst tip's error over chain length at either version at the first
+/// recorded frame and its RMS over that frame and the 150 after it while the chain settles, each bound at its measured value.
 const RADIUS_CURVES: &[(&str, f32, f32)] = &[
     ("CapsuleFallingEndpoint", 0.012, 0.076),
     ("CapsuleFallingFive", 0.089, 0.101),
@@ -3834,18 +3858,20 @@ fn chains_with_a_radius_curve_starting_against_a_collider() {
     let replay = replay("fixtures/reference/probe", "fixtures/unity-probe.glb", 0..RADIUS_CURVE_FRAMES);
     let trace = replay.run(60.0);
     let worst = |window: std::ops::Range<usize>| {
-        let mut by = BTreeMap::<String, f32>::new();
+        let (mut by, mut rows) = (BTreeMap::<String, f32>::new(), BTreeMap::<&str, BTreeSet<String>>::new());
         for (e, tip) in errors(&dir, &trace, window) {
-            if let Some(name) = chain(&tip).strip_prefix("RadiusCurve") {
-                let at = by.entry(name.to_string()).or_default();
-                *at = at.max(e);
-            }
+            let row = tip.split('/').next().unwrap();
+            let Some(row) = ["RadiusCurve", "RadiusCurve10"].into_iter().find(|r| *r == row) else { continue };
+            let name = chain(&tip).strip_prefix(row).unwrap();
+            rows.entry(row).or_default().insert(name.to_string());
+            let at = by.entry(name.to_string()).or_default();
+            *at = at.max(e);
         }
+        let names: BTreeSet<String> = RADIUS_CURVES.iter().map(|c| c.0.to_string()).collect();
+        assert_eq!(rows, BTreeMap::from([("RadiusCurve", names.clone()), ("RadiusCurve10", names)]), "the rows' chains");
         by
     };
     let (first, settling) = (worst(replay.first..replay.first + 1), worst(replay.first..replay.first + RADIUS_CURVE_FRAMES));
-    let recorded: BTreeSet<&str> = first.keys().map(String::as_str).collect();
-    assert_eq!(recorded, RADIUS_CURVES.iter().map(|c| c.0).collect::<BTreeSet<_>>(), "the row's chains");
     let mut failed = vec![];
     for (name, at_first, while_settling) in RADIUS_CURVES {
         let (f, m) = (first[*name], settling[*name]);

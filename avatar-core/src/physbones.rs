@@ -1165,7 +1165,7 @@ impl Chain {
         };
         for (collider, place) in places {
             let pushed = match collider.core(place).filter(|_| collider.meets_segment) {
-                Some(core) => touch_segment(origin, bone.position, q.radius * scale, core),
+                Some(core) => touch_segment(origin, bone.position, q.radius * scale, core, matches!(self.version, PhysBoneVersion::V1_0)),
                 None => collide(bone.position, q.radius * scale, collider, place),
             };
             let out = match (collider.meets_segment, self.version) {
@@ -1177,7 +1177,7 @@ impl Chain {
             bone.position = keep(pushed);
         }
         for touch in touches {
-            let pushed = touch_segment(origin, bone.position, q.radius * scale, (touch.a, touch.b, touch.radius));
+            let pushed = touch_segment(origin, bone.position, q.radius * scale, (touch.a, touch.b, touch.radius), false);
             momentum += (pushed - bone.position) * (1.0 - PUSH_OUT_OF_VELOCITY);
             bone.position = keep(pushed);
         }
@@ -1380,20 +1380,30 @@ fn collide(position: Vec3, radius: f32, collider: &ColliderAt, place: &Transform
 /// the end, but no nearer `origin` than the bone's radius. The hand probe's one-bone chains, which move only by the push,
 /// stop where that point leaves the reach, at every height and angle around the capsule, and along its axis past either
 /// end; the probe scene's chains whose root starts inside a capsule or sphere are where the SDK's are on the first
-/// recorded frame and settle where they do.
-fn touch_segment(origin: Vec3, position: Vec3, radius: f32, (a, b, r): (Vec3, Vec3, f32)) -> Vec3 {
+/// recorded frame and settle where they do. With `turn_over`, a bone whose `origin` is outside the capsule and whose
+/// pushed point is not held at the radius's distance from it is pushed as far, but along the line from the capsule's
+/// point nearest the end through the end: a version 1.0 bone swung across a capsule then turns over it to the far side
+/// once its end has passed the capsule's axis, as the SDK's does, where otherwise it stays on the near side and the swung
+/// row's version 1.0 simplified capsule chains miss by 10–11% of chain length. Version 1.1 chains pushed so miss by up to
+/// 6%, the bent version 1.0 chain whose root starts inside a sphere, pushed so from there, by 23% where it otherwise
+/// misses by 4%, and version 1.0 chains resting against a capsule with a rising radius curve move off their bounds when
+/// the held point is pushed so too.
+fn touch_segment(origin: Vec3, position: Vec3, radius: f32, (a, b, r): (Vec3, Vec3, f32), turn_over: bool) -> Vec3 {
     let segment = position - origin;
     let length = segment.length();
     if radius <= 0.0 || length <= 0.0 {
         return position;
     }
     let (_, core) = closest_on_segments(position, position, a, b);
-    let along = ((core - origin).dot(segment) / (length * length)).clamp((radius / length).min(1.0), 1.0);
-    let on_bone = origin + segment * along;
+    let (nearest, lowest) = ((core - origin).dot(segment) / (length * length), (radius / length).min(1.0));
+    let on_bone = origin + segment * nearest.clamp(lowest, 1.0);
     let d = on_bone - core;
     let reach = r + radius;
     if d.length() >= reach {
         return position;
     }
-    position + core + d.normalize_or((b - a).normalize_or(Vec3::Y).any_orthonormal_vector()) * reach - on_bone
+    let away = d.normalize_or((b - a).normalize_or(Vec3::Y).any_orthonormal_vector());
+    let outside = || origin.distance(closest_on_segments(origin, origin, a, b).1) >= r;
+    let away = if turn_over && nearest > lowest && outside() { (position - core).normalize_or(away) } else { away };
+    position + away * (reach - d.length())
 }

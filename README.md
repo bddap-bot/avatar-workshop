@@ -56,9 +56,10 @@ Immobile all-motion follows the root's parent, world only the avatar's position,
 that node. Curves are read by depth along the chain. A chain whose root's parent, immobile node or collider is a
 descendant of another chain's bones steps after that chain and reads its simulated pose. Gravity is not clamped
 to the ±1 VRChat's inspector allows. Bones collide as spheres of their radius, times the world scale of the
-root's parent, at their ends, except with a sphere outside which they stay and that does not treat bones as
-spheres: that meets the bone's segment, and moves its end by a share of the push freeing the nearest point, from
-0.35 where it touches at the parent's end to all of it at the bone's own. Bones of radius 0 pass through spheres
+root's parent, at their ends, except with a sphere or capsule outside which they stay and that does not treat bones
+as spheres: that meets the bone's segment, and moves its end by all of the push freeing the point nearest it, or, for
+a version 1.0 bone crossing it from outside, by as much along the line from its point nearest the bone's end through that
+end. Bones of radius 0 pass through spheres
 and capsules outside which they stay, but not planes; a bone a collider pushes is put back at a length its stretch
 allows.
 
