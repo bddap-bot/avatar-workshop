@@ -3476,7 +3476,8 @@ fn angle_stretch_and_squish_parameters() {
 const UNDAMPED_RATES: f32 = 0.265;
 
 /// A case-row chain that varies stiffness, immobile, stretch or gravity, or stiffness and immobile together, parts from
-/// the 60 Hz run by up to this share of its length, its 2 cm bones the most (measured, with a margin).
+/// the 60 Hz run by up to this share of its length, its 2 cm bones the most, and so does a turn-row chain, its 2 cm
+/// bones under stiffness and immobile by 1.2% at 72 Hz (measured, with a margin).
 const FIELD_RATES: f32 = 0.03;
 
 /// A radius curve chain whose tip leans on an inside-bounds wall beside its root, swung by the probe's motion, parts from
@@ -3497,6 +3498,7 @@ fn rate_bound(tip: &str, bound: f32) -> f32 {
         "RadiusCurve" | "RadiusCurve10" if ["InsideRisingThree", "InsideRisingFive"].iter().any(|c| chain(tip) == format!("{row}{c}")) => WALL_RATES,
         _ if case && (row.contains("Pull0Spring") || row.ends_with("Spring90")) => UNDAMPED_RATES,
         _ if case && ["Stiff", "Immobile", "Stretch", "Gravity"].iter().any(|f| row.contains(f)) => FIELD_RATES,
+        _ if row.starts_with("Turn") => FIELD_RATES,
         _ => bound,
     }
 }
@@ -4002,4 +4004,28 @@ const SIBLINGS: &[&str] = &[
 #[test]
 fn sibling_chains_inside_a_sphere() {
     rows_settle_within_bound(&["Siblings"], SIBLINGS);
+}
+
+/// The rows tilted 15°, 30° and 45° about the line their roots lie on and levelled in one step on frame 300
+/// (`Fixture.Turned`): every bone's tip error over chain length is within this on the first frame after the turn and,
+/// as an RMS, from the frame before the turn through the 150 after, as the jump rows are measured.
+const TURN_BOUND: f32 = 0.01;
+
+#[test]
+fn chains_whose_parent_turns_in_one_step() {
+    let dir = path("fixtures/reference/probe");
+    let replay = replay("fixtures/reference/probe", "fixtures/unity-probe.glb", 0..450);
+    let trace = replay.run(60.0);
+    let turn = replay.first + 300;
+    let rows = ["Turn15", "Turn30", "Turn45"];
+    let on = |t: &str| rows.contains(&t.split('/').next().unwrap());
+    let mut failed = vec![];
+    for (window, what) in [(turn..turn + 1, "the frame after the turn"), (turn - 1..turn + 150, "the 150 frames after")] {
+        let errors: Vec<(f32, String)> = errors(&dir, &trace, window).into_iter().filter(|(_, t)| on(t)).collect();
+        assert_eq!(errors.len(), 3 * 18 * 3, "every bone of the turn rows over {what}");
+        let worst = errors.iter().fold((0.0f32, ""), |a, (e, t)| if *e > a.0 { (*e, t.as_str()) } else { a });
+        eprintln!("turn rows, {what}: worst {:.4} ({})", worst.0, worst.1);
+        failed.extend(errors.iter().filter(|(e, _)| *e > TURN_BOUND).map(|(e, t)| format!("{t} {what}: {e:.4}")));
+    }
+    assert!(failed.is_empty(), "{failed:#?}");
 }

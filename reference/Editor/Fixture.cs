@@ -910,6 +910,24 @@ namespace AvatarWorkshop.Reference
             })
             .ToArray();
 
+        // Chains of three 2 cm bones under the head fields, without a collider, whose parent the harness turns in one step: free,
+        // under a 30 degree angle or hinge limit, under each integration, at stiffness 0, 0.133 and 0.3.
+        static readonly (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] Turned =
+            (from limit in new (string name, Action<VRCPhysBone> set)[]
+             {
+                 ("Free", p => p.limitType = VRCPhysBoneBase.LimitType.None),
+                 ("Angle30", p => { p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 30; }),
+                 ("Hinge30", p => { p.limitType = VRCPhysBoneBase.LimitType.Hinge; p.maxAngleX = 30; }),
+             }
+             from integration in new[] { VRCPhysBoneBase.IntegrationType.Advanced, VRCPhysBoneBase.IntegrationType.Simplified }
+             from stiffness in new[] { 0f, 0.133f, 0.3f }
+             select ($"{limit.name}{integration}Stiff{Mathf.RoundToInt(stiffness * 100)}", Vector3.down, new[] { 0.02f, 0.02f, 0.02f }, 1,
+                     (Action<VRCPhysBone>)(p =>
+                     {
+                         p.radius = 0.005f; HeadFields(p); limit.set(p); p.stiffness = stiffness; p.integrationType = integration;
+                     }), (Action<VRCPhysBone>)null))
+            .ToArray();
+
         static void HeadFields(VRCPhysBone p)
         {
             p.spring = 0.727f; p.pull = 0.053f; p.stiffness = 0.133f; p.immobile = 0.069f;
@@ -1078,6 +1096,9 @@ namespace AvatarWorkshop.Reference
                     select (name: $"Jump{way.name}{Mathf.RoundToInt(size * 100)}{field.name}", move: way.dir * size,
                             chains: JumpCases(new[] { "OneBone", "Endpoint" }, field.set)))
                 .Select((r, i) => (r.name, 300, new Vector3(0, 1.6f, -1.2f - 0.4f * i), Vector3.zero, r.move, r.chains)))
+            // Tilted about the axis their chains' roots lie along, so leveling them on frame 300 turns each root in place.
+            .Concat(new[] { 15, 30, 45 }.Select((deg, i) =>
+                ($"Turn{deg}", 300, new Vector3(2.5f, 1.6f, -1.25f - 0.4f * i), new Vector3(deg, 0, 0), Vector3.zero, Turned)))
             // Never reached, so the harness never levels them.
             .Concat(new[]
             {

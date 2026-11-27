@@ -232,9 +232,11 @@ struct Chain {
     colliders: Vec<usize>,
     collision: model::Permission,
     bones: Vec<Bone>,
-    /// The frame immobile holds bones to, relative to the avatar root. Under all-motion immobile it lags a change of
-    /// pose as a pinned root does (see [`Chain::follow`]).
+    /// The frame immobile holds bones to, relative to the avatar root. Under all-motion immobile its place lags a change
+    /// of pose as a pinned root does (see [`Chain::follow`]) while it turns at once.
     reference: Option<Transform>,
+    /// The root's orientation relative to the avatar root, lagging a change of pose as a pinned root's place does.
+    turned: Option<Quat>,
     /// The avatar root's place last step, which parts its own motion from a change of pose.
     last_root: Option<Transform>,
     rest: Vec<Transform>,
@@ -509,6 +511,7 @@ fn chain(pb: &model::PhysBone, roots: &[usize], nodes: &Nodes) -> Chain {
         collision: pb.collision,
         bones,
         reference: None,
+        turned: None,
         last_root: None,
         rest: vec![Transform::IDENTITY; count],
         world: vec![Transform::IDENTITY; count],
@@ -928,6 +931,7 @@ impl Chain {
             .map(|(b, r)| b.parent.map_or(Vec3::ZERO, |p| unroot.rotation * (r.translation - self.rest[p].translation).normalize_or_zero()))
             .collect();
         self.reference = Some(unroot.mul(&self.reference_frame(frame)));
+        self.turned = None;
         self.last_root = Some(frame.root.rigid());
     }
 
@@ -960,7 +964,8 @@ impl Chain {
             ImmobileType::AllMotion => {
                 let goal = avatar.inverse_rigid().mul(&reference);
                 let old = self.reference.unwrap_or(goal);
-                let new = old.lerp(&goal, self.follow_share());
+                let share = self.follow_share();
+                let new = Transform { translation: old.translation.lerp(goal.translation, share), rotation: goal.rotation, scale: old.scale.lerp(goal.scale, share) };
                 self.reference = Some(new);
                 avatar.mul(&new).mul(&before.mul(&old).inverse_rigid())
             }
@@ -978,6 +983,9 @@ impl Chain {
         let touches: Vec<Touch> = hands.iter().copied().filter(|h| allowed(&self.collision, h.owner)).collect();
         let scale = self.parent_world(frame).scale.x.abs();
         let settled: Vec<Vec3> = self.bones.iter().map(|b| b.position).collect();
+        let actual = avatar.rotation.inverse() * self.rest[0].rotation;
+        let turned = slerp(self.turned.unwrap_or(actual), actual, self.follow_share());
+        self.turned = Some(turned);
         self.bones[0].position = self.follow(frame, 0, self.rest[0].translation);
         self.bones[0].previous = self.bones[0].position;
         self.world[0] = self.base(frame, 0);
@@ -1095,11 +1103,22 @@ impl Chain {
                 origin + rest_direction.lerp(down, gravity.abs().min(1.0)).normalize_or(rest_direction) * rest_length
             }
         };
+        let child = self.bones[p].parent.is_some();
         let carry = origin - settled[p];
         let world_carry = root_motion.point(settled[p]) - settled[p];
         // All-motion immobile carries its share of a change of pose below, so stiffness carries a share of the rest.
         let carried_by_immobile = if matches!(self.immobile_type, ImmobileType::AllMotion) { q.immobile } else { 0.0 };
-        let pose_carry = (carry - world_carry) * (1.0 - carried_by_immobile);
+        // A child's carry leaves out the share of its parent's turn that immobile gave the parent, which immobile gives the
+        // child itself below: carried again, a chain under a parent turned in one step bends at its second bone where the
+        // SDK's does not.
+        let parent_immobile_turn = match (self.bones[p].parent, self.immobile_type) {
+            (Some(g), ImmobileType::AllMotion) => {
+                let qp = self.bones[p].params;
+                immobile_turn(moved, settled[g], settled[p], qp.immobile * (1.0 - qp.stiffness))
+            }
+            _ => Vec3::ZERO,
+        };
+        let pose_carry = (carry - world_carry - parent_immobile_turn) * (1.0 - carried_by_immobile);
         let (carried, into_velocity) = match self.integration {
             IntegrationType::Simplified => (Vec3::ZERO, Vec3::ZERO),
             IntegrationType::Advanced => (
@@ -1110,8 +1129,19 @@ impl Chain {
         let bone = &mut self.bones[i];
         bone.position += carried;
         bone.previous += carried;
-        bone.position += (moved.point(bone.position) - bone.position) * q.immobile;
-        bone.previous += (moved.point(bone.previous) - bone.previous) * q.immobile;
+        match self.integration {
+            IntegrationType::Simplified => {
+                bone.position += (moved.point(bone.position) - bone.position) * q.immobile;
+                bone.previous += (moved.point(bone.previous) - bone.previous) * q.immobile;
+            }
+            IntegrationType::Advanced => {
+                let shift = (moved.point(origin) - origin) * q.immobile;
+                let share = q.immobile * (1.0 - q.stiffness);
+                let (position, previous) = (immobile_turn(moved, origin, bone.position, share), immobile_turn(moved, origin, bone.previous, share));
+                bone.position += shift + position;
+                bone.previous += shift + previous;
+            }
+        }
         let velocity = bone.position - bone.previous;
         bone.previous = bone.position;
         bone.position += into_velocity;
@@ -1119,7 +1149,7 @@ impl Chain {
             PhysBoneVersion::V1_0 => Vec3::NEG_Y * (gravity * rest_length),
             PhysBoneVersion::V1_1 => Vec3::ZERO,
         };
-        let pull = (target - bone.position) * q.pull + weight;
+        let pull = (target - bone.position) * q.pull * if matches!(self.integration, IntegrationType::Advanced) { child_pull_share(q, child) } else { 1.0 } + weight;
         let start = bone.position;
         bone.position += match self.integration {
             IntegrationType::Simplified => velocity * q.spring + pull * (1.0 - q.spring),
@@ -1156,7 +1186,11 @@ impl Chain {
             rest_length
         };
         let limited = |d: Vec3| limit(d, local.translation, parent.rotation, q.limit);
-        let direction = limited(offset.normalize_or(rest_direction));
+        let lag = match (child, self.turned) {
+            (false, Some(turned)) => ((frame.root.rigid().rotation * turned) * self.rest[0].rotation.inverse()).normalize(),
+            _ => Quat::IDENTITY,
+        };
+        let direction = limit(offset.normalize_or(rest_direction), local.translation, lag * parent.rotation, q.limit);
         bone.position = origin + direction * length;
         let from = parent.translation;
         // Where the drawn bone points, kept within the limit; the colliders' and hands' pushes below move it as they
@@ -1298,6 +1332,22 @@ const CARRY_EXPONENT: f32 = 1.6;
 /// swinging bone too still, and all of it in velocity throws 2 cm bones under the 20 cm jump most of their length.
 const POSE_CARRY_IN_PLACE: f32 = 0.725;
 const POSE_CARRY_IN_VELOCITY: f32 = 0.5;
+/// The share of its pull an advanced bone below another simulated bone keeps: with stiffness the SDK's second and third
+/// bones of a chain returning from a turn of its parent trail their parent's return further than the full pull leaves
+/// them. Fitted to the turn rows at stiffness 0.133 and 0.3 (spring 0.727, pull 0.053), and held near 1 by the jump cases
+/// at pull 0.1 and the probes at pull 0.2, which the full pull fits. Without it the turn rows' third bones miss by up to
+/// 1.7% over the return.
+fn child_pull_share(q: Params, child: bool) -> f32 {
+    if !child || q.stiffness <= 0.0 {
+        return 1.0;
+    }
+    let hump = q.stiffness * (1.0 - q.stiffness).powi(CHILD_PULL_STIFFNESS_EXPONENT);
+    1.0 - CHILD_PULL_LOSS * q.spring * hump * (1.0 - q.pull / CHILD_PULL_FULL_AT).max(0.0)
+}
+const CHILD_PULL_LOSS: f32 = 2.6;
+const CHILD_PULL_STIFFNESS_EXPONENT: i32 = 6;
+const CHILD_PULL_FULL_AT: f32 = 0.15;
+
 /// The share of a bone's momentum advanced integration keeps after its pull. Without stiffness the SDK moves the bone
 /// by its momentum and then toward its target by pull, so pull takes its share of the momentum too and a chain at
 /// spring 1 settles. With stiffness the carry and stretch share above, fitted without this damping, already stand in
@@ -1444,4 +1494,9 @@ fn touch_segment(origin: Vec3, position: Vec3, (at_origin, at_end): (f32, f32), 
     let away = d.normalize_or((b - a).normalize_or(Vec3::Y).any_orthonormal_vector());
     let away = if !matches!(rule, SegmentPush::Plain) && nearest > lowest && !inside { (position - core).normalize_or(away) } else { away };
     position + away * (reach - d.length()) * if deep { INSIDE_PUSH } else { 1.0 }
+}
+
+/// How far immobile's `share` of the turn in `moved` carries `x` about `origin`.
+fn immobile_turn(moved: Transform, origin: Vec3, x: Vec3, share: f32) -> Vec3 {
+    (moved.rotation * (x - origin) - (x - origin)) * share
 }
