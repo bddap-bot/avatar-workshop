@@ -4020,7 +4020,11 @@ fn chains_whose_parent_turns_in_one_step() {
     let rows = ["Turn15", "Turn30", "Turn45"];
     let on = |t: &str| rows.contains(&t.split('/').next().unwrap());
     let mut failed = vec![];
-    for (window, what) in [(turn..turn + 1, "the frame after the turn"), (turn - 1..turn + 150, "the 150 frames after")] {
+    for (window, what) in [
+        (turn - 1..turn, "the first recorded frame"),
+        (turn..turn + 1, "the frame after the turn"),
+        (turn - 1..turn + 150, "the 150 frames after"),
+    ] {
         let errors: Vec<(f32, String)> = errors(&dir, &trace, window).into_iter().filter(|(_, t)| on(t)).collect();
         assert_eq!(errors.len(), 3 * 18 * 3, "every bone of the turn rows over {what}");
         let worst = errors.iter().fold((0.0f32, ""), |a, (e, t)| if *e > a.0 { (*e, t.as_str()) } else { a });
