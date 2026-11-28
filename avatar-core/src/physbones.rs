@@ -241,6 +241,10 @@ struct Chain {
     last_root: Option<Transform>,
     rest: Vec<Transform>,
     world: Vec<Transform>,
+    /// `world` before the last step, which a chain drawn behind its step (see [`DRAWN_SHARE`]) is drawn from.
+    stepped_from: Vec<Transform>,
+    /// Drawn [`DRAWN_SHARE`] of the way into each step since a collider met it at rest with a bone's end inside.
+    drawn_behind: bool,
     /// Where the simulation has put each bone the chain pins to its animated place (its root, and a child that does not
     /// alone drive its parent's aim), relative to the avatar root. `solve` moves a pinned child before `step` puts it
     /// back, so its simulated position does not keep this.
@@ -515,6 +519,8 @@ fn chain(pb: &model::PhysBone, roots: &[usize], nodes: &Nodes) -> Chain {
         last_root: None,
         rest: vec![Transform::IDENTITY; count],
         world: vec![Transform::IDENTITY; count],
+        stepped_from: vec![Transform::IDENTITY; count],
+        drawn_behind: false,
         pinned: vec![Vec3::ZERO; count],
         reset_directions: vec![Vec3::ZERO; count],
         held: vec![false; count],
@@ -532,7 +538,7 @@ impl PhysBones {
         let mut chains: Vec<Chain> = model.physbones.iter().map(|pb| chain(pb, &roots, &nodes)).collect();
         for (i, c) in chains.iter_mut().enumerate() {
             if roots[..i].contains(&roots[i]) {
-                *c = Chain { shadowed: true, bones: vec![], rest: vec![], world: vec![], pinned: vec![], reset_directions: vec![], held: vec![], ..c.clone() };
+                *c = Chain { shadowed: true, bones: vec![], rest: vec![], world: vec![], stepped_from: vec![], pinned: vec![], reset_directions: vec![], held: vec![], ..c.clone() };
             }
         }
         let colliders: Vec<ColliderAt> = model
@@ -671,7 +677,8 @@ impl PhysBones {
                 }
                 let was = carry.map(|share| (share, c.clone()));
                 c.step(input, &self.colliders, &self.parent, hands);
-                if let Some((share, was)) = was {
+                // A chain drawn behind its step takes the load step whole: drawn into it, that is where the SDK draws it.
+                if let Some((share, was)) = was.filter(|_| !c.drawn_behind) {
                     for (b, from) in c.bones.iter_mut().zip(&was.bones) {
                         *b = from.lerp(b, share);
                     }
@@ -922,6 +929,8 @@ impl Chain {
             b.resting = true;
         }
         self.world = self.rest.clone();
+        self.stepped_from = self.rest.clone();
+        self.drawn_behind = false;
         let unroot = frame.root.rigid().inverse_rigid();
         self.pinned = self.rest.iter().map(|r| unroot.point(r.translation)).collect();
         self.reset_directions = self
@@ -950,6 +959,9 @@ impl Chain {
     }
 
     fn step(&mut self, frame: &Frame, colliders: &[ColliderAt], parent: &[Option<usize>], hands: &[Touch]) {
+        self.stepped_from = self.world.clone();
+        let at_rest = self.bones.iter().all(|b| b.parent.is_none() || b.resting);
+        let mut met_inside = false;
         self.animate(frame);
         let avatar = frame.root.rigid();
         let before = self.last_root.unwrap_or(avatar);
@@ -996,7 +1008,7 @@ impl Chain {
         for p in 0..self.bones.len() {
             let children = self.bones[p].children.clone();
             for &i in &children {
-                self.solve(p, i, frame, moved, root_motion, &places, &touches, scale, &settled);
+                met_inside |= self.solve(p, i, frame, moved, root_motion, &places, &touches, scale, &settled);
             }
             let driving = self.aim(p, frame);
             for &i in &children {
@@ -1010,6 +1022,7 @@ impl Chain {
             }
         }
         self.measure();
+        self.drawn_behind |= at_rest && met_inside;
     }
 
     /// Where the simulation puts `bone`, which the chain pins to its animated place `at`, from where it put it last step.
@@ -1066,9 +1079,10 @@ impl Chain {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn solve(&mut self, p: usize, i: usize, frame: &Frame, moved: Transform, root_motion: Transform, places: &[(ColliderAt, Transform)], touches: &[Touch], scale: f32, settled: &[Vec3]) {
+    /// Steps bone `i`, a child of `p`, and returns whether a sphere or capsule met it with its end inside.
+    fn solve(&mut self, p: usize, i: usize, frame: &Frame, moved: Transform, root_motion: Transform, places: &[(ColliderAt, Transform)], touches: &[Touch], scale: f32, settled: &[Vec3]) -> bool {
         if self.held[i] {
-            return;
+            return false;
         }
         // A child's rest direction and limit turn with its parent's simulated direction, not its drawn one: from the drawn
         // one a short bone behind a swinging bone turns over its parent where the SDK's falls back.
@@ -1089,7 +1103,7 @@ impl Chain {
             self.bones[i].previous = origin;
             self.bones[i].shown = parent.translation;
             self.bones[i].strain = 0.0;
-            return;
+            return false;
         }
         let rest_direction = rest / rest_length;
         let q = self.bones[i].params;
@@ -1208,9 +1222,14 @@ impl Chain {
             (PhysBoneVersion::V1_0, IntegrationType::Advanced) => SegmentPush::TurnOver,
             (PhysBoneVersion::V1_0, IntegrationType::Simplified) => SegmentPush::TurnOverOrMeetInside,
         };
+        let (mut pushed_any, mut met_inside) = (false, false);
         for (collider, place) in places {
             let pushed = match collider.core(place).filter(|_| collider.meets_segment) {
-                Some(core) => touch_segment(origin, bone.position, radii, core, segment_push),
+                Some(core @ (a, b, r)) => {
+                    let pushed = touch_segment(origin, bone.position, radii, core, segment_push);
+                    met_inside |= pushed != bone.position && bone.position.distance(closest_on_segments(bone.position, bone.position, a, b).1) < r;
+                    pushed
+                }
                 None => collide(bone.position, q.radius * scale, collider, place),
             };
             let out = match (collider.meets_segment, self.version) {
@@ -1219,29 +1238,33 @@ impl Chain {
                 (true, PhysBoneVersion::V1_1) => PUSH_OUT_OF_VELOCITY,
             };
             momentum += (pushed - bone.position) * (1.0 - out);
+            pushed_any |= pushed != bone.position;
             bone.position = keep(pushed);
         }
         for touch in touches {
             let pushed = touch_segment(origin, bone.position, radii, (touch.a, touch.b, touch.radius), SegmentPush::Plain);
             momentum += (pushed - bone.position) * (1.0 - PUSH_OUT_OF_VELOCITY);
+            pushed_any |= pushed != bone.position;
             bone.position = keep(pushed);
+        }
+        // The SDK stops a bone a collider pushes at its limit: the push comes after the limit above.
+        if pushed_any {
+            let pushed = bone.position - origin;
+            bone.position = origin + limit(pushed.normalize_or(direction), local.translation, lag * parent.rotation, q.limit) * pushed.length();
         }
         if matches!(self.integration, IntegrationType::Simplified) {
             bone.previous = bone.position - momentum;
         }
         bone.shown = from + (bone.position + drawn - from).normalize_or(direction) * bone.position.distance(origin);
+        met_inside
     }
 
     /// Turns `bone` toward the children that drive it, which it returns.
     fn aim(&mut self, bone: usize, frame: &Frame) -> Vec<usize> {
-        let children = &self.bones[bone].children;
-        let driving: Vec<usize> = match (self.multi_child, children.len()) {
-            (_, 0) => return vec![],
-            (_, 1) => children.clone(),
-            (MultiChildType::Ignore, _) => return vec![],
-            (MultiChildType::First, _) => children[..1].to_vec(),
-            (MultiChildType::Average, _) => children.clone(),
-        };
+        let driving = self.driving(bone);
+        if driving.is_empty() {
+            return driving;
+        }
         let w = self.world[bone];
         let mut sum = Vec4::ZERO;
         for &c in &driving {
@@ -1252,6 +1275,16 @@ impl Chain {
         let turn = Quat::from_vec4(sum).normalize();
         self.world[bone].rotation = (turn * w.rotation).normalize();
         driving
+    }
+
+    /// The children that turn `bone` toward them.
+    fn driving(&self, bone: usize) -> Vec<usize> {
+        let children = &self.bones[bone].children;
+        match (self.multi_child, children.len()) {
+            (_, 0) | (MultiChildType::Ignore, 2..) => vec![],
+            (_, 1) | (MultiChildType::Average, _) => children.clone(),
+            (MultiChildType::First, _) => children[..1].to_vec(),
+        }
     }
 
     /// `_Angle`: the turn of the chain from its root to its first end, against its rest, over 180°.
@@ -1281,20 +1314,57 @@ impl Chain {
         self.parameters.squish = if max_squish > 0.0 { (-ratio / max_squish).clamp(0.0, 1.0) } else { 0.0 };
     }
 
+    /// Each bone's drawn place: for a chain drawn behind its step, blended in the world rather than by local rotation, so
+    /// that a root aimed at its child that turns over in one step is not drawn where neither step held it.
+    fn drawn(&self) -> Vec<Transform> {
+        let mut drawn = self.world.clone();
+        if !self.drawn_behind {
+            return drawn;
+        }
+        for i in 0..drawn.len() {
+            let Some(p) = self.bones[i].parent else { continue };
+            let newest = self.world[i].translation - self.world[p].translation;
+            let toward = self.stepped_from[i].translation.lerp(self.world[i].translation, DRAWN_SHARE) - drawn[p].translation;
+            drawn[i].translation = drawn[p].translation + toward.normalize_or(newest.normalize_or_zero()) * newest.length();
+        }
+        let turn = |i: usize, c: usize| {
+            let from = (self.world[c].translation - self.world[i].translation).normalize_or_zero();
+            let to = (drawn[c].translation - drawn[i].translation).normalize_or_zero();
+            Vec4::from(Quat::from_rotation_arc(from, to))
+        };
+        let turns: Vec<Vec4> = (0..drawn.len())
+            .map(|i| {
+                let driving = self.driving(i);
+                let mut sum = Vec4::ZERO;
+                for t in driving.iter().map(|&c| turn(i, c)).chain(self.bones[i].parent.filter(|_| driving.is_empty()).map(|p| turn(p, i))) {
+                    sum += if sum.dot(t) < 0.0 { -t } else { t };
+                }
+                sum
+            })
+            .collect();
+        for (i, sum) in turns.into_iter().enumerate() {
+            if sum != Vec4::ZERO {
+                drawn[i].rotation = (Quat::from_vec4(sum).normalize() * self.world[i].rotation).normalize();
+            }
+        }
+        drawn
+    }
+
     fn locals(&self, frame: &Frame) -> Vec<Transform> {
         let root_parent = self.parent_world(frame);
+        let world = self.drawn();
         self.bones
             .iter()
             .enumerate()
             .filter(|(_, b)| b.node.is_some())
             .map(|(i, b)| {
-                let parent = b.parent.map_or(root_parent, |p| self.world[p]);
+                let parent = b.parent.map_or(root_parent, |p| world[p]);
                 let inverse = parent.rotation.inverse();
                 let unscale = Vec3::select(parent.scale.cmpeq(Vec3::ZERO), Vec3::ZERO, parent.scale.recip());
                 Transform {
-                    translation: inverse * (self.world[i].translation - parent.translation) * unscale,
-                    rotation: (inverse * self.world[i].rotation).normalize(),
-                    scale: self.world[i].scale * unscale,
+                    translation: inverse * (world[i].translation - parent.translation) * unscale,
+                    rotation: (inverse * world[i].rotation).normalize(),
+                    scale: world[i].scale * unscale,
                 }
             })
             .collect()
@@ -1364,6 +1434,11 @@ const PULL_DAMPING_STIFFNESS_EXPONENT: i32 = 15;
 /// turns that bone's momentum through so wide an angle that the share must be this one, not a rounding of it. Every chain
 /// those cases hold is version 1.1; a version 1.0 chain takes the change at once, as VRM's springs do.
 const FOLLOW: f32 = 5.0 / 6.0;
+/// How far into its newest step the SDK draws a chain that a sphere or capsule met at rest with a bone's end inside, from
+/// then on: the probe's chains a collider is brought onto at rest, or whose first bone starts wholly inside one, lie this
+/// share of the way from the core's previous step to its newest, while chains swung against a collider, met at load only
+/// along their segments, or under a jumping parent lie at their newest.
+const DRAWN_SHARE: f32 = 0.2;
 /// The share of stiffness that advanced integration takes from stretch motion's share, measured against the reference
 /// traces at stiffness 0.3 and 0.7.
 const STRETCH_STIFFNESS_SHARE: f32 = 0.8;
