@@ -928,6 +928,66 @@ namespace AvatarWorkshop.Reference
                      }), (Action<VRCPhysBone>)null))
             .ToArray();
 
+        // Chains whose first bone a 6 cm collider takes past its limit: an angle, hinge or polar limit under each integration,
+        // with the collider straight across the chain, so the push stays in the hinge's plane and along the polar limit's X,
+        // or turned 45 degrees about it, so it leaves that plane and reaches the polar limit's Z. The collider is on the
+        // chains' row, or on the row `colliders` names, placed for where it ends up once the harness has moved both rows,
+        // which moves the chains `shift` from it.
+        static (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] LimitPushed(string colliders, Vector3 shift, float gravity) =>
+            (from limit in new (string name, Action<VRCPhysBone> set)[]
+             {
+                 ("Angle45", p => { p.limitType = VRCPhysBoneBase.LimitType.Angle; p.maxAngleX = 45; }),
+                 ("Hinge45", p => { p.limitType = VRCPhysBoneBase.LimitType.Hinge; p.maxAngleX = 45; }),
+                 ("Polar45x30", p => { p.limitType = VRCPhysBoneBase.LimitType.Polar; p.maxAngleX = 45; p.maxAngleZ = 30; }),
+             }
+             from integration in new[] { VRCPhysBoneBase.IntegrationType.Advanced, VRCPhysBoneBase.IntegrationType.Simplified }
+             from shape in new[] { VRCPhysBoneColliderBase.ShapeType.Capsule, VRCPhysBoneColliderBase.ShapeType.Sphere }
+             from around in new[] { 0, 45 }
+             from depth in new[] { 10, 15 }
+             select ($"{limit.name}{integration}{shape}Around{around}Depth{depth}", Vector3.forward, new[] { 0.02f, 0.02f, 0.02f }, 1,
+                     (Action<VRCPhysBone>)(p =>
+                     {
+                         p.radius = 0.005f; HeadFields(p); limit.set(p); p.integrationType = integration; p.gravity = gravity;
+                         var at = -Normal(75) * (0.06f - depth / 1000f);
+                         if (colliders == null) Against(p, shape, at, around: around);
+                         else Against(p, shape, at, around: around, holder: (p.transform.parent.parent.Find(colliders) ?? throw new Exception($"{colliders} comes after its chains")), shift: shift);
+                     }), (Action<VRCPhysBone>)null))
+            .ToArray();
+
+        // Where the colliders brought onto resting chains start: out of their reach, above them.
+        static readonly Vector3 PushAway = new Vector3(0, 0.5f, 0);
+
+        // Rows of those chains, each ending up where the LimitPush row's sit on their colliders: there from load (LimitPush);
+        // with the colliders brought onto them on frame 300, onto chains that rest when they arrive (LatePush), or that
+        // gravity holds sagging toward where they arrive, so the push works against that pull (LatePushGravity, its row
+        // turned over); or brought onto resting colliders by a jump of their parent on frame 300, along their bones, so they
+        // arrive unturned (SlidePush), or down from above, so their bones trail into the collider against its push
+        // (SwingPush). A row whose colliders move apart from it holds them on a row of their own.
+        static readonly (string name, int frame, Vector3 from, Vector3 tilt, Vector3 by, (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[] chains)[] PushRows =
+            new[]
+            {
+                (name: "LimitPush", gravity: 0f, tilt: Vector3.zero, chainsBy: Vector3.zero, collidersBy: Vector3.zero),
+                (name: "LatePush", gravity: 0f, tilt: Vector3.zero, chainsBy: Vector3.zero, collidersBy: -PushAway),
+                (name: "LatePushGravity", gravity: 0.57f, tilt: new Vector3(0, 0, 180), chainsBy: Vector3.zero, collidersBy: -PushAway),
+                (name: "SlidePush", gravity: 0f, tilt: Vector3.zero, chainsBy: new Vector3(0, 0, -0.05f), collidersBy: Vector3.zero),
+                (name: "SwingPush", gravity: 0f, tilt: Vector3.zero, chainsBy: new Vector3(0, -0.2f, 0), collidersBy: Vector3.zero),
+            }
+            .SelectMany((r, i) =>
+            {
+                var at = new Vector3(-2.5f, 1.6f, -2.45f - 0.4f * i);
+                int frame(Vector3 by) => by == Vector3.zero ? int.MaxValue : 300;
+                if (r.chainsBy == r.collidersBy)
+                    return new[] { (r.name, frame(r.chainsBy), at - r.chainsBy, r.tilt, r.chainsBy, LimitPushed(null, Vector3.zero, r.gravity)) };
+                var colliders = $"{r.name}Colliders";
+                return new[]
+                {
+                    (colliders, frame(r.collidersBy), at - r.collidersBy, Vector3.zero, r.collidersBy,
+                     new (string name, Vector3 dir, float[] bones, int branches, Action<VRCPhysBone> set, Action<VRCPhysBone> end)[0]),
+                    (r.name, frame(r.chainsBy), at - r.chainsBy, r.tilt, r.chainsBy, LimitPushed(colliders, r.chainsBy - r.collidersBy, r.gravity)),
+                };
+            })
+            .ToArray();
+
         static void HeadFields(VRCPhysBone p)
         {
             p.spring = 0.727f; p.pull = 0.053f; p.stiffness = 0.133f; p.immobile = 0.069f;
@@ -1032,16 +1092,19 @@ namespace AvatarWorkshop.Reference
         static Vector3 Normal(float degrees) => new Vector3(0, Mathf.Cos(degrees * Mathf.Deg2Rad), Mathf.Sin(degrees * Mathf.Deg2Rad));
 
         // A 6 cm collider at `at` from the chain's root along its own axes, on the row (a nested chain's too), a capsule 30 cm
-        // long across the chain.
-        static void Against(VRCPhysBone p, VRCPhysBoneColliderBase.ShapeType shape, Vector3 at, bool spheres = false)
+        // long across the chain, both turned `around` degrees about the chain; or on the unturned row `holder`, placed `shift`
+        // from there in that row's axes, for where it meets the chain once the harness has moved both rows.
+        static void Against(VRCPhysBone p, VRCPhysBoneColliderBase.ShapeType shape, Vector3 at, bool spheres = false, float around = 0, Transform holder = null, Vector3 shift = default)
         {
             var row = p.transform.parent;
             if (row.GetComponent<VRCPhysBone>() != null) row = row.parent;
-            var c = row.gameObject.AddComponent<VRCPhysBoneCollider>();
+            var on = holder ?? row;
+            var c = on.gameObject.AddComponent<VRCPhysBoneCollider>();
             c.shapeType = shape; c.radius = 0.06f; c.height = shape == VRCPhysBoneColliderBase.ShapeType.Capsule ? 0.3f : 0; c.bonesAsSpheres = spheres;
-            var placed = row.InverseTransformPoint(p.transform.TransformPoint(at));
-            c.position = placed;
-            c.rotation = Quaternion.Inverse(row.rotation) * p.transform.rotation * Quaternion.Euler(0, 0, 90);
+            var turn = Quaternion.Euler(0, around, 0);
+            var placed = on.InverseTransformPoint(p.transform.TransformPoint(turn * at));
+            c.position = on == row ? placed : placed + shift;
+            c.rotation = Quaternion.Inverse(on.rotation) * p.transform.rotation * turn * Quaternion.Euler(0, 0, 90);
             p.colliders = new List<VRCPhysBoneColliderBase> { c };
         }
 
@@ -1109,7 +1172,8 @@ namespace AvatarWorkshop.Reference
                 ("RadiusCurve10", int.MaxValue, new Vector3(-2.5f, 1.6f, -1.25f), Vector3.zero, Vector3.zero, RadiusCurves10),
                 ("Siblings", int.MaxValue, new Vector3(-2.5f, 1.6f, -1.65f), Vector3.zero, Vector3.zero, SiblingChains),
                 ("StartFields", int.MaxValue, new Vector3(-2.5f, 1.6f, -2.05f), Vector3.zero, Vector3.zero, StartingFields),
-            }).ToArray();
+            })
+            .Concat(PushRows).ToArray();
 
         static Quaternion BranchTilt(int b, int branches) => branches > 1 ? Quaternion.Euler(0, 0, 25 * (b - (branches - 1) / 2f)) : Quaternion.identity;
 
